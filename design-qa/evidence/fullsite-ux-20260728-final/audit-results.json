@@ -1,0 +1,1361 @@
+{
+  "startedAt": "2026-07-28T14:39:47.837Z",
+  "evidenceDir": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final",
+  "steps": [
+    {
+      "number": 1,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/01-client-home-1440-zh.png",
+      "description": "客户端中文首页，稳定外壳与商品陈列",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/home",
+        "title": "云桥 CloudBridge · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 3267,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BODY",
+          "text": "云桥 CloudBridge中文英文RMMYR联系客服云桥 / 01全球 AI 工具，在一座桥上相遇从 Codex 到 Gemini，让工具、价格与人工服务在一个入口汇合。探索全部服务0104全球币种识别地区，也可手动切换双价格桥接当地货币与 USDT 同时呈现单联系方式下单无需商城注册与复杂资料人工服务接力订单进入后"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "输入商品名称开始搜索",
+            "width": 1142,
+            "height": 25
+          }
+        ],
+        "visibleControlCount": 45,
+        "bodyText": "云桥 CloudBridge\n中文\n英文\nRM\nMYR\n联系客服\n\n云桥 / 01\n\n全球 AI 工具，\n在一座桥上相遇\n\n从 Codex 到 Gemini，让工具、价格与人工服务在一个入口汇合。\n\n探索全部服务\n01\n04\n全球币种\n识别地区，也可手动切换\n双价格桥接\n当地货币与 USDT 同时呈现\n单联系方式下单\n无需商城注册与复杂资料\n人工服务接力\n订单进入后台后由客服跟进\nAI 服务陈列\n\n精选主流 AI 工具，以清楚的价格与库存信息呈现。\n\n当前币种\nMYR\n全部\n编码开发\n通用助手\n研究效率\n图像创作\nCB / 01\nOpenAI Codex 专业版\nMYR 89.00\nMYR 109.00\n₮\n≈ 21.04 USDT\n库存 12\n立即下单\nCB / 02\nGemini Advanced\nMYR 79.00\nMYR 99.00\n₮\n≈ 18.68 USDT\n库存 8\n立即下单\nCB / 03\nChatGPT Plus\nMYR 92.00\nMYR 119.00\n₮\n≈ 21.75 USDT\n库存充足\n立即下单\nCB / 04\nClaude Pro\nMYR 85.00\nMYR 108.00\n₮\n≈ 20.09 USDT\n仅余 3\n立即下单\nCB / 05\nCursor Pro\nMYR 76.00\nMYR 96.00\n₮\n≈ 17.97 USDT\n库存 15\n立即下单\nCB / 06\nPerplexity Pro\nMYR 72.00\nMYR 90.00\n₮\n≈ 17.02 USDT\n库存 9\n立即下单\nCB / 07\nGitHub Copilot\nMYR 68.00\nMYR 86.00\n₮\n≈ 16.07 USDT\n库存充足\n立即下单\nCB / 08\nMidjourney Standard\nMYR 118.00\nMYR 148.00\n₮\n≈ 27.89 USDT\n暂时无库存\n暂时无库存\n\n人工服务\n\n需要先确认？让客服接上这座桥\n\n选择你习惯的渠道，咨询商品、付款与交付方式。\n\n联系客服\n云桥 CloudBridge\n隐私政策\n服务条款\n数字服务交付\n售后退款\nCookie 与追踪\n\n© 2026 CloudBridge. 仅用于设计预览。\n\n中转站服务\n已进入云桥 CloudBridge"
+      }
+    },
+    {
+      "number": 2,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/02-client-search-1440-zh.png",
+      "description": "客户端搜索结果保留页面结构",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/home",
+        "title": "云桥 CloudBridge · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 2223,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "INPUT",
+          "text": "输入商品名称开始搜索"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "输入商品名称开始搜索",
+            "width": 1098,
+            "height": 25
+          }
+        ],
+        "visibleControlCount": 25,
+        "bodyText": "云桥 CloudBridge\n中文\n英文\nRM\nMYR\n联系客服\n\n云桥 / 01\n\n全球 AI 工具，\n在一座桥上相遇\n\n从 Codex 到 Gemini，让工具、价格与人工服务在一个入口汇合。\n\n探索全部服务\n01\n04\n全球币种\n识别地区，也可手动切换\n双价格桥接\n当地货币与 USDT 同时呈现\n单联系方式下单\n无需商城注册与复杂资料\n人工服务接力\n订单进入后台后由客服跟进\nAI 服务陈列\n\n精选主流 AI 工具，以清楚的价格与库存信息呈现。\n\n当前币种\nMYR\n全部\n编码开发\n通用助手\n研究效率\n图像创作\nCB / 01\nOpenAI Codex 专业版\nMYR 89.00\nMYR 109.00\n₮\n≈ 21.04 USDT\n库存 12\n立即下单\n\n人工服务\n\n需要先确认？让客服接上这座桥\n\n选择你习惯的渠道，咨询商品、付款与交付方式。\n\n联系客服\n云桥 CloudBridge\n隐私政策\n服务条款\n数字服务交付\n售后退款\nCookie 与追踪\n\n© 2026 CloudBridge. 仅用于设计预览。\n\n中转站服务\n已进入云桥 CloudBridge"
+      }
+    },
+    {
+      "number": 3,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/03-client-detail-1440-zh.png",
+      "description": "商品详情页，页面切换无空白帧",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/product/codex",
+        "title": "OpenAI Codex 专业版 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1336,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "DIV",
+          "text": "返回首页CB / 服务 / CODEX开发工作流OpenAI Codex 专业版MYR 89.00MYR 109.00₮ ≈ 21.04 USDT库存 12人工处理 · 预计 10–30 分钟响应立即下单联系客服服务说明商品介绍适合希望把需求理解、代码修改、执行与验证串联起来的开发者。提交订单后，客服会根据你填写的联系"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [],
+        "visibleControlCount": 9,
+        "bodyText": "云桥 CloudBridge\n中文\n英文\nRM\nMYR\n联系客服\n返回首页\nCB / 服务 / CODEX\n\n开发工作流\n\nOpenAI Codex 专业版\nMYR 89.00\nMYR 109.00\n₮\n≈ 21.04 USDT\n库存 12\n\n人工处理 · 预计 10–30 分钟响应\n\n立即下单\n联系客服\n\n服务说明\n\n商品介绍\n\n适合希望把需求理解、代码修改、执行与验证串联起来的开发者。提交订单后，客服会根据你填写的联系方式确认服务方式与交付信息。\n\n01\n清楚报价\n\n币种与 USDT 参考价格同时展示。\n\n02\n极简下单\n\n只填写一种联系方式，不创建商城账号。\n\n03\n人工交付\n\n客服确认付款与最终交付信息。\n\n中转站服务\n已进入OpenAI Codex 专业版"
+      }
+    },
+    {
+      "number": 4,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/04-client-order-form-1440-zh.png",
+      "description": "订单表单弹窗与人工确认说明",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/product/codex",
+        "title": "OpenAI Codex 专业版 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1336,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "DIV",
+          "text": "提交订单"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "+60128886618",
+            "width": 445,
+            "height": 18
+          },
+          {
+            "tag": "INPUT",
+            "text": "",
+            "width": 18,
+            "height": 18
+          }
+        ],
+        "visibleControlCount": 17,
+        "bodyText": "云桥 CloudBridge\n中文\n英文\nRM\nMYR\n联系客服\n返回首页\nCB / 服务 / CODEX\n\n开发工作流\n\nOpenAI Codex 专业版\nMYR 89.00\nMYR 109.00\n₮\n≈ 21.04 USDT\n库存 12\n\n人工处理 · 预计 10–30 分钟响应\n\n立即下单\n联系客服\n\n服务说明\n\n商品介绍\n\n适合希望把需求理解、代码修改、执行与验证串联起来的开发者。提交订单后，客服会根据你填写的联系方式确认服务方式与交付信息。\n\n01\n清楚报价\n\n币种与 USDT 参考价格同时展示。\n\n02\n极简下单\n\n只填写一种联系方式，不创建商城账号。\n\n03\n人工交付\n\n客服确认付款与最终交付信息。\n\n单一联系方式下单 · 01 / 02\n\n提交订单\n在线支付未开启\n提交后只生成“待人工处理”凭证，不会跳转支付或自动扣款。\n开发工作流\nOpenAI Codex 专业版\nMYR 89.00 · 21.04 USDT\nWhatsApp\n电子邮件\nTelegram\n微信\nQQ\n联系方式\n我同意仅为处理订单使用此联系方式，并已阅读隐私政策、数字服务交付与退款规则。\n查看订单确认\n已进入OpenAI Codex 专业版"
+      }
+    },
+    {
+      "number": 5,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/05-client-order-validation-1440-zh.png",
+      "description": "订单表单校验并定位第一个错误字段",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/product/codex",
+        "title": "OpenAI Codex 专业版 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1336,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "INPUT",
+          "text": "+60128886618"
+        },
+        "busyCount": 0,
+        "alertText": [
+          "请输入联系方式",
+          "请确认隐私与数字服务交付说明。"
+        ],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "+60128886618",
+            "width": 445,
+            "height": 18
+          },
+          {
+            "tag": "INPUT",
+            "text": "",
+            "width": 18,
+            "height": 18
+          }
+        ],
+        "visibleControlCount": 17,
+        "bodyText": "云桥 CloudBridge\n中文\n英文\nRM\nMYR\n联系客服\n返回首页\nCB / 服务 / CODEX\n\n开发工作流\n\nOpenAI Codex 专业版\nMYR 89.00\nMYR 109.00\n₮\n≈ 21.04 USDT\n库存 12\n\n人工处理 · 预计 10–30 分钟响应\n\n立即下单\n联系客服\n\n服务说明\n\n商品介绍\n\n适合希望把需求理解、代码修改、执行与验证串联起来的开发者。提交订单后，客服会根据你填写的联系方式确认服务方式与交付信息。\n\n01\n清楚报价\n\n币种与 USDT 参考价格同时展示。\n\n02\n极简下单\n\n只填写一种联系方式，不创建商城账号。\n\n03\n人工交付\n\n客服确认付款与最终交付信息。\n\n单一联系方式下单 · 01 / 02\n\n提交订单\n在线支付未开启\n提交后只生成“待人工处理”凭证，不会跳转支付或自动扣款。\n开发工作流\nOpenAI Codex 专业版\nMYR 89.00 · 21.04 USDT\nWhatsApp\n电子邮件\nTelegram\n微信\nQQ\n联系方式\n请输入联系方式\n我同意仅为处理订单使用此联系方式，并已阅读隐私政策、数字服务交付与退款规则。\n请确认隐私与数字服务交付说明。\n查看订单确认\n已进入OpenAI Codex 专业版"
+      }
+    },
+    {
+      "number": 6,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/06-client-order-review-1440-zh.png",
+      "description": "订单二次确认，敏感操作不乐观成功",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/product/codex",
+        "title": "OpenAI Codex 专业版 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1336,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BUTTON",
+          "text": "确认并生成凭证"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [],
+        "visibleControlCount": 11,
+        "bodyText": "云桥 CloudBridge\n中文\n英文\nRM\nMYR\n联系客服\n返回首页\nCB / 服务 / CODEX\n\n开发工作流\n\nOpenAI Codex 专业版\nMYR 89.00\nMYR 109.00\n₮\n≈ 21.04 USDT\n库存 12\n\n人工处理 · 预计 10–30 分钟响应\n\n立即下单\n联系客服\n\n服务说明\n\n商品介绍\n\n适合希望把需求理解、代码修改、执行与验证串联起来的开发者。提交订单后，客服会根据你填写的联系方式确认服务方式与交付信息。\n\n01\n清楚报价\n\n币种与 USDT 参考价格同时展示。\n\n02\n极简下单\n\n只填写一种联系方式，不创建商城账号。\n\n03\n人工交付\n\n客服确认付款与最终交付信息。\n\n单一联系方式下单 · 02 / 02\n\n确认人工订单\n在线支付未开启\n提交后只生成“待人工处理”凭证，不会跳转支付或自动扣款。\n开发工作流\nOpenAI Codex 专业版\nMYR 89.00 · 21.04 USDT\n订单状态\n待人工处理\n联系渠道\nWhatsApp\n联系方式\n+60128886618\n价格有效期\n提交后 30 分钟\n交付方式\n客服确认后通过所选渠道人工交付\n\n库存或汇率若在提交时变化，将停止创建并要求重新确认。\n\n返回修改\n确认并生成凭证\n已进入OpenAI Codex 专业版"
+      }
+    },
+    {
+      "number": 7,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/07-client-order-error-1440-zh.png",
+      "description": "订单提交失败保留内容并提供重试",
+      "health": "warning",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/product/codex",
+        "title": "OpenAI Codex 专业版 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1336,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BODY",
+          "text": "云桥 CloudBridge中文英文RMMYR联系客服返回首页CB / 服务 / CODEX开发工作流OpenAI Codex 专业版MYR 89.00MYR 109.00₮ ≈ 21.04 USDT库存 12人工处理 · 预计 10–30 分钟响应立即下单联系客服服务说明商品介绍适合希望把需求理解、代码修改、执行与验"
+        },
+        "busyCount": 0,
+        "alertText": [
+          "连接订单失败，请检查网络后重试。"
+        ],
+        "undersizedControls": [],
+        "visibleControlCount": 12,
+        "bodyText": "云桥 CloudBridge\n中文\n英文\nRM\nMYR\n联系客服\n返回首页\nCB / 服务 / CODEX\n\n开发工作流\n\nOpenAI Codex 专业版\nMYR 89.00\nMYR 109.00\n₮\n≈ 21.04 USDT\n库存 12\n\n人工处理 · 预计 10–30 分钟响应\n\n立即下单\n联系客服\n\n服务说明\n\n商品介绍\n\n适合希望把需求理解、代码修改、执行与验证串联起来的开发者。提交订单后，客服会根据你填写的联系方式确认服务方式与交付信息。\n\n01\n清楚报价\n\n币种与 USDT 参考价格同时展示。\n\n02\n极简下单\n\n只填写一种联系方式，不创建商城账号。\n\n03\n人工交付\n\n客服确认付款与最终交付信息。\n\n单一联系方式下单 · 02 / 02\n\n确认人工订单\n在线支付未开启\n提交后只生成“待人工处理”凭证，不会跳转支付或自动扣款。\n开发工作流\nOpenAI Codex 专业版\nMYR 89.00 · 21.04 USDT\n订单状态\n待人工处理\n联系渠道\nWhatsApp\n联系方式\n+60128886618\n价格有效期\n提交后 30 分钟\n交付方式\n客服确认后通过所选渠道人工交付\n\n库存或汇率若在提交时变化，将停止创建并要求重新确认。\n\n连接订单失败，请检查网络后重试。\n返回修改\n重试提交\n订单提交失败\n已进入OpenAI Codex 专业版\n订单提交失败"
+      }
+    },
+    {
+      "number": 8,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/08-client-order-success-1440-zh.png",
+      "description": "订单成功凭证与后续处理说明",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/order/success",
+        "title": "订单待人工处理 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1073,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "DIV",
+          "text": "连接已建立订单待人工处理当前未启用在线支付。订单已安全提交，客服将通过你选择的渠道确认付款与交付。待人工处理尚未付款开发工作流OpenAI Codex 专业版订单号CB-260728-N7EYVL应付金额MYR 89.00USDT21.04 USDT库存保留至08:09123订单已提交等待人工处理付款与交付联系商家返回"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [],
+        "visibleControlCount": 9,
+        "bodyText": "云桥 CloudBridge\n中文\n英文\nRM\nMYR\n联系客服\n\n连接已建立\n\n订单待人工处理\n\n当前未启用在线支付。订单已安全提交，客服将通过你选择的渠道确认付款与交付。\n\n待人工处理\n尚未付款\n开发工作流\nOpenAI Codex 专业版\n订单号\nCB-260728-N7EYVL\n应付金额\nMYR 89.00\nUSDT\n21.04 USDT\n库存保留至\n08:09\n1\n2\n3\n订单已提交\n等待人工处理\n付款与交付\n联系商家\n返回首页\n中转站服务\n订单提交成功\n已进入订单待人工处理\n订单提交成功"
+      }
+    },
+    {
+      "number": 9,
+      "description": "客户端桌面运行诊断",
+      "health": "pass",
+      "diagnostics": []
+    },
+    {
+      "number": 10,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/09-client-home-390-zh.png",
+      "description": "390px 中文首页与两列商品结构",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/home",
+        "title": "云桥 CloudBridge · CloudBridge",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "clientWidth": 390,
+          "scrollWidth": 390,
+          "scrollHeight": 3654,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BODY",
+          "text": "云桥 CloudBridge中文英文RMMYR联系客服云桥 / 01全球 AI 工具，在一座桥上相遇从 Codex 到 Gemini，让工具、价格与人工服务在一个入口汇合。探索全部服务0104全球币种识别地区，也可手动切换双价格桥接当地货币与 USDT 同时呈现单联系方式下单无需商城注册与复杂资料人工服务接力订单进入后"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "输入商品名称开始搜索",
+            "width": 292,
+            "height": 21
+          }
+        ],
+        "visibleControlCount": 43,
+        "bodyText": "云桥\n中文\n英文\nMYR\n\n云桥 / 01\n\n全球 AI 工具，\n在一座桥上相遇\n\n从 Codex 到 Gemini，让工具、价格与人工服务在一个入口汇合。\n\n探索全部服务\n01\n04\n全球币种\n双价格桥接\n单联系方式下单\n人工服务接力\nAI 服务陈列\n\n精选主流 AI 工具，以清楚的价格与库存信息呈现。\n\n全部\n编码开发\n通用助手\n研究效率\n图像创作\nCB / 01\nOpenAI Codex 专业版\nMYR 89.00\nMYR 109.00\n₮\n≈ 21.04 USDT\n库存 12\n立即下单\nCB / 02\nGemini Advanced\nMYR 79.00\nMYR 99.00\n₮\n≈ 18.68 USDT\n库存 8\n立即下单\nCB / 03\nChatGPT Plus\nMYR 92.00\nMYR 119.00\n₮\n≈ 21.75 USDT\n库存充足\n立即下单\nCB / 04\nClaude Pro\nMYR 85.00\nMYR 108.00\n₮\n≈ 20.09 USDT\n仅余 3\n立即下单\nCB / 05\nCursor Pro\nMYR 76.00\nMYR 96.00\n₮\n≈ 17.97 USDT\n库存 15\n立即下单\nCB / 06\nPerplexity Pro\nMYR 72.00\nMYR 90.00\n₮\n≈ 17.02 USDT\n库存 9\n立即下单\nCB / 07\nGitHub Copilot\nMYR 68.00\nMYR 86.00\n₮\n≈ 16.07 USDT\n库存充足\n立即下单\nCB / 08\nMidjourney Standard\nMYR 118.00\nMYR 148.00\n₮\n≈ 27.89 USDT\n暂时无库存\n暂时无库存\n\n人工服务\n\n需要先确认？让客服接上这座桥\n\n选择你习惯的渠道，咨询商品、付款与交付方式。\n\n联系客服\n云桥 CloudBridge\n隐私政策\n服务条款\n数字服务交付\n售后退款\nCookie 与追踪\n\n© 2026 CloudBridge. 仅用于设计预览。\n\n中转站服务\n已进入云桥 CloudBridge"
+      }
+    },
+    {
+      "number": 11,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/11-client-category-390-zh.png",
+      "description": "390px 分类横向导航选中与自动滚动",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/home",
+        "title": "云桥 CloudBridge · CloudBridge",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "clientWidth": 390,
+          "scrollWidth": 390,
+          "scrollHeight": 2377,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BUTTON",
+          "text": "图像创作"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "输入商品名称开始搜索",
+            "width": 292,
+            "height": 21
+          }
+        ],
+        "visibleControlCount": 22,
+        "bodyText": "云桥\n中文\n英文\nMYR\n\n云桥 / 01\n\n全球 AI 工具，\n在一座桥上相遇\n\n从 Codex 到 Gemini，让工具、价格与人工服务在一个入口汇合。\n\n探索全部服务\n01\n04\n全球币种\n双价格桥接\n单联系方式下单\n人工服务接力\nAI 服务陈列\n\n精选主流 AI 工具，以清楚的价格与库存信息呈现。\n\n全部\n编码开发\n通用助手\n研究效率\n图像创作\nCB / 08\nMidjourney Standard\nMYR 118.00\nMYR 148.00\n₮\n≈ 27.89 USDT\n暂时无库存\n暂时无库存\n\n人工服务\n\n需要先确认？让客服接上这座桥\n\n选择你习惯的渠道，咨询商品、付款与交付方式。\n\n联系客服\n云桥 CloudBridge\n隐私政策\n服务条款\n数字服务交付\n售后退款\nCookie 与追踪\n\n© 2026 CloudBridge. 仅用于设计预览。\n\n中转站服务\n已进入云桥 CloudBridge"
+      }
+    },
+    {
+      "number": 12,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/10-client-home-320-en.png",
+      "description": "320px 英文首页与两列商品结构",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/home",
+        "title": "CloudBridge · CloudBridge",
+        "viewport": {
+          "width": 320,
+          "height": 844
+        },
+        "document": {
+          "clientWidth": 320,
+          "scrollWidth": 320,
+          "scrollHeight": 3549,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BUTTON",
+          "text": "English"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "Search by product name",
+            "width": 222,
+            "height": 21
+          }
+        ],
+        "visibleControlCount": 43,
+        "bodyText": "CloudBridge\nChinese\nEnglish\nMYR\n\nCLOUDBRIDGE / 01\n\nGlobal AI tools,\nconnected by one bridge\n\nFrom Codex to Gemini, tools, pricing and human support meet in one considered place.\n\nExplore services\n01\n04\nGlobal currencies\nDual-price bridge\nOne-contact checkout\nHuman service relay\nAI service gallery\n\nLeading AI tools presented with clear pricing and live inventory states.\n\nAll\nCoding & development\nGeneral assistants\nResearch & productivity\nImage creation\nCB / 01\nOpenAI Codex Professional\nMYR 89.00\nMYR 109.00\n₮\n≈ 21.04 USDT\nInventory 12\nPlace order\nCB / 02\nGemini Advanced\nMYR 79.00\nMYR 99.00\n₮\n≈ 18.68 USDT\nInventory 8\nPlace order\nCB / 03\nChatGPT Plus\nMYR 92.00\nMYR 119.00\n₮\n≈ 21.75 USDT\nAvailable\nPlace order\nCB / 04\nClaude Pro\nMYR 85.00\nMYR 108.00\n₮\n≈ 20.09 USDT\nOnly 3\nPlace order\nCB / 05\nCursor Pro\nMYR 76.00\nMYR 96.00\n₮\n≈ 17.97 USDT\nInventory 15\nPlace order\nCB / 06\nPerplexity Pro\nMYR 72.00\nMYR 90.00\n₮\n≈ 17.02 USDT\nInventory 9\nPlace order\nCB / 07\nGitHub Copilot\nMYR 68.00\nMYR 86.00\n₮\n≈ 16.07 USDT\nAvailable\nPlace order\nCB / 08\nMidjourney Standard\nMYR 118.00\nMYR 148.00\n₮\n≈ 27.89 USDT\nUnavailable\nUnavailable\n\nHUMAN CONNECTION\n\nNeed clarity first? Connect with support\n\nChoose your preferred channel for product, payment and delivery questions.\n\nSupport\nCloudBridge\nPrivacy\nTerms\nDigital delivery\nRefund policy\nCookies & tracking\n\n© 2026 CloudBridge. Preview design only.\n\nTransit Service\nLanguage changed to English\nCloudBridge page opened\nLanguage changed to English"
+      }
+    },
+    {
+      "number": 13,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/12-client-category-320-en.png",
+      "description": "320px 分类横向导航选中与自动滚动",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/home",
+        "title": "CloudBridge · CloudBridge",
+        "viewport": {
+          "width": 320,
+          "height": 844
+        },
+        "document": {
+          "clientWidth": 320,
+          "scrollWidth": 320,
+          "scrollHeight": 2376,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BUTTON",
+          "text": "Image creation"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "Search by product name",
+            "width": 222,
+            "height": 21
+          }
+        ],
+        "visibleControlCount": 22,
+        "bodyText": "CloudBridge\nChinese\nEnglish\nMYR\n\nCLOUDBRIDGE / 01\n\nGlobal AI tools,\nconnected by one bridge\n\nFrom Codex to Gemini, tools, pricing and human support meet in one considered place.\n\nExplore services\n01\n04\nGlobal currencies\nDual-price bridge\nOne-contact checkout\nHuman service relay\nAI service gallery\n\nLeading AI tools presented with clear pricing and live inventory states.\n\nAll\nCoding & development\nGeneral assistants\nResearch & productivity\nImage creation\nCB / 08\nMidjourney Standard\nMYR 118.00\nMYR 148.00\n₮\n≈ 27.89 USDT\nUnavailable\nUnavailable\n\nHUMAN CONNECTION\n\nNeed clarity first? Connect with support\n\nChoose your preferred channel for product, payment and delivery questions.\n\nSupport\nCloudBridge\nPrivacy\nTerms\nDigital delivery\nRefund policy\nCookies & tracking\n\n© 2026 CloudBridge. Preview design only.\n\nTransit Service\nLanguage changed to English\nCloudBridge page opened\nLanguage changed to English"
+      }
+    },
+    {
+      "number": 14,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/13-admin-login-1440-zh.png",
+      "description": "后台登录入口与安全说明",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/admin/login",
+        "title": "管理员登录 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1024,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "INPUT",
+          "text": "name@cloudbridge.example"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "name@cloudbridge.example",
+            "width": 339,
+            "height": 18
+          },
+          {
+            "tag": "INPUT",
+            "text": "",
+            "width": 286,
+            "height": 18
+          }
+        ],
+        "visibleControlCount": 12,
+        "bodyText": "CloudBridge\n中文\nEN\n\n仅限授权员工\n\n身份先于权限\n\n后台会话采用服务端管理，敏感操作要求重新验证，所有访问都进入审计记录。\n\n通行密钥优先\nWebAuthn / FIDO2\n会话可撤销\nHttpOnly · Secure · SameSite\n最小权限\nRBAC · Audit trail\nADMIN ACCESS / 01\n安全登录\n\n使用员工邮箱与密码继续。系统不会提示某个账户是否存在。\n\n员工邮箱\n密码\n忘记密码\n继续安全验证\n安全状态设计预览\n激活员工邀请\n查看锁定状态\n新设备验证\n会话过期\n需要帮助？联系内部安全管理员\n已进入管理员登录"
+      }
+    },
+    {
+      "number": 15,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/14-admin-login-validation-1440-zh.png",
+      "description": "后台登录校验与错误保留",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/admin/login",
+        "title": "管理员登录 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1024,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BUTTON",
+          "text": "继续安全验证"
+        },
+        "busyCount": 0,
+        "alertText": [
+          "无法完成登录，请检查信息或稍后重试。"
+        ],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "name@cloudbridge.example",
+            "width": 339,
+            "height": 18
+          },
+          {
+            "tag": "INPUT",
+            "text": "",
+            "width": 286,
+            "height": 18
+          }
+        ],
+        "visibleControlCount": 12,
+        "bodyText": "CloudBridge\n中文\nEN\n\n仅限授权员工\n\n身份先于权限\n\n后台会话采用服务端管理，敏感操作要求重新验证，所有访问都进入审计记录。\n\n通行密钥优先\nWebAuthn / FIDO2\n会话可撤销\nHttpOnly · Secure · SameSite\n最小权限\nRBAC · Audit trail\nADMIN ACCESS / 01\n安全登录\n\n使用员工邮箱与密码继续。系统不会提示某个账户是否存在。\n\n员工邮箱\n密码\n忘记密码\n\n无法完成登录，请检查信息或稍后重试。\n\n继续安全验证\n安全状态设计预览\n激活员工邀请\n查看锁定状态\n新设备验证\n会话过期\n需要帮助？联系内部安全管理员\n已进入管理员登录"
+      }
+    },
+    {
+      "number": 16,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/15-admin-mfa-1440-zh.png",
+      "description": "后台 MFA 选择与分步验证",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/admin/login",
+        "title": "管理员登录 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1024,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BODY",
+          "text": "CloudBridge中文EN仅限授权员工身份先于权限后台会话采用服务端管理，敏感操作要求重新验证，所有访问都进入审计记录。通行密钥优先WebAuthn / FIDO2会话可撤销HttpOnly · Secure · SameSite最小权限RBAC · Audit trail返回登录MFA / STEP 02完成第二"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [],
+        "visibleControlCount": 8,
+        "bodyText": "CloudBridge\n中文\nEN\n\n仅限授权员工\n\n身份先于权限\n\n后台会话采用服务端管理，敏感操作要求重新验证，所有访问都进入审计记录。\n\n通行密钥优先\nWebAuthn / FIDO2\n会话可撤销\nHttpOnly · Secure · SameSite\n最小权限\nRBAC · Audit trail\n返回登录\nMFA / STEP 02\n完成第二步验证\n\n通行密钥可抵御常见钓鱼攻击。也可以使用验证器或一次性恢复码。\n\n使用通行密钥\n推荐 · WebAuthn / FIDO2\n验证器动态码\n6-digit TOTP\n一次性恢复码\n使用后立即失效\n使用通行密钥\n需要帮助？联系内部安全管理员\n已进入管理员登录"
+      }
+    },
+    {
+      "number": 17,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/16-admin-dashboard-1440-zh.png",
+      "description": "后台九入口侧栏与运营总览",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/admin/dashboard",
+        "title": "运营总览 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1024,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "MAIN",
+          "text": "今日新订单124 个等待领取待联系7最久等待 18 分钟待确认付款3合计 RM 287.00需要关注5低库存 3 · 通知失败 2最新订单查看待处理订单号订单时间商品金额联系渠道联系账号处理状态付款状态负责人操作CB-260727-8K3P9M2026-07-27 14:32OpenAI CodexRM 89.00· "
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [],
+        "visibleControlCount": 27,
+        "bodyText": "CloudBridge\n工作台\n订单与售后\n商品管理\n内容与展示\n客服与通知\n财务与结算\n成员与权限\n安全与合规\n系统与运维\n王\n王朝\n超级管理员\n运营总览\n搜索订单、商品、员工…\n⌘ K\n中文\n英文\n2 项需处理\n王\n\n按空格或回车开始排序，使用方向键移动，空格或回车完成，Escape 取消。\n\n运营总览\n今日新订单\n12\n\n4 个等待领取\n\n待联系\n7\n\n最久等待 18 分钟\n\n待确认付款\n3\n\n合计 RM 287.00\n\n需要关注\n5\n\n低库存 3 · 通知失败 2\n\n最新订单\n查看待处理\n订单号\t订单时间\t商品\t金额\t联系渠道\t联系账号\t处理状态\t付款状态\t负责人\t\n操作\n\nCB-260727-8K3P9M\t2026-07-27 14:32\tOpenAI Codex\tRM 89.00· 21.04 USDT\tWhatsApp\t+60 12****6789\t\n新订单\t\n未付款\t未分配\t\n\nCB-260727-H2Q8LX\t2026-07-27 13:18\tGemini Advanced\tUSD 18.57· 18.68 USDT\t微信\tgem****88\t\n已联系\t\n待确认\t林澄\t\n\nCB-260727-P7M4CW\t2026-07-27 11:46\tClaude Pro\tSGD 26.86· 20.09 USDT\tQQ\t28****812\t\n处理中\t\n已付款\t陈予\t\n异常与提醒\nClaude Pro 仅余 3 件\n建议检查库存安排\n2 条邮件通知发送失败\n系统将在 5 分钟后重试\nUSDT 汇率 4 分钟前更新\n1 CNY = 0.1397 USDT\n运行状态\n系统中心\n数据库\n正常\n对象存储\n正常\n邮件服务\n正常\n汇率任务\n正常\n最近操作\n林\n林澄\n\n林澄 查看了订单 CB-260727-8K3P9M 的完整联系方式\n\n7月27日 14:36\nM\nMia Tan\n\nMia Tan 更新了 Gemini Advanced 的英文商品介绍\n\n7月27日 14:08\n陈\n陈予\n\n陈予 将订单 CB-260727-P7M4CW 的付款状态改为已付款\n\n7月27日 12:03\n已进入运营总览"
+      }
+    },
+    {
+      "number": 18,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/17-admin-products-1440-zh.png",
+      "description": "后台商品管理分组与列表",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/admin/products",
+        "title": "商品中心 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1024,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "MAIN",
+          "text": "全部分类 8编码开发通用助手研究效率图像创作新增商品商品分类价格库存状态修改人修改时间操作OpenAI Codex 专业版编码开发¥ 144.18· 21.04 USDT12已完成王朝2 分钟前编辑Gemini Advanced通用助手¥ 127.98· 18.68 USDT8已完成Mia Tan3 分钟前编辑Chat"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "搜索商品名称",
+            "width": 296,
+            "height": 18
+          }
+        ],
+        "visibleControlCount": 35,
+        "bodyText": "CloudBridge\n工作台\n订单与售后\n商品管理\n商品中心\n商品分类\n内容与展示\n客服与通知\n财务与结算\n成员与权限\n安全与合规\n系统与运维\n王\n王朝\n超级管理员\n商品中心\n搜索订单、商品、员工…\n⌘ K\n中文\n英文\n2 项需处理\n王\n\n按空格或回车开始排序，使用方向键移动，空格或回车完成，Escape 取消。\n\n运营总览\n商品中心\n全部分类 8\n编码开发\n通用助手\n研究效率\n图像创作\n新增商品\n商品\n分类\n价格\n库存\n状态\n修改人\n修改时间\n操作\nOpenAI Codex 专业版\n编码开发\n¥ 144.18· 21.04 USDT\n12\n已完成\n王朝\n2 分钟前\n编辑\nGemini Advanced\n通用助手\n¥ 127.98· 18.68 USDT\n8\n已完成\nMia Tan\n3 分钟前\n编辑\nChatGPT Plus\n通用助手\n¥ 149.04· 21.75 USDT\n无限\n已完成\n王朝\n4 分钟前\n编辑\nClaude Pro\n通用助手\n¥ 137.70· 20.09 USDT\n3\n待确认\nMia Tan\n5 分钟前\n编辑\nCursor Pro\n编码开发\n¥ 123.12· 17.97 USDT\n15\n已完成\n王朝\n6 分钟前\n编辑\nPerplexity Pro\n研究效率\n¥ 116.64· 17.02 USDT\n9\n已完成\nMia Tan\n7 分钟前\n编辑\nGitHub Copilot\n编码开发\n¥ 110.16· 16.07 USDT\n无限\n已完成\n王朝\n8 分钟前\n编辑\nMidjourney Standard\n图像创作\n¥ 191.16· 27.89 USDT\n0\n未付款\nMia Tan\n9 分钟前\n编辑\n已进入商品中心"
+      }
+    },
+    {
+      "number": 19,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/18-admin-product-search-1440-zh.png",
+      "description": "后台商品搜索即时反馈",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/admin/products",
+        "title": "商品中心 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1024,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "INPUT",
+          "text": "搜索商品名称"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "搜索商品名称",
+            "width": 296,
+            "height": 18
+          }
+        ],
+        "visibleControlCount": 28,
+        "bodyText": "CloudBridge\n工作台\n订单与售后\n商品管理\n商品中心\n商品分类\n内容与展示\n客服与通知\n财务与结算\n成员与权限\n安全与合规\n系统与运维\n王\n王朝\n超级管理员\n商品中心\n搜索订单、商品、员工…\n⌘ K\n中文\n英文\n2 项需处理\n王\n\n按空格或回车开始排序，使用方向键移动，空格或回车完成，Escape 取消。\n\n运营总览\n商品中心\n全部分类 8\n编码开发\n通用助手\n研究效率\n图像创作\n新增商品\n商品\n分类\n价格\n库存\n状态\n修改人\n修改时间\n操作\nOpenAI Codex 专业版\n编码开发\n¥ 144.18· 21.04 USDT\n12\n已完成\n王朝\n2 分钟前\n编辑\n已进入商品中心"
+      }
+    },
+    {
+      "number": 20,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/19-admin-product-edit-1440-zh.png",
+      "description": "后台商品编辑抽屉与完整字段",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/admin/products",
+        "title": "商品中心 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1024,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "DIV",
+          "text": "编辑商品 OpenAI Codex 专业版"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "搜索商品名称",
+            "width": 296,
+            "height": 18
+          },
+          {
+            "tag": "INPUT",
+            "text": "",
+            "width": 553,
+            "height": 40
+          },
+          {
+            "tag": "SELECT",
+            "text": "编码开发通用助手研究效率图像创作",
+            "width": 553,
+            "height": 40
+          },
+          {
+            "tag": "INPUT",
+            "text": "",
+            "width": 271,
+            "height": 40
+          },
+          {
+            "tag": "INPUT",
+            "text": "",
+            "width": 270,
+            "height": 40
+          },
+          {
+            "tag": "SELECT",
+            "text": "有限库存无限库存",
+            "width": 271,
+            "height": 40
+          },
+          {
+            "tag": "INPUT",
+            "text": "",
+            "width": 270,
+            "height": 40
+          }
+        ],
+        "visibleControlCount": 45,
+        "bodyText": "CloudBridge\n工作台\n订单与售后\n商品管理\n商品中心\n商品分类\n内容与展示\n客服与通知\n财务与结算\n成员与权限\n安全与合规\n系统与运维\n王\n王朝\n超级管理员\n商品中心\n搜索订单、商品、员工…\n⌘ K\n中文\n英文\n2 项需处理\n王\n\n按空格或回车开始排序，使用方向键移动，空格或回车完成，Escape 取消。\n\n运营总览\n商品中心\n全部分类 8\n编码开发\n通用助手\n研究效率\n图像创作\n新增商品\n商品\n分类\n价格\n库存\n状态\n修改人\n修改时间\n操作\nOpenAI Codex 专业版\n编码开发\n¥ 144.18· 21.04 USDT\n12\n已完成\n王朝\n2 分钟前\n编辑\n\n编辑商品\n\nOpenAI Codex 专业版\n基础与价格\n中文内容\n英文内容\n商品名称\n商品分类\n编码开发\n通用助手\n研究效率\n图像创作\n人民币售价\n人民币划线价\n库存模式\n有限库存\n无限库存\n库存数量\n商品介绍\n实时预览\nMYR\nUSD\nUSDT\n开发工作流\nOpenAI Codex 专业版\nRM 89.00\n≈ 21.04 USDT\n立即下单\n分类设置会保存到本地演示\n取消\n保存演示\n已进入商品中心"
+      }
+    },
+    {
+      "number": 21,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/20-admin-product-saved-1440-zh.png",
+      "description": "后台保存后返回列表并显示反馈",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/admin/products",
+        "title": "商品中心 · CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1024,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BUTTON",
+          "text": "编辑 OpenAI Codex 专业版"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "搜索商品名称",
+            "width": 296,
+            "height": 18
+          }
+        ],
+        "visibleControlCount": 28,
+        "bodyText": "CloudBridge\n工作台\n订单与售后\n商品管理\n商品中心\n商品分类\n内容与展示\n客服与通知\n财务与结算\n成员与权限\n安全与合规\n系统与运维\n王\n王朝\n超级管理员\n商品中心\n搜索订单、商品、员工…\n⌘ K\n中文\n英文\n2 项需处理\n王\n\n按空格或回车开始排序，使用方向键移动，空格或回车完成，Escape 取消。\n\n运营总览\n商品中心\n全部分类 8\n编码开发\n通用助手\n研究效率\n图像创作\n新增商品\n商品\n分类\n价格\n库存\n状态\n修改人\n修改时间\n操作\nOpenAI Codex 专业版\n通用助手\n¥ 144.18· 21.04 USDT\n12\n已完成\n王朝\n2 分钟前\n编辑\n已进入商品中心"
+      }
+    },
+    {
+      "number": 22,
+      "description": "后台桌面运行诊断",
+      "health": "pass",
+      "diagnostics": []
+    },
+    {
+      "number": 23,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/21-admin-drawer-390-zh.png",
+      "description": "390px 后台移动抽屉与完整九入口标签",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/admin/dashboard",
+        "title": "运营总览 · CloudBridge",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "clientWidth": 390,
+          "scrollWidth": 390,
+          "scrollHeight": 1661,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BUTTON",
+          "text": "打开导航"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [],
+        "visibleControlCount": 25,
+        "bodyText": "CloudBridge\n工作台\n订单与售后\n商品管理\n内容与展示\n客服与通知\n财务与结算\n成员与权限\n安全与合规\n系统与运维\n王\n王朝\n超级管理员\n运营总览\n中文\n英文\n\n按空格或回车开始排序，使用方向键移动，空格或回车完成，Escape 取消。\n\n运营总览\n今日新订单\n12\n\n4 个等待领取\n\n待联系\n7\n\n最久等待 18 分钟\n\n待确认付款\n3\n\n合计 RM 287.00\n\n需要关注\n5\n\n低库存 3 · 通知失败 2\n\n最新订单\n查看待处理\n订单号\t订单时间\t商品\t金额\t联系渠道\t联系账号\t处理状态\t付款状态\t负责人\t\n操作\n\nCB-260727-8K3P9M\t2026-07-27 14:32\tOpenAI Codex\tRM 89.00· 21.04 USDT\tWhatsApp\t+60 12****6789\t\n新订单\t\n未付款\t未分配\t\n\nCB-260727-H2Q8LX\t2026-07-27 13:18\tGemini Advanced\tUSD 18.57· 18.68 USDT\t微信\tgem****88\t\n已联系\t\n待确认\t林澄\t\n\nCB-260727-P7M4CW\t2026-07-27 11:46\tClaude Pro\tSGD 26.86· 20.09 USDT\tQQ\t28****812\t\n处理中\t\n已付款\t陈予\t\n\n左右滑动查看全部列\n\n异常与提醒\nClaude Pro 仅余 3 件\n建议检查库存安排\n2 条邮件通知发送失败\n系统将在 5 分钟后重试\nUSDT 汇率 4 分钟前更新\n1 CNY = 0.1397 USDT\n运行状态\n系统中心\n数据库\n正常\n对象存储\n正常\n邮件服务\n正常\n汇率任务\n正常\n最近操作\n林\n林澄\n\n林澄 查看了订单 CB-260727-8K3P9M 的完整联系方式\n\n7月27日 14:36\nM\nMia Tan\n\nMia Tan 更新了 Gemini Advanced 的英文商品介绍\n\n7月27日 14:08\n陈\n陈予\n\n陈予 将订单 CB-260727-P7M4CW 的付款状态改为已付款\n\n7月27日 12:03\n已进入运营总览"
+      }
+    },
+    {
+      "number": 24,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/22-admin-drawer-320-en.png",
+      "description": "320px 后台移动抽屉与完整九入口标签",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:4174/#/admin/dashboard",
+        "title": "Operations · CloudBridge",
+        "viewport": {
+          "width": 320,
+          "height": 844
+        },
+        "document": {
+          "clientWidth": 320,
+          "scrollWidth": 320,
+          "scrollHeight": 1785,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BUTTON",
+          "text": "Open navigation"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [],
+        "visibleControlCount": 25,
+        "bodyText": "CloudBridge\nWorkspace\nOrders & after-sales\nCatalog management\nContent & storefront\nSupport & notifications\nFinance & settlement\nTeam & access\nSecurity & compliance\nSystems & operations\nW\nWang Chao\nSuper admin\nOperations\nChinese\nEnglish\n\nPress Space or Enter to start sorting, use arrow keys to move, press Space or Enter to finish, or Escape to cancel.\n\nOperations\nNew today\n12\n\n4 awaiting assignment\n\nAwaiting contact\n7\n\nOldest waiting 18 min\n\nPayment review\n3\n\nRM 287.00 total\n\nNeeds attention\n5\n\n3 low stock · 2 delivery fails\n\nLatest orders\nView pending\nOrder ID\tOrder time\tProduct\tAmount\tChannel\tContact account\tStatus\tPayment\tOwner\t\nAction\n\nCB-260727-8K3P9M\t2026-07-27 14:32\tOpenAI Codex\tRM 89.00· 21.04 USDT\tWhatsApp\t+60 12****6789\t\nNew\t\nUnpaid\tUnassigned\t\n\nCB-260727-H2Q8LX\t2026-07-27 13:18\tGemini Advanced\tUSD 18.57· 18.68 USDT\tWeChat\tgem****88\t\nContacted\t\nPending\tLin Cheng\t\n\nCB-260727-P7M4CW\t2026-07-27 11:46\tClaude Pro\tSGD 26.86· 20.09 USDT\tQQ\t28****812\t\nProcessing\t\nPaid\tChen Yu\t\n\nSwipe horizontally to view all columns\n\nAttention queue\nClaude Pro: only 3 left\nReview inventory planning\n2 email notifications failed\nRetry scheduled in 5 min\nUSDT rate updated 4 min ago\n1 CNY = 0.1397 USDT\nService health\nSystem center\nDatabase\nHealthy\nObject storage\nHealthy\nEmail service\nHealthy\nRate jobs\nHealthy\nRecent activity\nL\nLin Cheng\n\nLin Cheng revealed the full contact for order CB-260727-8K3P9M\n\nJul 27, 02:36 PM\nM\nMia Tan\n\nMia Tan updated the English description for Gemini Advanced\n\nJul 27, 02:08 PM\nC\nChen Yu\n\nChen Yu marked payment as paid for order CB-260727-P7M4CW\n\nJul 27, 12:03 PM\nOperations page opened"
+      }
+    },
+    {
+      "number": 25,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/23-formal-storefront-api-error-1440-zh.png",
+      "description": "正式客户端 1440px API 不可用状态",
+      "health": "warning",
+      "metrics": {
+        "url": "http://localhost:3000/zh",
+        "title": "CloudBridge",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1748,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BODY",
+          "text": "云桥CloudBridge服务 联系支持中文英文服务能力全球币种双价格桥接单一联系方式下单人工服务接力AI 服务阵列精选主流 AI 工具，以清楚的价格与库存信息呈现。搜索商品选择币种CNY全部服务服务目录暂时无法连接重新连接CloudBridge人工确认订单 · 不提供公开订单查询服务目录服务人工服务提交订单后，通过所"
+        },
+        "busyCount": 0,
+        "alertText": [
+          "服务目录暂时无法连接重新连接"
+        ],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "输入商品名称开始搜索",
+            "width": 905,
+            "height": 22
+          },
+          {
+            "tag": "SELECT",
+            "text": "",
+            "width": 151,
+            "height": 19
+          }
+        ],
+        "visibleControlCount": 12,
+        "bodyText": "云桥\nCLOUDBRIDGE\n服务\n联系支持\n中文\n英文\n\n服务能力\n\n全球币种\n双价格桥接\n单一联系方式下单\n人工服务接力\nAI 服务阵列\n\n精选主流 AI 工具，以清楚的价格与库存信息呈现。\n\n搜索商品\n选择币种\nCNY\n全部服务\n服务目录暂时无法连接\n重新连接\nCloudBridge\n\n人工确认订单 · 不提供公开订单查询\n\n服务目录\n服务\n人工服务\n\n提交订单后，通过所选联系方式继续确认。\n\n服务条款\n隐私说明"
+      }
+    },
+    {
+      "number": 26,
+      "description": "正式客户端 1440px 运行诊断",
+      "health": "pass",
+      "diagnostics": [
+        {
+          "type": "requestfailed",
+          "text": "GET http://localhost:3001/v1/storefront/config?locale=zh net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "console-error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "requestfailed",
+          "text": "GET http://localhost:3001/v1/categories?locale=zh net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "console-error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        }
+      ]
+    },
+    {
+      "number": 27,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/24-formal-storefront-api-error-390-zh.png",
+      "description": "正式客户端 390px API 不可用状态",
+      "health": "warning",
+      "metrics": {
+        "url": "http://localhost:3000/zh",
+        "title": "CloudBridge",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "clientWidth": 390,
+          "scrollWidth": 390,
+          "scrollHeight": 1846,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BODY",
+          "text": "云桥CloudBridge服务 联系支持中文英文服务能力全球币种双价格桥接单一联系方式下单人工服务接力AI 服务阵列精选主流 AI 工具，以清楚的价格与库存信息呈现。搜索商品选择币种CNY全部服务服务目录暂时无法连接重新连接CloudBridge人工确认订单 · 不提供公开订单查询服务目录服务人工服务提交订单后，通过所"
+        },
+        "busyCount": 0,
+        "alertText": [
+          "服务目录暂时无法连接重新连接"
+        ],
+        "undersizedControls": [
+          {
+            "tag": "INPUT",
+            "text": "输入商品名称开始搜索",
+            "width": 287,
+            "height": 22
+          },
+          {
+            "tag": "SELECT",
+            "text": "",
+            "width": 277,
+            "height": 19
+          }
+        ],
+        "visibleControlCount": 10,
+        "bodyText": "云桥\n中文\n英文\n\n服务能力\n\n全球币种\n双价格桥接\n单一联系方式下单\n人工服务接力\nAI 服务阵列\n\n精选主流 AI 工具，以清楚的价格与库存信息呈现。\n\n搜索商品\n选择币种\nCNY\n全部服务\n服务目录暂时无法连接\n重新连接\nCloudBridge\n\n人工确认订单 · 不提供公开订单查询\n\n服务目录\n服务\n人工服务\n\n提交订单后，通过所选联系方式继续确认。\n\n服务条款\n隐私说明"
+      }
+    },
+    {
+      "number": 28,
+      "description": "正式客户端 390px 运行诊断",
+      "health": "pass",
+      "diagnostics": [
+        {
+          "type": "requestfailed",
+          "text": "GET http://localhost:3001/v1/storefront/config?locale=zh net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "console-error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "requestfailed",
+          "text": "GET http://localhost:3001/v1/categories?locale=zh net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "console-error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        }
+      ]
+    },
+    {
+      "number": 29,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/25-formal-admin-login-1440-zh.png",
+      "description": "正式后台 1440px 安全登录页",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:5176/admin/dashboard",
+        "title": "CloudBridge 管理后台",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1024,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BODY",
+          "text": "中文英文管理员安全登录使用设备 Passkey 进入管理后台，不使用传统密码。管理员邮箱使用 Passkey 登录使用 TOTP 恢复首次初始化管理员"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [],
+        "visibleControlCount": 6,
+        "bodyText": "中文\n英文\n管理员安全登录\n\n使用设备 Passkey 进入管理后台，不使用传统密码。\n\n管理员邮箱\n使用 Passkey 登录\n使用 TOTP 恢复\n首次初始化管理员"
+      }
+    },
+    {
+      "number": 30,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/27-formal-admin-error-1440-zh.png",
+      "description": "正式后台 1440px API 不可用错误反馈",
+      "health": "warning",
+      "metrics": {
+        "url": "http://127.0.0.1:5176/admin/dashboard",
+        "title": "CloudBridge 管理后台",
+        "viewport": {
+          "width": 1440,
+          "height": 1024
+        },
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440,
+          "scrollHeight": 1024,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BODY",
+          "text": "中文英文管理员安全登录使用设备 Passkey 进入管理后台，不使用传统密码。管理员邮箱验证未完成，请重试。使用 Passkey 登录使用 TOTP 恢复首次初始化管理员"
+        },
+        "busyCount": 0,
+        "alertText": [
+          "验证未完成，请重试。"
+        ],
+        "undersizedControls": [],
+        "visibleControlCount": 6,
+        "bodyText": "中文\n英文\n管理员安全登录\n\n使用设备 Passkey 进入管理后台，不使用传统密码。\n\n管理员邮箱\n\n验证未完成，请重试。\n\n使用 Passkey 登录\n使用 TOTP 恢复\n首次初始化管理员"
+      }
+    },
+    {
+      "number": 31,
+      "description": "正式后台 1440px 运行诊断",
+      "health": "pass",
+      "diagnostics": [
+        {
+          "type": "requestfailed",
+          "text": "GET http://localhost:3001/v1/admin/auth/me net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "console-error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "requestfailed",
+          "text": "GET http://localhost:3001/v1/admin/auth/me net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "console-error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "requestfailed",
+          "text": "POST http://localhost:3001/v1/admin/auth/login/options net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "console-error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        }
+      ]
+    },
+    {
+      "number": 32,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/26-formal-admin-login-390-zh.png",
+      "description": "正式后台 390px 安全登录页",
+      "health": "pass",
+      "metrics": {
+        "url": "http://127.0.0.1:5176/admin/dashboard",
+        "title": "CloudBridge 管理后台",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "clientWidth": 390,
+          "scrollWidth": 390,
+          "scrollHeight": 844,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BODY",
+          "text": "中文英文管理员安全登录使用设备 Passkey 进入管理后台，不使用传统密码。管理员邮箱使用 Passkey 登录使用 TOTP 恢复首次初始化管理员"
+        },
+        "busyCount": 0,
+        "alertText": [],
+        "undersizedControls": [],
+        "visibleControlCount": 6,
+        "bodyText": "中文\n英文\n管理员安全登录\n\n使用设备 Passkey 进入管理后台，不使用传统密码。\n\n管理员邮箱\n使用 Passkey 登录\n使用 TOTP 恢复\n首次初始化管理员"
+      }
+    },
+    {
+      "number": 33,
+      "file": "/Users/wangchao/Desktop/源码文件夹/简易购物网站/design-qa/evidence/fullsite-ux-20260728-final/28-formal-admin-error-390-zh.png",
+      "description": "正式后台 390px API 不可用错误反馈",
+      "health": "warning",
+      "metrics": {
+        "url": "http://127.0.0.1:5176/admin/dashboard",
+        "title": "CloudBridge 管理后台",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "clientWidth": 390,
+          "scrollWidth": 390,
+          "scrollHeight": 844,
+          "overflowX": 0
+        },
+        "activeElement": {
+          "tag": "BODY",
+          "text": "中文英文管理员安全登录使用设备 Passkey 进入管理后台，不使用传统密码。管理员邮箱验证未完成，请重试。使用 Passkey 登录使用 TOTP 恢复首次初始化管理员"
+        },
+        "busyCount": 0,
+        "alertText": [
+          "验证未完成，请重试。"
+        ],
+        "undersizedControls": [],
+        "visibleControlCount": 6,
+        "bodyText": "中文\n英文\n管理员安全登录\n\n使用设备 Passkey 进入管理后台，不使用传统密码。\n\n管理员邮箱\n\n验证未完成，请重试。\n\n使用 Passkey 登录\n使用 TOTP 恢复\n首次初始化管理员"
+      }
+    },
+    {
+      "number": 34,
+      "description": "正式后台 390px 运行诊断",
+      "health": "pass",
+      "diagnostics": [
+        {
+          "type": "requestfailed",
+          "text": "GET http://localhost:3001/v1/admin/auth/me net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "console-error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "requestfailed",
+          "text": "GET http://localhost:3001/v1/admin/auth/me net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "console-error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "requestfailed",
+          "text": "POST http://localhost:3001/v1/admin/auth/login/options net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "console-error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        }
+      ]
+    }
+  ],
+  "assertions": [
+    {
+      "name": "01-client-home-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":3267,\"overflowX\":0}"
+    },
+    {
+      "name": "02-client-search-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":2223,\"overflowX\":0}"
+    },
+    {
+      "name": "search returns Codex and hides unrelated products",
+      "ok": true,
+      "detail": "query=Codex"
+    },
+    {
+      "name": "03-client-detail-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1336,\"overflowX\":0}"
+    },
+    {
+      "name": "04-client-order-form-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1336,\"overflowX\":0}"
+    },
+    {
+      "name": "dialog Escape closes and returns focus",
+      "ok": true,
+      "detail": "{\"tag\":\"BUTTON\",\"text\":\"立即下单\"}"
+    },
+    {
+      "name": "05-client-order-validation-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1336,\"overflowX\":0}"
+    },
+    {
+      "name": "order validation exposes alerts",
+      "ok": true,
+      "detail": "[\"请输入联系方式\",\"请确认隐私与数字服务交付说明。\"]"
+    },
+    {
+      "name": "order validation focuses contact field",
+      "ok": true,
+      "detail": "{\"tag\":\"INPUT\",\"text\":\"+60128886618\"}"
+    },
+    {
+      "name": "06-client-order-review-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1336,\"overflowX\":0}"
+    },
+    {
+      "name": "07-client-order-error-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1336,\"overflowX\":0}"
+    },
+    {
+      "name": "failed order keeps review and shows retry",
+      "ok": true,
+      "detail": "[\"连接订单失败，请检查网络后重试。\"]"
+    },
+    {
+      "name": "08-client-order-success-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1073,\"overflowX\":0}"
+    },
+    {
+      "name": "order success confirmed by route",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/#/order/success"
+    },
+    {
+      "name": "09-client-home-390-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":390,\"scrollWidth\":390,\"scrollHeight\":3654,\"overflowX\":0}"
+    },
+    {
+      "name": "11-client-category-390-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":390,\"scrollWidth\":390,\"scrollHeight\":2377,\"overflowX\":0}"
+    },
+    {
+      "name": "10-client-home-320-en.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":320,\"scrollWidth\":320,\"scrollHeight\":3549,\"overflowX\":0}"
+    },
+    {
+      "name": "12-client-category-320-en.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":320,\"scrollWidth\":320,\"scrollHeight\":2376,\"overflowX\":0}"
+    },
+    {
+      "name": "13-admin-login-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1024,\"overflowX\":0}"
+    },
+    {
+      "name": "14-admin-login-validation-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1024,\"overflowX\":0}"
+    },
+    {
+      "name": "admin login validation uses alert",
+      "ok": true,
+      "detail": "[\"无法完成登录，请检查信息或稍后重试。\"]"
+    },
+    {
+      "name": "15-admin-mfa-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1024,\"overflowX\":0}"
+    },
+    {
+      "name": "16-admin-dashboard-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1024,\"overflowX\":0}"
+    },
+    {
+      "name": "17-admin-products-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1024,\"overflowX\":0}"
+    },
+    {
+      "name": "18-admin-product-search-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1024,\"overflowX\":0}"
+    },
+    {
+      "name": "19-admin-product-edit-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1024,\"overflowX\":0}"
+    },
+    {
+      "name": "20-admin-product-saved-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1024,\"overflowX\":0}"
+    },
+    {
+      "name": "admin accordion opens at most one group",
+      "ok": true,
+      "detail": "{\"productExpanded\":\"false\",\"orderExpanded\":\"true\"}"
+    },
+    {
+      "name": "21-admin-drawer-390-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":390,\"scrollWidth\":390,\"scrollHeight\":1661,\"overflowX\":0}"
+    },
+    {
+      "name": "390px admin shows all primary labels",
+      "ok": true,
+      "detail": "CloudBridge\n工作台\n订单与售后\n商品管理\n内容与展示\n客服与通知\n财务与结算\n成员与权限\n安全与合规\n系统与运维\n王\n王朝\n超级管理员"
+    },
+    {
+      "name": "390px admin has no page overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":390,\"scrollWidth\":390,\"scrollHeight\":1661,\"overflowX\":0}"
+    },
+    {
+      "name": "22-admin-drawer-320-en.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":320,\"scrollWidth\":320,\"scrollHeight\":1785,\"overflowX\":0}"
+    },
+    {
+      "name": "320px admin shows all primary labels",
+      "ok": true,
+      "detail": "CloudBridge\nWorkspace\nOrders & after-sales\nCatalog management\nContent & storefront\nSupport & notifications\nFinance & settlement\nTeam & access\nSecurity & compliance\nSystems & operations\nW\nWang Chao\nSuper admin"
+    },
+    {
+      "name": "320px admin has no page overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":320,\"scrollWidth\":320,\"scrollHeight\":1785,\"overflowX\":0}"
+    },
+    {
+      "name": "23-formal-storefront-api-error-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1748,\"overflowX\":0}"
+    },
+    {
+      "name": "formal storefront 1440px exits initial skeleton on API failure",
+      "ok": true,
+      "detail": "{\"busyCount\":0,\"alertText\":[\"服务目录暂时无法连接重新连接\"],\"body\":\"云桥\\nCLOUDBRIDGE\\n服务\\n联系支持\\n中文\\n英文\\n\\n服务能力\\n\\n全球币种\\n双价格桥接\\n单一联系方式下单\\n人工服务接力\\nAI 服务阵列\\n\\n精选主流 AI 工具，以清楚的价格与库存信息呈现。\\n\\n搜索商品\\n选择币种\\nCNY\\n全部服务\\n服务目录暂时无法连接\\n重新连接\\nCloudBridge\\n\\n人工确认订单 · 不提供公开订单查询\\n\\n服务目录\\n服务\\n人工服务\\n\\n提交订单后，通过所选联系方式继续确认。\\n\\n服务条款\\n隐私说明\"}"
+    },
+    {
+      "name": "24-formal-storefront-api-error-390-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":390,\"scrollWidth\":390,\"scrollHeight\":1846,\"overflowX\":0}"
+    },
+    {
+      "name": "formal storefront 390px exits initial skeleton on API failure",
+      "ok": true,
+      "detail": "{\"busyCount\":0,\"alertText\":[\"服务目录暂时无法连接重新连接\"],\"body\":\"云桥\\n中文\\n英文\\n\\n服务能力\\n\\n全球币种\\n双价格桥接\\n单一联系方式下单\\n人工服务接力\\nAI 服务阵列\\n\\n精选主流 AI 工具，以清楚的价格与库存信息呈现。\\n\\n搜索商品\\n选择币种\\nCNY\\n全部服务\\n服务目录暂时无法连接\\n重新连接\\nCloudBridge\\n\\n人工确认订单 · 不提供公开订单查询\\n\\n服务目录\\n服务\\n人工服务\\n\\n提交订单后，通过所选联系方式继续确认。\\n\\n服务条款\\n隐私说明\"}"
+    },
+    {
+      "name": "25-formal-admin-login-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1024,\"overflowX\":0}"
+    },
+    {
+      "name": "27-formal-admin-error-1440-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":1440,\"scrollWidth\":1440,\"scrollHeight\":1024,\"overflowX\":0}"
+    },
+    {
+      "name": "formal admin 1440px reports login failure",
+      "ok": true,
+      "detail": "[\"验证未完成，请重试。\"]"
+    },
+    {
+      "name": "26-formal-admin-login-390-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":390,\"scrollWidth\":390,\"scrollHeight\":844,\"overflowX\":0}"
+    },
+    {
+      "name": "28-formal-admin-error-390-zh.png no page horizontal overflow",
+      "ok": true,
+      "detail": "{\"clientWidth\":390,\"scrollWidth\":390,\"scrollHeight\":844,\"overflowX\":0}"
+    },
+    {
+      "name": "formal admin 390px reports login failure",
+      "ok": true,
+      "detail": "[\"验证未完成，请重试。\"]"
+    }
+  ],
+  "failures": [],
+  "completedAt": "2026-07-28T14:40:21.611Z"
+}

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CloudBridge design QA comparison</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, "PingFang SC", sans-serif;
+        background: #050b12;
+        color: #eaf7fa;
+      }
+
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 32px; }
+      header { max-width: 1500px; margin: 0 auto 28px; }
+      h1 { margin: 0; font-size: 28px; }
+      header p { color: #8ba7b7; }
+      main { max-width: 1500px; display: grid; gap: 28px; margin: 0 auto; }
+      section { padding: 20px; border: 1px solid #1d3544; border-radius: 18px; background: #08131d; }
+      h2 { margin: 0 0 16px; font-size: 18px; }
+      .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+      figure { margin: 0; overflow: hidden; border: 1px solid #203846; border-radius: 12px; background: #02070c; }
+      figcaption { padding: 10px 12px; color: #9bb5c2; border-bottom: 1px solid #203846; font-size: 13px; }
+      img { width: 100%; height: auto; display: block; }
+      .mobile figure { max-width: 430px; }
+      .mobile .pair { grid-template-columns: repeat(2, 430px); justify-content: center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>云桥 CloudBridge · 同视口设计对比</h1>
+      <p>左侧为本轮优化前审计证据，右侧为当前实现。所有图片均来自真实浏览器截图。</p>
+    </header>
+    <main>
+      <section id="client-desktop">
+        <h2>客户端桌面端</h2>
+        <div class="pair">
+          <figure><figcaption>优化前</figcaption><img src="./evidence/source-client-home-desktop.png" alt="优化前客户端桌面端" /></figure>
+          <figure><figcaption>当前实现</figcaption><img src="./evidence/client-home-1440.png" alt="当前客户端桌面端" /></figure>
+        </div>
+      </section>
+      <section class="mobile" id="client-mobile">
+        <h2>客户端手机双列商品</h2>
+        <div class="pair">
+          <figure><figcaption>优化前</figcaption><img src="./evidence/source-client-products-mobile.png" alt="优化前客户端手机商品" /></figure>
+          <figure><figcaption>当前实现</figcaption><img src="./evidence/client-products-390.png" alt="当前客户端手机商品" /></figure>
+        </div>
+      </section>
+      <section id="admin-desktop">
+        <h2>管理后台运营总览</h2>
+        <div class="pair">
+          <figure><figcaption>优化前</figcaption><img src="./evidence/source-admin-dashboard-desktop.png" alt="优化前后台桌面端" /></figure>
+          <figure><figcaption>当前实现</figcaption><img src="./evidence/admin-dashboard-1440.png" alt="当前后台桌面端" /></figure>
+        </div>
+      </section>
+      <section class="mobile" id="admin-mobile">
+        <h2>管理后台英文手机订单</h2>
+        <div class="pair">
+          <figure><figcaption>优化前</figcaption><img src="./evidence/source-admin-orders-mobile-en.png" alt="优化前后台英文手机订单" /></figure>
+          <figure><figcaption>当前实现</figcaption><img src="./evidence/admin-orders-390-en.png" alt="当前后台英文手机订单" /></figure>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

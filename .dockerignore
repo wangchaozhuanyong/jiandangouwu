@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+**/dist
+**/.next
+.git
+.env
+.env.*
+cdk.out
+**/cdk.out
+sites-dist
+test-results

@@ -1,0 +1,7 @@
+{
+  "app": "npx tsx bin/cloudbridge.ts",
+  "context": {
+    "@aws-cdk/aws-ecs:arnFormatIncludesClusterName": true,
+    "@aws-cdk/aws-rds:lowercaseDbIdentifier": true
+  }
+}

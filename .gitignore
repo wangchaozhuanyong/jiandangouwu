@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.next/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+*.log
+cdk.out/
+apps/admin/vite.config.js
+apps/admin/vite.config.d.ts
+design-qa/figma/output/
+apps/api/src/generated/
+apps/api/prisma/*.db
