@@ -1,4 +1,9 @@
 import {
+  isConfiguredContactChannel,
+  type ContactChannelMode,
+  type ContactChannelType,
+} from "@cloudbridge/contracts";
+import {
   adminPermissions,
   ApiInputError,
   bootstrapOrReadAdmin,
@@ -78,9 +83,11 @@ export async function handleAdminApi(
       "SELECT value_json AS valueJson FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
     ).first<{ valueJson: string }>();
     const settings = parseJsonRecord(settingsRow?.valueJson);
-    const activeContactChannels = Number((await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM merchant_channels WHERE active = 1",
-    ).first<{ count: number }>())?.count ?? 0);
+    const contactChannels = await adminChannels(env.DB);
+    const activeContactChannels = contactChannels.filter((channel) => channel.active);
+    const configuredActiveContactChannels = activeContactChannels.filter(
+      isConfiguredContactChannel,
+    );
     return success({
       runtime: "sites",
       database: "connected",
@@ -91,7 +98,8 @@ export async function handleAdminApi(
       storefront: {
         acceptOrders: settings.acceptOrders === true,
         supportEnabled: settings.supportEnabled === true,
-        activeContactChannels,
+        activeContactChannels: activeContactChannels.length,
+        configuredActiveContactChannels: configuredActiveContactChannels.length,
       },
       checkedAt: new Date().toISOString(),
     });
@@ -849,6 +857,14 @@ async function updateChannel(
   id: string,
   actor: AdminIdentity,
 ) {
+  const current = await db.prepare(
+    `SELECT id, type, mode, label_zh AS labelZh, label_en AS labelEn,
+      public_account AS publicAccount, direct_target AS directTarget,
+      service_hours_zh AS serviceHoursZh, service_hours_en AS serviceHoursEn,
+      active, sort_order AS sortOrder, version, updated_at AS updatedAt
+     FROM merchant_channels WHERE id = ? LIMIT 1`,
+  ).bind(id).first<ChannelRow>();
+  if (!current) throw new ApiInputError("CONTACT_CHANNEL_NOT_FOUND", "The contact channel was not found.", 404);
   const body = await readJson<Record<string, unknown>>(request);
   const version = safeInteger(body.version, "version", 1);
   const label = localizedText(body.label, "label");
@@ -857,6 +873,43 @@ async function updateChannel(
   const directTarget = nullableString(body.directTarget, "directTarget", 512);
   const active = Boolean(body.active);
   const sortOrder = safeInteger(body.sortOrder, "sortOrder", 0);
+  const candidate = {
+    type: current.type,
+    mode: current.mode,
+    publicAccount,
+    directTarget,
+  };
+  if (active && !isConfiguredContactChannel(candidate)) {
+    throw new ApiInputError(
+      "CONTACT_CHANNEL_NOT_CONFIGURED",
+      "A real public account and approved channel target are required before activation.",
+      422,
+    );
+  }
+  if (Boolean(current.active) && !active) {
+    const [channels, settingsRow] = await Promise.all([
+      adminChannels(db),
+      db.prepare(
+        "SELECT value_json AS valueJson FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
+      ).first<{ valueJson: string }>(),
+    ]);
+    const settings = parseJsonRecord(settingsRow?.valueJson);
+    const otherConfiguredChannels = channels.filter((channel) => (
+      channel.id !== id
+      && channel.active
+      && isConfiguredContactChannel(channel)
+    ));
+    if (
+      otherConfiguredChannels.length === 0
+      && (settings.acceptOrders === true || settings.supportEnabled === true)
+    ) {
+      throw new ApiInputError(
+        "CONTACT_CHANNEL_REQUIRED",
+        "Disable new orders and support access before removing the final configured contact channel.",
+        409,
+      );
+    }
+  }
   const now = new Date().toISOString();
   const result = await db.prepare(
     `UPDATE merchant_channels SET label_zh = ?, label_en = ?, public_account = ?,
@@ -922,11 +975,23 @@ async function reorderRows(
 }
 
 async function adminSettings(db: D1Database) {
-  const row = await db.prepare(
-    "SELECT value_json AS valueJson, version, updated_at AS updatedAt FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
-  ).first<{ valueJson: string; version: number; updatedAt: string }>();
+  const [row, channels] = await Promise.all([
+    db.prepare(
+      "SELECT value_json AS valueJson, version, updated_at AS updatedAt FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
+    ).first<{ valueJson: string; version: number; updatedAt: string }>(),
+    adminChannels(db),
+  ]);
   if (!row) throw new ApiInputError("SETTINGS_NOT_FOUND", "Storefront settings were not found.", 404);
-  return { ...JSON.parse(row.valueJson) as Record<string, unknown>, version: row.version, updatedAt: row.updatedAt };
+  const activeChannels = channels.filter((channel) => channel.active);
+  return {
+    ...parseJsonRecord(row.valueJson),
+    version: row.version,
+    updatedAt: row.updatedAt,
+    orderReadiness: {
+      activeContactChannels: activeChannels.length,
+      configuredActiveContactChannels: activeChannels.filter(isConfiguredContactChannel).length,
+    },
+  };
 }
 
 async function updateSettings(db: D1Database, request: Request, actor: AdminIdentity) {
@@ -943,6 +1008,26 @@ async function updateSettings(db: D1Database, request: Request, actor: AdminIden
     transitServiceEnabled: Boolean(body.transitServiceEnabled),
     transitServiceUrl: nullableHttpsUrl(body.transitServiceUrl, "transitServiceUrl"),
   };
+  if (settings.acceptOrders && !settings.supportEnabled) {
+    throw new ApiInputError(
+      "ORDER_SUPPORT_REQUIRED",
+      "Support access must be enabled before new orders can be accepted.",
+      422,
+    );
+  }
+  if (settings.acceptOrders || settings.supportEnabled) {
+    const channels = await adminChannels(db);
+    const configuredActiveChannels = channels.filter((channel) => (
+      channel.active && isConfiguredContactChannel(channel)
+    ));
+    if (configuredActiveChannels.length === 0) {
+      throw new ApiInputError(
+        "CONTACT_CHANNEL_REQUIRED",
+        "At least one configured active contact channel is required before support or ordering can be enabled.",
+        422,
+      );
+    }
+  }
   const now = new Date().toISOString();
   const result = await db.prepare(
     `UPDATE site_settings SET value_json = ?, version = version + 1,
@@ -1381,8 +1466,8 @@ type HeroRow = {
 
 type ChannelRow = {
   id: string;
-  type: string;
-  mode: string;
+  type: ContactChannelType;
+  mode: ContactChannelMode;
   labelZh: string;
   labelEn: string;
   publicAccount: string;

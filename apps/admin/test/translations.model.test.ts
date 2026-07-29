@@ -102,6 +102,10 @@ const workspace = (): TranslationWorkspaceData => ({
     transitServiceEnabled: true,
     transitServiceUrl: null,
     updatedAt: "2026-07-29T10:00:00.000Z",
+    orderReadiness: {
+      activeContactChannels: 1,
+      configuredActiveContactChannels: 1,
+    },
   },
 });
 

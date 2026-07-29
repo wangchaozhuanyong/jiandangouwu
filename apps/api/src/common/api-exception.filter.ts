@@ -15,6 +15,15 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const response = context.getResponse<Response>();
     const status = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     const payload = exception instanceof HttpException ? exception.getResponse() : null;
+    const rawCode = typeof payload === "object"
+      && payload !== null
+      && "code" in payload
+      && typeof (payload as { code?: unknown }).code === "string"
+      ? (payload as { code: string }).code
+      : null;
+    const safeCode = rawCode && /^[A-Z][A-Z0-9_]{2,63}$/u.test(rawCode)
+      ? rawCode
+      : null;
     const rawMessage = typeof payload === "object" && payload !== null && "message" in payload
       ? (payload as { message: ValidationMessage | ValidationMessage[] }).message
       : null;
@@ -35,7 +44,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     response.status(status).json({
       error: {
-        code: status === HttpStatus.BAD_REQUEST
+        code: safeCode ?? (status === HttpStatus.BAD_REQUEST
           ? "BAD_REQUEST"
           : status === HttpStatus.UNAUTHORIZED
             ? "UNAUTHORIZED"
@@ -43,9 +52,9 @@ export class ApiExceptionFilter implements ExceptionFilter {
               ? "FORBIDDEN"
               : status === HttpStatus.NOT_FOUND
                 ? "NOT_FOUND"
-                : status === HttpStatus.CONFLICT
+              : status === HttpStatus.CONFLICT
                   ? "CONFLICT"
-                  : "INTERNAL_ERROR",
+                  : "INTERNAL_ERROR"),
         message: safeMessage,
         ...(details.length > 0 ? { details } : {}),
       },

@@ -3,6 +3,7 @@ import type {
   Locale,
   UpdateContactChannelInput,
 } from "@cloudbridge/contracts";
+import { isConfiguredContactChannel } from "@cloudbridge/contracts";
 import {
   ArrowDown,
   ArrowUp,
@@ -272,6 +273,19 @@ function ContactChannelDialog({
       setError(copy(locale, "名称、公开账号和服务时间不能只包含空格。", "Labels, public account, and service hours cannot be blank."));
       return;
     }
+    if (normalized.active && !isConfiguredContactChannel({
+      type: item.type,
+      mode: item.mode,
+      publicAccount: normalized.publicAccount,
+      directTarget: normalized.directTarget,
+    })) {
+      setError(copy(
+        locale,
+        "启用前必须填写真实公开账号，并使用该渠道允许的安全跳转地址。",
+        "Add a real public account and an approved target for this channel before activation.",
+      ));
+      return;
+    }
     if (item.active && !normalized.active && !window.confirm(copy(
       locale,
       `停用 ${item.label.zh} 后，客户端将不再显示这个渠道。确定继续吗？`,
@@ -284,7 +298,19 @@ function ContactChannelDialog({
       notify(copy(locale, "联系方式已保存。", "Contact channel saved."));
       onSaved(saved);
     } catch (requestError) {
-      const message = requestError instanceof ApiError && requestError.status === 409
+      const message = requestError instanceof ApiError && requestError.code === "CONTACT_CHANNEL_REQUIRED"
+        ? copy(
+            locale,
+            "这是当前最后一个可用渠道。请先在网站设置中关闭接单和客服入口。",
+            "This is the final usable channel. Disable new orders and support access in Site settings first.",
+          )
+        : requestError instanceof ApiError && requestError.code === "CONTACT_CHANNEL_NOT_CONFIGURED"
+          ? copy(
+              locale,
+              "启用前必须填写真实公开账号和该渠道允许的安全跳转地址。",
+              "Add a real public account and approved channel target before activation.",
+            )
+          : requestError instanceof ApiError && requestError.status === 409
         ? copy(locale, "渠道已被其他管理员修改，请关闭后重新加载。", "This channel changed elsewhere. Close and reload.")
         : requestError instanceof ApiError && requestError.status === 403
           ? copy(locale, "当前账号没有编辑联系方式的权限。", "This account cannot edit contact channels.")

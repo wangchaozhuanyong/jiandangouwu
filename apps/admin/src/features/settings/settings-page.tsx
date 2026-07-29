@@ -68,6 +68,7 @@ type SettingsValidationResult =
 const validateSettings = (
   form: UpdateStorefrontSettingsInput,
   locale: Locale,
+  configuredActiveContactChannels: number,
 ): SettingsValidationResult => {
   const normalized: UpdateStorefrontSettingsInput = {
     ...form,
@@ -139,6 +140,27 @@ const validateSettings = (
       };
     }
   }
+  if (normalized.acceptOrders && !normalized.supportEnabled) {
+    return {
+      ok: false,
+      section: "access",
+      message: copy(locale, "接受新订单前必须同时显示客服入口。", "Support access must be visible before new orders can be accepted."),
+    };
+  }
+  if (
+    (normalized.acceptOrders || normalized.supportEnabled)
+    && configuredActiveContactChannels < 1
+  ) {
+    return {
+      ok: false,
+      section: "access",
+      message: copy(
+        locale,
+        "请先在联系方式页面完成并启用至少一个真实渠道。",
+        "Configure and activate at least one real contact channel first.",
+      ),
+    };
+  }
   if (normalized.reason.length < 8 || normalized.reason.length > 500) {
     return {
       ok: false,
@@ -158,6 +180,7 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
   const [form, setForm] = useState<UpdateStorefrontSettingsInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const configuredActiveContactChannels = data?.orderReadiness?.configuredActiveContactChannels ?? 0;
 
   useEffect(() => {
     if (data) setForm(editableSettings(data));
@@ -181,7 +204,11 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!canWrite || !data || !form || !dirty || busy) return;
-    const validation = validateSettings(form, locale);
+    const validation = validateSettings(
+      form,
+      locale,
+      configuredActiveContactChannels,
+    );
     if (!validation.ok) {
       setSection(validation.section);
       setError(validation.message);
@@ -209,7 +236,19 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
       notify(copy(locale, "网站设置已保存。", "Site settings saved."));
       void reload();
     } catch (requestError) {
-      const message = requestError instanceof ApiError && requestError.status === 409
+      const message = requestError instanceof ApiError && requestError.code === "CONTACT_CHANNEL_REQUIRED"
+        ? copy(
+            locale,
+            "请先在联系方式页面完成并启用至少一个真实渠道。",
+            "Configure and activate at least one real contact channel first.",
+          )
+        : requestError instanceof ApiError && requestError.code === "ORDER_SUPPORT_REQUIRED"
+          ? copy(
+              locale,
+              "接受新订单前必须同时显示客服入口。",
+              "Support access must be visible before accepting new orders.",
+            )
+          : requestError instanceof ApiError && requestError.status === 409
         ? copy(locale, "网站设置已被其他管理员修改，请重新加载后再保存。", "Site settings changed elsewhere. Reload before saving.")
         : requestError instanceof ApiError && requestError.status === 403
           ? copy(locale, "当前账号没有修改网站设置的权限。", "This account cannot change site settings.")
@@ -292,17 +331,54 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
 
             {section === "access" && (
               <>
+                <div className={`order-readiness-note${configuredActiveContactChannels > 0 ? " is-ready" : ""}`} role="status">
+                  {configuredActiveContactChannels > 0
+                    ? <Check size={18} aria-hidden="true" />
+                    : <WarningCircle size={18} aria-hidden="true" />}
+                  <div>
+                    <strong>
+                      {configuredActiveContactChannels > 0
+                        ? copy(
+                            locale,
+                            `${configuredActiveContactChannels} 个渠道可用于真实接单`,
+                            `${configuredActiveContactChannels} channel(s) ready for live orders`,
+                          )
+                        : copy(locale, "接单前置条件尚未完成", "Order prerequisites are incomplete")}
+                    </strong>
+                    <small>
+                      {copy(
+                        locale,
+                        "必须先在联系方式页面填写真实账号、核对跳转地址并启用渠道。",
+                        "Add a real account, verify its approved target, and activate it on the Contacts page.",
+                      )}
+                      {" "}<a href="/admin/contacts">{copy(locale, "管理联系方式", "Manage contacts")}</a>
+                    </small>
+                  </div>
+                </div>
                 <SettingsSwitch
                   checked={form.acceptOrders}
-                  description={copy(locale, "关闭后商品仍可浏览，但 API 和客户端都拒绝新订单。", "Products stay visible, but both API and storefront reject new orders.")}
+                  description={form.supportEnabled
+                    ? copy(locale, "关闭后商品仍可浏览，但 API 和客户端都拒绝新订单。", "Products stay visible, but both API and storefront reject new orders.")
+                    : copy(locale, "请先显示客服入口，再开启真实接单。", "Show support access before enabling live orders.")}
+                  disabled={!form.acceptOrders && (
+                    configuredActiveContactChannels < 1
+                    || !form.supportEnabled
+                  )}
                   label={copy(locale, "接受新订单", "Accept new orders")}
                   onChange={(value) => setForm({ ...form, acceptOrders: value })}
                 />
                 <SettingsSwitch
                   checked={form.supportEnabled}
-                  description={copy(locale, "控制页头和页脚的客服入口，不删除已配置渠道。", "Controls support entry points without deleting channels.")}
+                  description={configuredActiveContactChannels > 0
+                    ? copy(locale, "控制页头和页脚的客服入口，不删除已配置渠道。", "Controls support entry points without deleting channels.")
+                    : copy(locale, "至少一个真实渠道完成配置后才能显示。", "Available after at least one real channel is configured.")}
+                  disabled={!form.supportEnabled && configuredActiveContactChannels < 1}
                   label={copy(locale, "显示客服入口", "Show support access")}
-                  onChange={(value) => setForm({ ...form, supportEnabled: value })}
+                  onChange={(value) => setForm({
+                    ...form,
+                    supportEnabled: value,
+                    acceptOrders: value ? form.acceptOrders : false,
+                  })}
                 />
                 <SettingsSwitch
                   checked={form.transitServiceEnabled}
@@ -363,11 +439,13 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
 function SettingsSwitch({
   checked,
   description,
+  disabled = false,
   label,
   onChange,
 }: {
   checked: boolean;
   description: string;
+  disabled?: boolean;
   label: string;
   onChange: (value: boolean) => void;
 }) {
@@ -378,6 +456,7 @@ function SettingsSwitch({
         aria-label={label}
         aria-checked={checked}
         className={`design-switch${checked ? " is-on" : ""}`}
+        disabled={disabled}
         onClick={() => onChange(!checked)}
         role="switch"
         type="button"

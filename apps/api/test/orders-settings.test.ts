@@ -16,7 +16,11 @@ const input = {
   },
 };
 
-function orderHarness(settingsValue: unknown, activeChannel: boolean) {
+function orderHarness(
+  settingsValue: unknown,
+  activeChannel: boolean,
+  publicAccount = "+60 12 888 6618",
+) {
   let productReads = 0;
   const transaction = {
     siteSetting: {
@@ -26,7 +30,13 @@ function orderHarness(settingsValue: unknown, activeChannel: boolean) {
       }),
     },
     merchantChannel: {
-      findFirst: async () => activeChannel ? { id: "channel-1" } : null,
+      findFirst: async () => activeChannel ? {
+        id: "channel-1",
+        type: "WHATSAPP",
+        mode: "DIRECT_LINK",
+        publicAccount,
+        directTarget: "https://wa.me/60128886618",
+      } : null,
     },
     product: {
       findFirst: async () => {
@@ -79,4 +89,11 @@ test("outdated policy and disabled channels are rejected before stock access", a
   }, false);
   await assert.rejects(disabled.service.create(input, "disabled-channel"), ConflictException);
   assert.equal(disabled.productReads(), 0);
+
+  const placeholder = orderHarness({
+    acceptOrders: true,
+    policyVersion: "2026-07-27",
+  }, true, "未配置");
+  await assert.rejects(placeholder.service.create(input, "placeholder-channel"), ConflictException);
+  assert.equal(placeholder.productReads(), 0);
 });

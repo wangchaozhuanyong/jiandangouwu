@@ -1,5 +1,8 @@
 import { randomBytes } from "node:crypto";
-import type { OrderReceipt } from "@cloudbridge/contracts";
+import {
+  isConfiguredContactChannel,
+  type OrderReceipt,
+} from "@cloudbridge/contracts";
 import {
   ConflictException,
   Injectable,
@@ -91,7 +94,13 @@ export class OrdersService {
               type: input.contactChannel,
               active: true,
             },
-            select: { id: true },
+            select: {
+              id: true,
+              type: true,
+              mode: true,
+              publicAccount: true,
+              directTarget: true,
+            },
           }),
         ]);
         const currentPolicyVersion = typeof legacyPolicy?.value === "string"
@@ -104,7 +113,7 @@ export class OrdersService {
         if (input.acceptedPolicyVersion !== settings.policyVersion) {
           throw new ConflictException("The policy version changed. Review the latest policy before submitting.");
         }
-        if (!activeChannel) {
+        if (!activeChannel || !isConfiguredContactChannel(activeChannel)) {
           throw new ConflictException("The selected contact channel is unavailable.");
         }
 
