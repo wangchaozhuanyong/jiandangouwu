@@ -48,11 +48,15 @@ test("正式客户端保留筛选上下文并让订单重试复用幂等键", ()
 test("正式客户端商品卡片与详情标题不显示分类或 kicker 微标签", () => {
   const home = read("apps/storefront/components/storefront-home.tsx");
   const detail = read("apps/storefront/components/product-detail.tsx");
+  const copy = read("apps/storefront/lib/copy.ts");
 
   assert.doesNotMatch(home, /\{product\.kicker\}/u);
   assert.doesNotMatch(home, /<span>\{t\.serviceLabel\}<\/span>/u);
   assert.doesNotMatch(detail, /\{product\.kicker\}/u);
   assert.doesNotMatch(detail, /\{product\.category\.name\}/u);
+  assert.match(copy, /available: "现货"/u);
+  assert.match(copy, /available: "Available"/u);
+  assert.doesNotMatch(copy, /available: "可下单"/u);
 });
 
 test("正式客户端刷新公开配置、恢复订单冲突并保持移动端卡片节奏", () => {
