@@ -1,4 +1,6 @@
 import type {
+  AdminManagedMediaObject,
+  AdminMediaReplacement,
   AdminOrderListItem,
   AdminRoleDetail,
   AdminRolesOverview,
@@ -148,11 +150,12 @@ export const setUnauthorizedHandler = (handler: (() => void) | null): void => {
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<{ data: T; meta?: PageMeta }> {
   const method = init.method ?? "GET";
+  const usesFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
     credentials: "include",
     headers: {
-      "content-type": "application/json",
+      ...(!usesFormData ? { "content-type": "application/json" } : {}),
       ...(!["GET", "HEAD"].includes(method) && csrfToken ? { "x-csrf-token": csrfToken } : {}),
       ...init.headers,
     },
@@ -313,3 +316,47 @@ export const updateRolePermissions = async (
 export const beginTotpEnrollment = async () => (await request<{ flowId: string; secret: string; uri: string }>("/admin/auth/totp/enrollment", { method: "POST" })).data;
 export const verifyTotpEnrollment = async (flowId: string, token: string) => (await request<{ enabled: true }>("/admin/auth/totp/verify", { method: "POST", body: JSON.stringify({ flowId, token }) })).data;
 export const disableTotp = async (password: string) => (await request<{ enabled: false }>("/admin/auth/totp/disable", { method: "POST", body: JSON.stringify({ password }) })).data;
+
+export const getManagedMedia = async (
+  signal?: AbortSignal,
+): Promise<AdminManagedMediaObject[]> => (
+  await request<AdminManagedMediaObject[]>("/admin/media", { signal })
+).data;
+
+export const uploadManagedMedia = async (
+  file: File,
+  reason: string,
+): Promise<AdminManagedMediaObject> => {
+  const form = new FormData();
+  form.set("file", file);
+  form.set("reason", reason);
+  return (await request<AdminManagedMediaObject>("/admin/media", {
+    method: "POST",
+    body: form,
+  })).data;
+};
+
+export const replaceManagedMedia = async (
+  sourcePath: string,
+  file: File,
+  reason: string,
+): Promise<AdminMediaReplacement> => {
+  const form = new FormData();
+  form.set("sourcePath", sourcePath);
+  form.set("file", file);
+  form.set("reason", reason);
+  return (await request<AdminMediaReplacement>("/admin/media/replace", {
+    method: "POST",
+    body: form,
+  })).data;
+};
+
+export const deleteManagedMedia = async (
+  key: string,
+  reason: string,
+): Promise<void> => {
+  await request<void>(`/admin/media/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ reason }),
+  });
+};

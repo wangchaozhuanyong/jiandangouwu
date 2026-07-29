@@ -1,4 +1,7 @@
-import type { AdminHero } from "@cloudbridge/contracts";
+import type {
+  AdminHero,
+  AdminManagedMediaObject,
+} from "@cloudbridge/contracts";
 import type {
   AdminProduct,
   Locale,
@@ -22,10 +25,11 @@ export type ReferencedMediaAsset = {
   kinds: MediaReferenceKind[];
   references: MediaReference[];
   lastUpdatedAt: string;
+  managed: AdminManagedMediaObject | null;
 };
 
 export type MediaAssetFilter = {
-  kind: "all" | MediaReferenceKind;
+  kind: "all" | MediaReferenceKind | "managed" | "unreferenced";
   query: string;
 };
 
@@ -35,9 +39,12 @@ export type MediaAssetSummary = {
   heroReferences: number;
   productReferences: number;
   invalidPaths: number;
+  managedObjects: number;
+  unreferencedManagedObjects: number;
+  missingManagedObjects: number;
 };
 
-const localRasterAsset = /^\/assets\/[A-Za-z0-9._/-]+\.(?:avif|gif|jpe?g|png|webp)$/iu;
+const localRasterAsset = /^\/(?:assets\/[A-Za-z0-9._/-]+|media\/uploads\/\d{4}\/\d{2}\/[A-Za-z0-9._-]+)\.(?:avif|gif|jpe?g|png|webp)$/iu;
 
 const normalizeSearchText = (value: string): string =>
   value.normalize("NFKC").trim().toLocaleLowerCase();
@@ -122,8 +129,42 @@ export function buildReferencedMediaAssets(
       kinds: referenceKinds(orderedReferences),
       references: orderedReferences,
       lastUpdatedAt: latestReferenceTime(orderedReferences),
+      managed: null,
     };
   }).sort((left, right) => left.imageKey.localeCompare(right.imageKey));
+}
+
+export function mergeMediaInventory(
+  referencedAssets: ReferencedMediaAsset[],
+  managedObjects: AdminManagedMediaObject[],
+): ReferencedMediaAsset[] {
+  const assets = new Map(
+    referencedAssets.map((asset) => [asset.imageKey, { ...asset }]),
+  );
+  managedObjects.forEach((managed) => {
+    const referenced = assets.get(managed.path);
+    if (referenced) {
+      assets.set(managed.path, {
+        ...referenced,
+        fileName: managed.fileName,
+        managed,
+      });
+      return;
+    }
+    assets.set(managed.path, {
+      imageKey: managed.path,
+      fileName: managed.fileName,
+      safeLocalPath: isSafeReferencedMediaPath(managed.path),
+      kinds: [],
+      references: [],
+      lastUpdatedAt: managed.createdAt,
+      managed,
+    });
+  });
+  return Array.from(assets.values()).sort((left, right) => (
+    right.lastUpdatedAt.localeCompare(left.lastUpdatedAt)
+    || left.imageKey.localeCompare(right.imageKey)
+  ));
 }
 
 export function filterReferencedMediaAssets(
@@ -132,12 +173,22 @@ export function filterReferencedMediaAssets(
 ): ReferencedMediaAsset[] {
   const query = normalizeSearchText(filter.query);
   return assets.filter((asset) => {
-    if (filter.kind !== "all" && !asset.kinds.includes(filter.kind)) return false;
+    if (filter.kind === "managed" && !asset.managed) return false;
+    if (
+      filter.kind === "unreferenced"
+      && (!asset.managed || asset.references.length > 0)
+    ) return false;
+    if (
+      (filter.kind === "hero" || filter.kind === "product")
+      && !asset.kinds.includes(filter.kind)
+    ) return false;
     if (!query) return true;
     const searchable = [
       asset.imageKey,
       asset.fileName,
       ...asset.kinds,
+      asset.managed?.uploadedByEmail ?? "",
+      asset.managed?.storageStatus ?? "",
       ...asset.references.flatMap((reference) => [
         reference.recordKey,
         reference.label.zh,
@@ -159,5 +210,12 @@ export function summarizeReferencedMediaAssets(
     heroReferences: references.filter((reference) => reference.kind === "hero").length,
     productReferences: references.filter((reference) => reference.kind === "product").length,
     invalidPaths: assets.filter((asset) => !asset.safeLocalPath).length,
+    managedObjects: assets.filter((asset) => Boolean(asset.managed)).length,
+    unreferencedManagedObjects: assets.filter(
+      (asset) => asset.managed && asset.references.length === 0,
+    ).length,
+    missingManagedObjects: assets.filter(
+      (asset) => asset.managed?.storageStatus === "MISSING",
+    ).length,
   };
 }

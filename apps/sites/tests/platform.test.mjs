@@ -112,11 +112,21 @@ test("Sites sets the server-rendered document language from the locale route", (
 test("Sites runtime contains public, admin, health, D1, and R2 routes", () => {
   const router = read("server/router.ts");
   const admin = read("server/admin-api.ts");
+  const media = read("server/media-api.ts");
   assert.match(router, /handlePublicApi/u);
   assert.match(router, /handleAdminApi/u);
   assert.match(router, /\/media\//u);
   assert.match(admin, /\/v1\/admin\/sites-readiness/u);
   assert.match(admin, /\/v1\/admin\/backups/u);
+  assert.match(admin, /\/v1\/admin\/media/u);
+  assert.match(admin, /replaceMediaReferences/u);
+  assert.match(admin, /deleteManagedMedia/u);
+  assert.match(media, /MEDIA_OBJECT_IN_USE/u);
+  assert.match(media, /media\.object\.uploaded/u);
+  assert.match(media, /media\.references\.replaced/u);
+  assert.match(router, /isPublicMediaObjectKey/u);
+  assert.match(media, /uploadKeyPattern/u);
+  assert.doesNotMatch(media, /backups\//u);
   assert.match(admin, /valkey: "not_required"/u);
 });
 
