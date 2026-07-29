@@ -400,6 +400,62 @@ final result: blocked
 
 final result: passed
 
+## 2026-07-29 语言完整显示与圆角边框清晰度修复
+
+### 视觉真值与范围
+
+- 用户参考图：
+  - `/var/folders/y2/73zzsdhn3d78m_qqhkb2lrq80000gn/T/codex-clipboard-3f4f3f7c-1219-4d0b-a6cc-fbabf80a58a5.png`
+  - `/var/folders/y2/73zzsdhn3d78m_qqhkb2lrq80000gn/T/codex-clipboard-c883406f-8056-4323-8fc0-e80c198fe401.png`
+- 实现目标：正式 `apps/storefront`；修复 451px 英文截断和全站深色圆角框架发灰，不修改业务逻辑、接口、币种状态、数据库或后台配置。
+- 视觉方向继续使用“夜航画廊”的深海军蓝、克制青色线框、18–28px 圆角和双列商品结构。
+
+### 全视图与聚焦对比
+
+- 全视图：
+  - `design-qa/evidence/header-frame-clarity-20260729/en-451-full.jpg`
+  - `design-qa/evidence/header-frame-clarity-20260729/en-390-full.jpg`
+  - `design-qa/evidence/header-frame-clarity-20260729/en-320-full.jpg`
+  - `design-qa/evidence/header-frame-clarity-20260729/zh-451-full.jpg`
+  - `design-qa/evidence/header-frame-clarity-20260729/zh-320-full.jpg`
+- 聚焦对比：
+  - `design-qa/evidence/header-frame-clarity-20260729/comparison-header-source-vs-fixed.png`
+  - `design-qa/evidence/header-frame-clarity-20260729/comparison-capability-source-vs-fixed.png`
+  - `design-qa/evidence/header-frame-clarity-20260729/zh-390-support.jpg`
+- 两张聚焦对比图都把用户参考和同状态实现放入同一输入后复核。语言由 `Engl...` 变为完整 `English`；四宫格外角闭合、外框连续、十字分隔清晰。
+
+### 五项视觉表面
+
+- 字体与排版：451px 的固定语言名称移除省略号，实际 52/52px 完整显示；390/320px 实际 53/53px，无裁切。
+- 间距与布局：391–760px 使用 128 × 44px并保留地球图标；390px 以下使用 94 × 44px并隐藏地球图标。320px 下品牌、44px 客服按钮和语言控件同排且页面溢出为 0。
+- 颜色与视觉变量：新增主框 `rgba(128,218,239,.42)` 和次级框 `rgba(157,201,228,.24)`；普通分隔线仍使用原有较低亮度。
+- 图片与素材：继续复用既有 CloudBridge Logo、轮播与商品图；本轮没有新增或伪造产品素材。
+- 文案与内容：中英文与币种可见名称逻辑保持不变；中文页面无英文币种名，英文页面无中文币种名，可见区域无 ISO 代码。
+
+### 交互、响应式与迭代
+
+- 451 × 844：语言控件 128 × 44px，地球图标显示，`English` 完整；四宫格列宽从 202.5/202.5px 修正为 202/203px。
+- 390 × 844：语言控件 94 × 44px，地球图标隐藏，`English` 完整；四宫格列宽为 174/174px。
+- 320 × 844：语言控件 94 × 44px，地球图标隐藏，品牌、客服和语言完整；四宫格列宽为 139/139px。
+- 四宫格使用真实 1px 外边框、0 内边距、连续 1px 十字分隔和 `background-clip: padding-box`。轮播、商品卡、详情视觉区、政策区、订单区、客服区、搜索框及语言/币种控件采用同一真实边框策略；铜色中转入口未修改。
+- 语言与币种菜单的方向键、Enter、Escape、点击外部关闭和焦点返回均通过；客服抽屉 Escape 后焦点返回。控制台 warning/error 为 0。
+- 首轮浏览器测量发现 451px 的四宫格列宽仍为 202.5px；增加按整数像素向下取整的首列规则后，三个目标宽度均为整数列宽并重新通过视觉比较。
+
+### 自动检查
+
+- `npm run test --workspace @cloudbridge/storefront`：10/10 通过。
+- `node --test tests/platform-ux.test.mjs`：12/12 通过。
+- `npm run typecheck --workspace @cloudbridge/storefront`：通过。
+- `npm run check`：完整通过。
+
+### Findings
+
+- P0：0。
+- P1：0。
+- P2：0。
+
+final result: passed
+
 ## 2026-07-28 管理后台导航重设计
 
 ### 视觉真值与同屏对照
@@ -854,5 +910,15 @@ final result: blocked
 - P1：0。
 - P2：0。
 - 第一轮浏览器复核未发现需要继续修复的布局、语言混排、触控尺寸、焦点或溢出问题。
+
+final result: passed
+
+## 2026-07-29 语言与框架清晰度最终复核索引
+
+- 详细报告：`design-qa/evidence/header-frame-clarity-20260729/audit.md`。
+- 参考与实现同屏对比：`comparison-header-source-vs-fixed.png`、`comparison-capability-source-vs-fixed.png`。
+- 字体、布局、颜色、素材与文案五项视觉表面均已复核；451/390/320 三档响应式、语言/币种菜单、客服抽屉、焦点返回和控制台均通过。
+- 首轮发现的 451px 四宫格 202.5px 半像素列宽已修复为 202/203px，并重新截图比较。
+- P0/P1/P2：0/0/0。
 
 final result: passed
