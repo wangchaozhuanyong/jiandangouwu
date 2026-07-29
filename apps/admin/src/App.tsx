@@ -578,7 +578,13 @@ function PageOutlet({
     );
   }
   if (page === "media") {
-    return <MediaPage locale={locale} permissions={user.permissions} />;
+    return (
+      <MediaPage
+        locale={locale}
+        permissions={user.permissions}
+        sitesRuntime={user.authProvider === "SITES"}
+      />
+    );
   }
   const unhandledPage: never = page;
   return unhandledPage;

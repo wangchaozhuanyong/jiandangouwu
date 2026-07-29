@@ -4,6 +4,7 @@ export * from "./common.js";
 export * from "./content.js";
 export * from "./finance.js";
 export * from "./health.js";
+export * from "./media.js";
 export * from "./notifications.js";
 export * from "./orders.js";
 export * from "./settings.js";

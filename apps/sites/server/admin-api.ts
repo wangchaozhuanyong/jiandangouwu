@@ -18,6 +18,12 @@ import {
   type AdminIdentity,
 } from "./http";
 import {
+  deleteManagedMedia,
+  listManagedMedia,
+  replaceMediaReferences,
+  uploadManagedMedia,
+} from "./media-api";
+import {
   completeBackupRestoreDrill,
   createManualBackup,
   createBackupRestoreDrillTransfer,
@@ -217,6 +223,44 @@ export async function handleAdminApi(
       const actor = await writeIdentity(env.DB, request, "settings.write");
       return success(await updateSettings(env.DB, request, actor));
     }
+  }
+
+  if (pathname === "/v1/admin/media") {
+    if (request.method === "GET") {
+      await requireAdminAny(env.DB, request, ["catalog.read", "content.read"]);
+      return success(await listManagedMedia(env));
+    }
+    if (request.method === "POST") {
+      const actor = await writeIdentityAny(
+        env.DB,
+        request,
+        ["catalog.write", "content.write"],
+      );
+      return success(await uploadManagedMedia(env, request, actor), { status: 201 });
+    }
+  }
+  if (pathname === "/v1/admin/media/replace" && request.method === "POST") {
+    const actor = await writeIdentityAll(
+      env.DB,
+      request,
+      ["catalog.write", "content.write"],
+    );
+    return success(await replaceMediaReferences(env, request, actor), { status: 201 });
+  }
+  const mediaMatch = pathname.match(/^\/v1\/admin\/media\/([^/]+)$/u);
+  if (mediaMatch && request.method === "DELETE") {
+    const actor = await writeIdentityAny(
+      env.DB,
+      request,
+      ["catalog.write", "content.write"],
+    );
+    await deleteManagedMedia(
+      env,
+      request,
+      decodeURIComponent(mediaMatch[1]),
+      actor,
+    );
+    return new Response(null, { status: 204 });
   }
 
   if (pathname === "/v1/admin/audit" && request.method === "GET") {
@@ -446,6 +490,51 @@ async function writeIdentity(
 ): Promise<AdminIdentity> {
   requireCsrf(request);
   return requireAdmin(db, request, permission);
+}
+
+async function requireAdminAny(
+  db: D1Database,
+  request: Request,
+  permissions: readonly string[],
+): Promise<AdminIdentity> {
+  const identity = await requireAdmin(db, request);
+  if (!permissions.some((permission) => identity.permissions.includes(permission))) {
+    throw new ApiInputError(
+      "PERMISSION_DENIED",
+      `One of ${permissions.join(", ")} is required.`,
+      403,
+    );
+  }
+  return identity;
+}
+
+async function writeIdentityAny(
+  db: D1Database,
+  request: Request,
+  permissions: readonly string[],
+): Promise<AdminIdentity> {
+  requireCsrf(request);
+  return requireAdminAny(db, request, permissions);
+}
+
+async function writeIdentityAll(
+  db: D1Database,
+  request: Request,
+  permissions: readonly string[],
+): Promise<AdminIdentity> {
+  requireCsrf(request);
+  const identity = await requireAdmin(db, request);
+  const missing = permissions.filter(
+    (permission) => !identity.permissions.includes(permission),
+  );
+  if (missing.length > 0) {
+    throw new ApiInputError(
+      "PERMISSION_DENIED",
+      `Permissions ${missing.join(", ")} are required.`,
+      403,
+    );
+  }
+  return identity;
 }
 
 function adminUser(identity: AdminIdentity) {

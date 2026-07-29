@@ -1,5 +1,6 @@
 import { handleAdminApi, handleSitesHealth } from "./admin-api";
 import { ApiInputError, failure } from "./http";
+import { isPublicMediaObjectKey } from "./media-api";
 import { handlePublicApi } from "./public-api";
 import type { SitesEnv } from "./types";
 
@@ -15,8 +16,13 @@ export async function handleCloudBridgeRequest(
   }
 
   if (pathname.startsWith("/media/") && request.method === "GET") {
-    const key = decodeURIComponent(pathname.slice("/media/".length));
-    if (!key || key.includes("..") || key.startsWith("/")) {
+    let key: string;
+    try {
+      key = decodeURIComponent(pathname.slice("/media/".length));
+    } catch {
+      return new Response("Not found", { status: 404 });
+    }
+    if (!isPublicMediaObjectKey(key)) {
       return new Response("Not found", { status: 404 });
     }
     const object = await env.MEDIA.get(key);

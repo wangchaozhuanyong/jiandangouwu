@@ -45,7 +45,7 @@ import {
 const copy = (locale: Locale, zh: string, en: string) => locale === "zh" ? zh : en;
 const tones: HeroTone[] = ["cyan", "blue", "violet", "green"];
 const statuses: HeroStatus[] = ["DRAFT", "ACTIVE", "INACTIVE"];
-const localRasterAsset = /^\/assets\/[A-Za-z0-9._/-]+\.(?:avif|gif|jpe?g|png|webp)$/iu;
+const localRasterAsset = /^\/(?:assets|media)\/[A-Za-z0-9._/-]+\.(?:avif|gif|jpe?g|png|webp)$/iu;
 
 const isSafeLocalRasterAsset = (value: string): boolean => (
   localRasterAsset.test(value)

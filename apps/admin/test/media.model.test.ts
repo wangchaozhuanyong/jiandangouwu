@@ -6,6 +6,7 @@ import {
   buildReferencedMediaAssets,
   filterReferencedMediaAssets,
   isSafeReferencedMediaPath,
+  mergeMediaInventory,
   summarizeReferencedMediaAssets,
 } from "../src/features/media/model";
 
@@ -87,6 +88,13 @@ test("media inventory collapses matching paths while preserving every real datab
 test("media path safety accepts only normalized local raster assets", () => {
   assert.equal(isSafeReferencedMediaPath("/assets/product-codex.webp"), true);
   assert.equal(isSafeReferencedMediaPath("/assets/nested/hero-main.avif"), true);
+  assert.equal(
+    isSafeReferencedMediaPath(
+      "/media/uploads/2026/07/123e4567-e89b-12d3-a456-426614174000-hero.webp",
+    ),
+    true,
+  );
+  assert.equal(isSafeReferencedMediaPath("/media/backups/production.webp"), false);
   assert.equal(isSafeReferencedMediaPath("/assets/../secret.png"), false);
   assert.equal(isSafeReferencedMediaPath("/assets//hero.png"), false);
   assert.equal(isSafeReferencedMediaPath("https://example.com/hero.webp"), false);
@@ -127,5 +135,59 @@ test("media summary reports unique paths, references, source counts, and unsafe 
     heroReferences: 1,
     productReferences: 2,
     invalidPaths: 1,
+    managedObjects: 0,
+    unreferencedManagedObjects: 0,
+    missingManagedObjects: 0,
+  });
+});
+
+test("media inventory merges R2 metadata with references and preserves unreferenced objects", () => {
+  const path = "/media/uploads/2026/07/123e4567-e89b-12d3-a456-426614174000-shared.webp";
+  const referenced = buildReferencedMediaAssets(
+    [product("codex", path, "Codex")],
+    [],
+  );
+  const assets = mergeMediaInventory(referenced, [
+    {
+      key: "uploads/2026/07/123e4567-e89b-12d3-a456-426614174000-shared.webp",
+      path,
+      fileName: "shared.webp",
+      contentType: "image/webp",
+      byteSize: 2048,
+      uploadedByEmail: "owner@example.test",
+      createdAt: "2026-07-29T12:00:00.000Z",
+      storageStatus: "AVAILABLE",
+      productReferences: 1,
+      heroReferences: 0,
+    },
+    {
+      key: "uploads/2026/07/223e4567-e89b-12d3-a456-426614174000-unused.png",
+      path: "/media/uploads/2026/07/223e4567-e89b-12d3-a456-426614174000-unused.png",
+      fileName: "unused.png",
+      contentType: "image/png",
+      byteSize: 1024,
+      uploadedByEmail: "owner@example.test",
+      createdAt: "2026-07-29T13:00:00.000Z",
+      storageStatus: "AVAILABLE",
+      productReferences: 0,
+      heroReferences: 0,
+    },
+  ]);
+
+  assert.equal(assets.length, 2);
+  assert.equal(assets.find((asset) => asset.imageKey === path)?.references.length, 1);
+  assert.equal(
+    filterReferencedMediaAssets(assets, { kind: "unreferenced", query: "" })[0]?.fileName,
+    "unused.png",
+  );
+  assert.deepEqual(summarizeReferencedMediaAssets(assets), {
+    uniqueAssets: 2,
+    totalReferences: 1,
+    heroReferences: 0,
+    productReferences: 1,
+    invalidPaths: 0,
+    managedObjects: 2,
+    unreferencedManagedObjects: 1,
+    missingManagedObjects: 0,
   });
 });

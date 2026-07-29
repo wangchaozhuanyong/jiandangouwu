@@ -336,30 +336,50 @@ test("通知中心只读取真实未连接状态且不伪造投递记录", () =>
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.notification-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
 });
 
-test("媒体页只聚合真实图片引用并明确排除未实现的存储操作", () => {
+test("媒体页在 Sites 运行时管理真实 R2 对象并保持引用与删除门禁", () => {
   const app = read("apps/admin/src/App.tsx");
   const page = read("apps/admin/src/features/media/media-page.tsx");
   const model = read("apps/admin/src/features/media/model.ts");
+  const api = read("apps/admin/src/api.ts");
+  const sitesApi = read("apps/sites/server/media-api.ts");
+  const sitesAdmin = read("apps/sites/server/admin-api.ts");
+  const router = read("apps/sites/server/router.ts");
   const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
   const workflows = read("apps/admin/src/design-workflows.tsx");
   const css = read("apps/admin/src/styles.css");
 
   assert.match(app, /lazy\(\(\) => import\("\.\/features\/media\/media-page"\)\)/u);
   assert.match(app, /page === "media"[\s\S]*?<MediaPage/u);
+  assert.match(app, /sitesRuntime=\{user\.authProvider === "SITES"\}/u);
   assert.match(page, /permissions\.includes\("catalog\.read"\)/u);
   assert.match(page, /permissions\.includes\("content\.read"\)/u);
+  assert.match(page, /permissions\.includes\("catalog\.write"\)/u);
+  assert.match(page, /permissions\.includes\("content\.write"\)/u);
   assert.match(page, /getAllProducts\(signal\)/u);
   assert.match(page, /getHeroes\(signal\)/u);
-  assert.match(read("apps/admin/src/api.ts"), /do \{[\s\S]*?pageSize=100[\s\S]*?pageCount[\s\S]*?\} while \(page <= pageCount\)/u);
-  assert.match(page, /不是磁盘或对象存储的完整扫描/u);
-  assert.match(page, /不会上传、替换或删除图片/u);
-  assert.doesNotMatch(page, /createProduct|updateProduct|createHero|updateHero|fetch\(/u);
+  assert.match(page, /getManagedMedia\(signal\)/u);
+  assert.match(page, /uploadManagedMedia/u);
+  assert.match(page, /replaceManagedMedia/u);
+  assert.match(page, /deleteManagedMedia/u);
+  assert.match(page, /selected && !operation/u);
+  assert.match(api, /body instanceof FormData/u);
+  assert.match(api, /\/admin\/media\/replace/u);
+  assert.match(sitesAdmin, /listManagedMedia/u);
+  assert.match(sitesAdmin, /writeIdentityAll[\s\S]*?"catalog\.write", "content\.write"/u);
+  assert.match(sitesApi, /maximumMediaBytes = 5_000_000/u);
+  assert.match(sitesApi, /MEDIA_OBJECT_IN_USE/u);
+  assert.match(sitesApi, /media\.references\.replaced/u);
+  assert.match(router, /isPublicMediaObjectKey/u);
+  assert.match(sitesApi, /uploadKeyPattern/u);
   assert.match(model, /localRasterAsset/u);
   assert.match(model, /referencesByPath/u);
+  assert.match(model, /mergeMediaInventory/u);
   assert.doesNotMatch(preview, /page === "media"|function MediaDesign|mediaAssets/u);
   assert.doesNotMatch(workflows, /media:\s*workflow/u);
   assert.match(css, /\.media-detail-button\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
+  assert.match(css, /\.media-kind-filter button\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/u);
   assert.match(css, /\.media-reference-scroll\s*\{[^}]*overflow-x:\s*auto;/u);
+  assert.match(css, /\.media-confirm-check\s*\{[^}]*min-height:\s*44px;/u);
 });
 
 test("安全事件页面只投影真实审计信号且不伪造威胁检测结论", () => {
