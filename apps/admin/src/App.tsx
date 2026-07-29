@@ -64,7 +64,7 @@ import {
 import { AdminShellSkeleton, Dialog, PanelState } from "./admin-ui";
 import { adminCopy } from "./i18n";
 
-const sitesAuthentication = import.meta.env.VITE_ADMIN_AUTH_PROVIDER === "sites";
+const sitesAuthentication = import.meta.env?.VITE_ADMIN_AUTH_PROVIDER === "sites";
 
 const DashboardPage = lazy(() => import("./pages/dashboard-page"));
 const ProductsPage = lazy(() => import("./pages/products-page"));
@@ -131,10 +131,12 @@ const groupNavigationIcons: Record<AdminNavigationGroupId, typeof CirclesFour> =
 };
 
 export function App() {
-  const [locale, setLocale] = useState<Locale>(() => localStorage.getItem("cloudbridge-admin-locale") === "en" ? "en" : "zh");
+  const [locale, setLocale] = useState<Locale>("zh");
   const [user, setUser] = useState<AdminUser | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
-  const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname));
+  const [page, setPage] = useState<Page>(() => (
+    typeof window === "undefined" ? "dashboard" : pageFromPath(window.location.pathname)
+  ));
 
   const loadSession = useCallback(async (silent = false) => {
     if (!silent) setSessionLoading(true);
@@ -163,6 +165,9 @@ export function App() {
     return () => setUnauthorizedHandler(null);
   }, []);
   useEffect(() => { void loadSession(); }, [loadSession]);
+  useEffect(() => {
+    if (localStorage.getItem("cloudbridge-admin-locale") === "en") setLocale("en");
+  }, []);
   useEffect(() => {
     localStorage.setItem("cloudbridge-admin-locale", locale);
     document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";

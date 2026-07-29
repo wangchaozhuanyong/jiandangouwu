@@ -121,7 +121,7 @@ export type AuditEventPage = {
   meta: PageMeta;
 };
 
-const baseUrl = import.meta.env.VITE_ADMIN_API_BASE_URL ?? "http://localhost:3001/v1";
+const baseUrl = import.meta.env?.VITE_ADMIN_API_BASE_URL ?? "http://localhost:3001/v1";
 let csrfToken = "";
 let unauthorizedHandler: (() => void) | null = null;
 
