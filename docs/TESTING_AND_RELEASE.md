@@ -54,6 +54,7 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 - `test:platform`：检查主平台技术栈、MySQL 约束、双语订单、认证安全边界和 AWS 高可用模板。
 - `test:api`：检查 DTO、领域服务、权限依赖、幂等、并发条件写入、事务审计和敏感字段边界。
 - `test:storefront`：检查联系渠道动作、接单可用性、订单输入边界及客户端纯逻辑。
+- `prepare:platform`：先构建共享契约并生成 Prisma Client，保证新克隆仓库没有依赖本机遗留构建产物。
 - `build`：生成遗留 Vite 与 Sites 兼容产物。
 - `test:sites`：检查静态 Worker 路由以及构建产物完整性；应在构建后运行。
 - `typecheck:platform`：检查共享契约、API、Next.js 客户端、Vite 后台和 CDK。

@@ -12,6 +12,7 @@ test("主平台技术栈和 MySQL 数据约束保持一致", () => {
   const schema = read("apps/api/prisma/schema.prisma");
   const apiDockerfile = read("apps/api/Dockerfile");
   const prismaService = read("apps/api/src/prisma/prisma.service.ts");
+  const prismaGenerate = read("apps/api/scripts/generate.mjs");
 
   assert.equal(root.name, "cloudbridge-platform");
   assert.match(storefront.dependencies.next, /^16\./u);
@@ -21,6 +22,11 @@ test("主平台技术栈和 MySQL 数据约束保持一致", () => {
   assert.equal(root.dependencies.react, admin.dependencies.react);
   assert.equal(root.dependencies["react-dom"], storefront.dependencies["react-dom"]);
   assert.equal(root.dependencies["react-dom"], admin.dependencies["react-dom"]);
+  assert.match(root.scripts["prepare:platform"], /build --workspace @cloudbridge\/contracts/u);
+  assert.match(root.scripts["prepare:platform"], /db:generate --workspace @cloudbridge\/api/u);
+  assert.match(root.scripts["test:api"], /^npm run prepare:platform &&/u);
+  assert.match(root.scripts["typecheck:platform"], /^npm run prepare:platform &&/u);
+  assert.match(root.scripts["build:platform"], /^npm run prepare:platform &&/u);
   assert.match(schema, /provider\s*=\s*"mysql"/u);
   assert.match(schema, /basePrice\s+Decimal/u);
   assert.match(schema, /idempotencyKey\s+String\s+@unique/u);
@@ -29,6 +35,9 @@ test("主平台技术栈和 MySQL 数据约束保持一致", () => {
   assert.match(apiDockerfile, /ENV DATABASE_URL=mysql:\/\/cloudbridge:build-only@localhost:3306\/cloudbridge/u);
   assert.match(apiDockerfile, /ENV SHADOW_DATABASE_URL=mysql:\/\/cloudbridge:build-only@localhost:3306\/cloudbridge_shadow/u);
   assert.match(apiDockerfile, /--mount=type=cache,target=\/root\/\.npm npm ci --prefer-offline --no-audit --no-fund/u);
+  assert.match(prismaGenerate, /process\.env\.DATABASE_URL \?\? generateDatabaseUrl/u);
+  assert.match(prismaGenerate, /process\.env\.SHADOW_DATABASE_URL \?\? generateShadowDatabaseUrl/u);
+  assert.match(prismaGenerate, /spawnSync\("npx", \["prisma", "generate"\]/u);
   assert.match(prismaService, /DB_TLS/u);
   assert.match(prismaService, /DB_ALLOW_PUBLIC_KEY_RETRIEVAL/u);
 });
