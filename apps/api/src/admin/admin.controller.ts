@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Header, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { RequirePermissions } from "../auth/auth.decorators.js";
 import { adminActorFromRequest } from "../common/admin-actor.js";
 import {
+  AdminAuditQueryDto,
   AdminListQueryDto,
   CreateCategoryDto,
   CreateProductDto,
@@ -72,7 +73,8 @@ export class AdminController {
 
   @Get("audit")
   @RequirePermissions("audit.read")
-  audit(@Query() query: AdminListQueryDto) {
+  @Header("Cache-Control", "private, no-store")
+  audit(@Query() query: AdminAuditQueryDto) {
     return this.admin.auditEvents(query);
   }
 }

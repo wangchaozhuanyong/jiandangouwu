@@ -1,5 +1,6 @@
 import type {
   AuditEvent,
+  AuditEventQuery,
   Locale,
 } from "../../api";
 
@@ -9,6 +10,12 @@ export type AuditEventFilter = {
   search: string;
   targetType: "all" | string;
   timeRange: "24h" | "7d" | "30d" | "all";
+};
+
+export const defaultAuditEventQuery: Readonly<AuditEventQuery> = {
+  page: 1,
+  pageSize: 30,
+  timeRange: "30d",
 };
 
 const actionLabels: Record<string, Record<Locale, string>> = {
@@ -59,6 +66,70 @@ export function sortAuditEvents(events: AuditEvent[]): AuditEvent[] {
 export function auditTargetTypes(events: AuditEvent[]): string[] {
   return [...new Set(events.map((event) => event.targetType).filter(Boolean))]
     .sort((left, right) => left.localeCompare(right));
+}
+
+export function readAuditQuery(search: string): AuditEventQuery {
+  const params = new URLSearchParams(search);
+  const pageValue = Number(params.get("page") ?? "1");
+  const resultValue = params.get("result");
+  const actorValue = params.get("actor");
+  const timeRangeValue = params.get("timeRange");
+  const searchValue = params.get("search")?.normalize("NFKC").trim().slice(0, 160);
+  const targetTypeValue = params.get("targetType")?.normalize("NFKC").trim().slice(0, 80);
+  return {
+    page: Number.isSafeInteger(pageValue) && pageValue >= 1 && pageValue <= 1000
+      ? pageValue
+      : 1,
+    pageSize: 30,
+    ...(searchValue ? { search: searchValue } : {}),
+    ...(resultValue && ["SUCCEEDED", "FAILED", "DENIED"].includes(resultValue)
+      ? { result: resultValue as AuditEvent["result"] }
+      : {}),
+    ...(actorValue === "administrator" || actorValue === "system"
+      ? { actor: actorValue }
+      : {}),
+    ...(targetTypeValue ? { targetType: targetTypeValue } : {}),
+    timeRange: timeRangeValue && ["24h", "7d", "30d", "all"].includes(timeRangeValue)
+      ? timeRangeValue as AuditEventFilter["timeRange"]
+      : "30d",
+  };
+}
+
+export function auditQuerySearch(query: AuditEventQuery): string {
+  const params = new URLSearchParams();
+  if (query.page > 1) params.set("page", String(query.page));
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.result) params.set("result", query.result);
+  if (query.actor) params.set("actor", query.actor);
+  if (query.targetType?.trim()) params.set("targetType", query.targetType.trim());
+  if (query.timeRange && query.timeRange !== "30d") {
+    params.set("timeRange", query.timeRange);
+  }
+  return params.toString();
+}
+
+export function auditFilterFromQuery(query: AuditEventQuery): AuditEventFilter {
+  return {
+    actor: query.actor ?? "all",
+    result: query.result ?? "all",
+    search: query.search ?? "",
+    targetType: query.targetType ?? "all",
+    timeRange: query.timeRange ?? "30d",
+  };
+}
+
+export function auditQueryFromFilter(filter: AuditEventFilter): AuditEventQuery {
+  return {
+    page: 1,
+    pageSize: 30,
+    ...(filter.search.trim() ? { search: filter.search.trim().slice(0, 160) } : {}),
+    ...(filter.result !== "all" ? { result: filter.result } : {}),
+    ...(filter.actor !== "all" ? { actor: filter.actor } : {}),
+    ...(filter.targetType !== "all"
+      ? { targetType: filter.targetType.trim().slice(0, 80) }
+      : {}),
+    timeRange: filter.timeRange,
+  };
 }
 
 export function filterAuditEvents(

@@ -119,9 +119,21 @@ export type AuditEvent = {
   actor: { displayName: string; email: string } | null;
   createdAt: string;
 };
+export type AuditEventQuery = {
+  page: number;
+  pageSize: number;
+  search?: string;
+  result?: AuditEvent["result"];
+  actor?: "administrator" | "system";
+  targetType?: string;
+  timeRange?: "24h" | "7d" | "30d" | "all";
+};
 export type AuditEventPage = {
   data: AuditEvent[];
   meta: PageMeta;
+  facets: {
+    targetTypes: string[];
+  };
 };
 
 const baseUrl = import.meta.env?.VITE_ADMIN_API_BASE_URL ?? "http://localhost:3001/v1";
@@ -272,8 +284,23 @@ export const createProduct = (body: unknown) => request<AdminProduct>("/admin/pr
 export const updateProduct = (id: string, body: unknown) => request<AdminProduct>(`/admin/products/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 export const getCurrencies = async (signal?: AbortSignal) => (await request<AdminCurrency[]>("/admin/currencies", { signal })).data;
 export const updateRate = (code: string, rate: string, reason: string) => request(`/admin/currencies/${code}/rate`, { method: "PATCH", body: JSON.stringify({ rate, reason }) });
-export const getAuditPage = async (signal?: AbortSignal): Promise<AuditEventPage> => {
-  const response = await request<AuditEvent[]>("/admin/audit?page=1&pageSize=100", { signal });
+export const getAuditPage = async (
+  query: AuditEventQuery = { page: 1, pageSize: 100 },
+  signal?: AbortSignal,
+): Promise<AuditEventPage> => {
+  const params = new URLSearchParams({
+    page: String(query.page),
+    pageSize: String(query.pageSize),
+  });
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.result) params.set("result", query.result);
+  if (query.actor) params.set("actor", query.actor);
+  if (query.targetType?.trim()) params.set("targetType", query.targetType.trim());
+  if (query.timeRange) params.set("timeRange", query.timeRange);
+  const response = await request<{
+    items: AuditEvent[];
+    facets: { targetTypes: string[] };
+  }>(`/admin/audit?${params.toString()}`, { signal });
   const { meta } = response;
   if (
     !meta
@@ -283,12 +310,25 @@ export const getAuditPage = async (signal?: AbortSignal): Promise<AuditEventPage
     || meta.pageSize < 1
     || !isNonNegativeSafeInteger(meta.total)
     || !isNonNegativeSafeInteger(meta.pageCount)
+    || !Array.isArray(response.data?.items)
+    || !Array.isArray(response.data?.facets?.targetTypes)
+    || response.data.facets.targetTypes.some((value) => (
+      typeof value !== "string" || value.length === 0 || value.length > 80
+    ))
   ) {
     throw new Error("Audit pagination metadata failed the runtime contract.");
   }
-  return { data: response.data, meta };
+  return {
+    data: response.data.items,
+    meta,
+    facets: {
+      targetTypes: [...new Set(response.data.facets.targetTypes)].sort(),
+    },
+  };
 };
-export const getAudit = async (signal?: AbortSignal) => (await getAuditPage(signal)).data;
+export const getAudit = async (signal?: AbortSignal) => (
+  await getAuditPage({ page: 1, pageSize: 100 }, signal)
+).data;
 export const getTeamOverview = async (signal?: AbortSignal) => (
   await request<AdminTeamOverview>("/admin/access/members", { signal })
 ).data;

@@ -13,6 +13,8 @@ import {
 } from "class-validator";
 
 const toNumber = ({ value }: { value: unknown }): unknown => typeof value === "string" ? Number(value) : value;
+const trimString = ({ value }: { value: unknown }): unknown =>
+  typeof value === "string" ? value.normalize("NFKC").trim() : value;
 
 export class AdminListQueryDto {
   @IsOptional()
@@ -37,6 +39,48 @@ export class AdminListQueryDto {
   @IsString()
   @MaxLength(80)
   status?: string;
+}
+
+export class AdminAuditQueryDto {
+  @IsOptional()
+  @Transform(toNumber)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  page = 1;
+
+  @IsOptional()
+  @Transform(toNumber)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize = 30;
+
+  @IsOptional()
+  @Transform(trimString)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
+  search?: string;
+
+  @IsOptional()
+  @IsIn(["SUCCEEDED", "FAILED", "DENIED"])
+  result?: "SUCCEEDED" | "FAILED" | "DENIED";
+
+  @IsOptional()
+  @IsIn(["administrator", "system"])
+  actor?: "administrator" | "system";
+
+  @IsOptional()
+  @Transform(trimString)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  targetType?: string;
+
+  @IsOptional()
+  @IsIn(["24h", "7d", "30d", "all"])
+  timeRange?: "24h" | "7d" | "30d" | "all";
 }
 
 export class CreateCategoryDto {
