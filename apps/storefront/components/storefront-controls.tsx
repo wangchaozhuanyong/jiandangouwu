@@ -7,6 +7,7 @@ import {
   ChatsCircle,
   Copy,
   EnvelopeSimple,
+  GlobeHemisphereWest,
   Headset,
   TelegramLogo,
   WarningCircle,
@@ -28,6 +29,151 @@ import {
   type StorefrontCurrency,
 } from "../lib/api";
 import { resolveContactTarget } from "../lib/contact-actions";
+import { copy } from "../lib/copy";
+
+const languageOptions = [
+  { value: "zh", label: "中文" },
+  { value: "en", label: "English" },
+] satisfies Array<{ value: Locale; label: string }>;
+
+type LanguagePickerProps = {
+  ariaLabel: string;
+  onChange: (locale: Locale) => void;
+  value: Locale;
+};
+
+export function LanguagePicker({
+  ariaLabel,
+  onChange,
+  value,
+}: LanguagePickerProps) {
+  const menuId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selectedIndex = Math.max(
+    0,
+    languageOptions.findIndex((option) => option.value === value),
+  );
+  const [activeIndex, setActiveIndex] = useState(selectedIndex);
+  const [open, setOpen] = useState(false);
+  const activeLanguage = languageOptions[selectedIndex] ?? languageOptions[0]!;
+
+  const focusOption = (index: number) => {
+    const nextIndex = (index + languageOptions.length) % languageOptions.length;
+    setActiveIndex(nextIndex);
+    window.requestAnimationFrame(() => optionRefs.current[nextIndex]?.focus());
+  };
+
+  const openMenu = (index = selectedIndex) => {
+    setOpen(true);
+    focusOption(index);
+  };
+
+  const closeMenu = (restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) closeMenu();
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
+
+  const selectLanguage = (locale: Locale) => {
+    onChange(locale);
+    closeMenu(true);
+  };
+
+  const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      openMenu(event.key === "ArrowDown" ? selectedIndex : selectedIndex - 1);
+    }
+  };
+
+  const handleOptionKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    index: number,
+    locale: Locale,
+  ) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      focusOption(index + (event.key === "ArrowDown" ? 1 : -1));
+      return;
+    }
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      focusOption(event.key === "Home" ? 0 : languageOptions.length - 1);
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectLanguage(locale);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMenu(true);
+      return;
+    }
+    if (event.key === "Tab") closeMenu();
+  };
+
+  return (
+    <div className="language-picker" ref={rootRef}>
+      <button
+        aria-controls={menuId}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label={ariaLabel}
+        className="language-picker__trigger"
+        onClick={() => (open ? closeMenu() : openMenu())}
+        onKeyDown={handleTriggerKeyDown}
+        ref={triggerRef}
+        role="combobox"
+        type="button"
+      >
+        <GlobeHemisphereWest aria-hidden="true" size={17} />
+        <strong>{activeLanguage.label}</strong>
+        <CaretDown aria-hidden="true" size={14} />
+      </button>
+      {open && (
+        <div
+          aria-label={ariaLabel}
+          className="language-picker__menu"
+          id={menuId}
+          role="listbox"
+        >
+          {languageOptions.map((option, index) => (
+            <button
+              aria-selected={option.value === value}
+              className={option.value === value ? "is-selected" : ""}
+              key={option.value}
+              lang={option.value === "zh" ? "zh-CN" : "en"}
+              onClick={() => selectLanguage(option.value)}
+              onFocus={() => setActiveIndex(index)}
+              onKeyDown={(event) => handleOptionKeyDown(event, index, option.value)}
+              ref={(node) => {
+                optionRefs.current[index] = node;
+              }}
+              role="option"
+              tabIndex={activeIndex === index ? 0 : -1}
+              type="button"
+            >
+              <span>{option.label}</span>
+              {option.value === value && <Check aria-hidden="true" size={16} weight="bold" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 type CurrencyPickerProps = {
   ariaLabel: string;
@@ -135,10 +281,9 @@ export function CurrencyPicker({
         role="combobox"
         type="button"
       >
-        <b>{activeCurrency?.token ?? value}</b>
+        <b>{activeCurrency?.token ?? "—"}</b>
         <span>
-          <strong>{activeCurrency?.code ?? value}</strong>
-          {variant === "catalog" && <small>{activeCurrency?.name ?? ""}</small>}
+          <strong>{activeCurrency?.name ?? ariaLabel}</strong>
         </span>
         <CaretDown aria-hidden="true" size={15} />
       </button>
@@ -165,7 +310,7 @@ export function CurrencyPicker({
               type="button"
             >
               <b>{currency.token}</b>
-              <span><strong>{currency.code}</strong><small>{currency.name}</small></span>
+              <span><strong>{currency.name}</strong></span>
               {currency.code === value && <Check aria-hidden="true" size={17} weight="bold" />}
             </button>
           ))}
@@ -199,7 +344,10 @@ export function SupportDrawer({ initialConfig, locale, onClose, open }: SupportD
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">(initialConfig ? "ready" : "idle");
   const [copied, setCopied] = useState("");
   const [copyError, setCopyError] = useState(false);
+  const t = copy[locale];
   const zh = locale === "zh";
+  const supportAvailable = config?.settings.supportEnabled === true
+    && config.channels.length > 0;
 
   const loadChannels = async () => {
     setState("loading");
@@ -317,14 +465,14 @@ export function SupportDrawer({ initialConfig, locale, onClose, open }: SupportD
             <button onClick={() => void loadChannels()} type="button">{zh ? "重新加载" : "Reload"}</button>
           </div>
         )}
-        {state === "ready" && config?.channels.length === 0 && (
+        {state === "ready" && !supportAvailable && (
           <div className="support-drawer__error" role="status">
             <Headset aria-hidden="true" size={24} />
-            <strong>{zh ? "客服渠道尚未配置" : "No support channels configured"}</strong>
-            <p>{zh ? "请稍后再试。" : "Please try again later."}</p>
+            <strong>{t.supportUnavailableTitle}</strong>
+            <p>{t.supportUnavailableBody}</p>
           </div>
         )}
-        {state === "ready" && Boolean(config?.channels.length) && (
+        {state === "ready" && supportAvailable && (
           <div className="support-channel-list">
             {config?.channels.map((channel) => {
               const Icon = channelIcons[channel.type];

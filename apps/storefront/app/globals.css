@@ -62,10 +62,18 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
 .support-trigger { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 17px; border: 1px solid rgba(93,229,238,.34); border-radius: 999px; color: #dffcff; background: linear-gradient(135deg, rgba(19,91,121,.72), rgba(8,48,69,.76)); font-size: 11px; font-weight: 700; box-shadow: 0 12px 34px rgba(0,0,0,.18); transition: border-color .18s ease, background .18s ease, transform .18s ease; }
 .support-trigger:hover { border-color: rgba(93,229,238,.66); background: linear-gradient(135deg, rgba(25,112,145,.78), rgba(9,59,83,.82)); }
 .support-trigger:active { transform: translateY(1px); }
-.language-switch { display: flex; align-items: center; gap: 8px; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted-2); }
-.language-switch button { min-width: 44px; min-height: 44px; padding: 2px 3px; color: var(--muted-2); background: none; font-size: 11px; }
-.language-switch button.is-active { color: var(--cyan); }
-.language-switch > span { width: 1px; height: 12px; background: var(--line-strong); }
+.language-picker { width: 132px; height: 48px; position: relative; z-index: 45; }
+.language-picker__trigger { width: 100%; height: 100%; display: grid; grid-template-columns: 18px minmax(0,1fr) 14px; align-items: center; gap: 8px; padding: 0 13px; border: 1px solid var(--line-strong); border-radius: 16px; color: var(--text); background: rgba(7,23,37,.88); text-align: left; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+.language-picker__trigger:hover, .language-picker__trigger[aria-expanded="true"] { border-color: rgba(93,229,238,.52); background: rgba(10,32,49,.96); box-shadow: 0 0 0 3px rgba(93,229,238,.06); }
+.language-picker__trigger > svg:first-child { color: var(--cyan); }
+.language-picker__trigger > svg:last-child { color: var(--muted); transition: transform .18s ease; }
+.language-picker__trigger[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
+.language-picker__trigger strong { overflow: hidden; font-size: 11px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.language-picker__menu { position: absolute; z-index: 90; top: calc(100% + 9px); right: 0; width: 168px; padding: 7px; border: 1px solid rgba(93,229,238,.34); border-radius: 15px; background: rgba(5,18,30,.98); box-shadow: 0 24px 64px rgba(0,0,0,.5); backdrop-filter: blur(18px); }
+.language-picker__menu > button { width: 100%; min-height: 48px; display: grid; grid-template-columns: minmax(0,1fr) 20px; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid transparent; border-radius: 10px; color: var(--muted); background: transparent; font-size: 12px; text-align: left; }
+.language-picker__menu > button:hover, .language-picker__menu > button:focus-visible { border-color: rgba(93,229,238,.22); color: var(--text); background: rgba(32,91,117,.22); outline-offset: -2px; }
+.language-picker__menu > button.is-selected { border-color: rgba(93,229,238,.36); color: #eefaff; background: rgba(44,142,169,.2); }
+.language-picker__menu > button > svg { color: var(--cyan); }
 
 .hero-stage { width: var(--page); margin: 30px auto 0; }
 .hero-card, .hero-skeleton { min-height: 570px; position: relative; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 28px; background: #071422; }
@@ -108,9 +116,8 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
 .currency-picker__trigger:hover, .currency-picker__trigger[aria-expanded="true"] { border-color: rgba(93,229,238,.52); background: rgba(10,32,49,.96); box-shadow: 0 0 0 3px rgba(93,229,238,.06); }
 .currency-picker__trigger:disabled { cursor: progress; opacity: .55; }
 .currency-picker__trigger > b, .currency-picker__menu > button > b { color: var(--cyan); font-size: 13px; font-weight: 800; text-align: center; }
-.currency-picker__trigger > span, .currency-picker__menu > button > span { min-width: 0; display: grid; gap: 2px; }
-.currency-picker__trigger strong, .currency-picker__menu strong { overflow: hidden; color: #eefaff; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
-.currency-picker__trigger small, .currency-picker__menu small { overflow: hidden; color: var(--muted-2); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.currency-picker__trigger > span, .currency-picker__menu > button > span { min-width: 0; display: flex; align-items: center; }
+.currency-picker__trigger strong, .currency-picker__menu strong { overflow: hidden; color: #eefaff; font-size: 13px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
 .currency-picker__trigger > svg { color: var(--muted); transition: transform .18s ease; }
 .currency-picker__trigger[aria-expanded="true"] > svg { transform: rotate(180deg); }
 .currency-picker__menu { position: absolute; z-index: 80; top: calc(100% + 9px); right: 0; width: max(100%, 310px); max-height: min(380px, 58vh); overflow-y: auto; padding: 7px; border: 1px solid rgba(93,229,238,.34); border-radius: 16px; background: rgba(5,18,30,.98); box-shadow: 0 26px 70px rgba(0,0,0,.52); backdrop-filter: blur(18px); }
@@ -118,7 +125,7 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
 .currency-picker__menu > button:hover, .currency-picker__menu > button:focus-visible { border-color: rgba(93,229,238,.22); background: rgba(32,91,117,.22); outline-offset: -2px; }
 .currency-picker__menu > button.is-selected { border-color: rgba(93,229,238,.36); background: rgba(44,142,169,.2); }
 .currency-picker__menu > button > svg { color: var(--cyan); }
-.currency-picker--compact { width: 180px; height: 44px; margin-left: auto; }
+.currency-picker--compact { width: 190px; height: 44px; margin-left: auto; }
 .currency-picker--compact .currency-picker__trigger { grid-template-columns: 34px minmax(0,1fr) auto; padding: 0 11px; border-radius: 12px; }
 .category-row { display: flex; align-items: center; gap: 18px; margin: 26px 0 22px; }
 .category-row > div { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -299,9 +306,8 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
   .header-utilities { gap: 7px; }
   .support-trigger { width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; }
   .support-trigger span { display: none; }
-  .language-switch { padding: 0 7px; gap: 4px; }
-  .language-switch button { min-width: 44px; }
-  .language-switch > svg { display: none; }
+  .language-picker { width: 112px; height: 44px; }
+  .language-picker__trigger { border-radius: 14px; }
   .hero-stage { margin-top: 18px; }
   .hero-card, .hero-skeleton { min-height: 570px; border-radius: 21px; }
   .hero-card > img { object-position: 65% center; }
@@ -344,7 +350,7 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
   .detail-pricing { align-items: flex-start; flex-wrap: wrap; }
   .detail-pricing > strong { flex: 1; }
   .detail-pricing > small { width: 100%; }
-  .currency-picker--compact { width: 152px; }
+  .currency-picker--compact { width: 180px; }
   .currency-picker__menu { width: min(310px, calc(100vw - 24px)); }
   .order-action-dock { bottom: max(10px, env(safe-area-inset-bottom)); width: min(520px, calc(100vw - 24px)); }
   .site-footer { min-height: 0; grid-template-columns: 1fr; grid-template-rows: auto; }
@@ -365,10 +371,13 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
 @media (max-width: 390px) {
   :root { --page: calc(100% - 24px); }
   .brand { gap: 8px; }
+  .brand strong { font-size: 15px; }
+  .site-header { gap: 6px; }
   .header-utilities { gap: 4px; }
-  .language-switch { padding-inline: 4px; }
-  .language-switch button { min-width: 44px; padding-inline: 1px; }
-  .language-switch button { font-size: 10px; }
+  .language-picker { width: 94px; }
+  .language-picker__trigger { grid-template-columns: minmax(0,1fr) 14px; gap: 5px; padding-inline: 10px; }
+  .language-picker__trigger > svg:first-child { display: none; }
+  .language-picker__trigger strong { font-size: 10px; }
   .hero-card, .hero-skeleton { min-height: 545px; }
   .hero-copy { padding-left: 18px; padding-right: 18px; }
   .catalog-heading h2 { font-size: 39px; }

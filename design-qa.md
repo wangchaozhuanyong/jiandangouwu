@@ -791,3 +791,58 @@ final result: blocked
 - P2：真实视觉一致性、滚动位置和窄屏页面溢出尚待浏览器复验。
 
 final result: blocked
+
+## 2026-07-29 右上角客服、语言与币种本地化修复
+
+### 视觉真值与范围
+
+- 视觉参考：`/var/folders/y2/73zzsdhn3d78m_qqhkb2lrq80000gn/T/codex-clipboard-ce1178af-5514-4060-a74e-594cf84252b3.png`。
+- 实现范围：正式客户端 `apps/storefront` 的右上角客服入口、语言菜单、币种触发器与币种菜单；不修改汇率、金额逻辑、API 契约、数据库或后台币种配置。
+- 目标状态：中文只显示中文币种名，英文只显示英文币种名；ISO 代码仅作为内部稳定值；客服入口在启用、停用或无渠道时始终可用。
+- 目标 CSS 视口：1440 × 1024、390 × 844、320 × 844；中文与英文。
+
+### 同屏视觉比较
+
+- 全视图证据：
+  - `design-qa/evidence/header-currency-localization-20260729/03-en-mobile-full-390.jpg`
+  - `design-qa/evidence/header-currency-localization-20260729/08-en-desktop-header-1440.jpg`
+- 聚焦区域证据：
+  - `design-qa/evidence/header-currency-localization-20260729/02-zh-mobile-language-open-390.jpg`
+  - `design-qa/evidence/header-currency-localization-20260729/04-en-mobile-currency-open-390.jpg`
+  - `design-qa/evidence/header-currency-localization-20260729/05-zh-mobile-support-open-390.jpg`
+  - `design-qa/evidence/header-currency-localization-20260729/10-reference-vs-implementation.jpg`
+- 参考与实现被放入同一张比较图。实现保留参考图的深色底、青色细描边、左侧币种符号和右侧展开箭头，同时删除可见 ISO 代码，并将单一当前语言名称提升为主标签。
+
+### 五项视觉表面
+
+- 字体与排版：币种名称使用单行 13px 强调文本；中文与英文均没有双语叠放、断行或代码抢占层级。桌面客服显示完整文字，移动端使用图标。
+- 间距与布局：桌面语言控件为 132 × 48px，移动端客服和语言控件均至少 44px 高；320px 下品牌、客服与语言控件完整并排，页面 `scrollWidth` 等于 `clientWidth`。
+- 颜色与视觉变量：复用夜航画廊深海军蓝、青色边框和安静的半透明表面；菜单、触发器和焦点环保持统一对比度。
+- 图片与素材：继续使用 `/assets/cloudbridge-logo.png`，没有新增或伪造视觉资产。
+- 文案与内容：语言菜单固定显示 `中文 / English`；币种名称完全来自当前语言数据；未配置客服显示真实不可用状态，不伪造渠道。
+
+### 交互与响应式证据
+
+- 1440 × 1024：客服按钮 158 × 48px，语言控件 132 × 48px，完整显示 `Customer Support` 与 `English`；币种触发器显示 `$ US Dollar`，页面无横向溢出。
+- 390 × 844：中文页头显示 `云桥`、44 × 44px 客服图标和当前语言 `中文`；语言菜单只包含 `中文 / English`。英文币种触发器和菜单只显示英文名称。
+- 320 × 844：中文与英文页头均保留完整品牌、客服入口和当前语言，不截断、不移除品牌且无横向溢出。
+- 路由与状态：`/zh?category=developer&q=Codex` 切换为英文后保留路径语义和查询参数；已选美元保持选中，并从 `$ US Dollar` 同步变为 `$ 美元`。
+- 键盘：语言与币种均支持方向键展开、Escape 关闭并返回触发器焦点；客服抽屉支持 Escape、滚动解锁和焦点返回。
+- 控制台：本轮浏览器会话 `error` 与 `warn` 均为 0。
+
+### 自动检查
+
+- `npm run test:storefront`：9/9 通过。
+- `node --test tests/platform-ux.test.mjs`：12/12 通过。
+- `npm run typecheck --workspace @cloudbridge/storefront`：通过。
+- `npm run test:sites-platform`：14/14 通过，Sites 生产构建成功。
+- `npm run check`：完整通过；全部测试、类型检查和生产构建成功。
+
+### Findings
+
+- P0：0。
+- P1：0。
+- P2：0。
+- 第一轮浏览器复核未发现需要继续修复的布局、语言混排、触控尺寸、焦点或溢出问题。
+
+final result: passed
