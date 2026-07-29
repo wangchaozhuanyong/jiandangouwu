@@ -1711,6 +1711,9 @@
 }
 
 @media (max-width: 760px) {
+  .sites-platform-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .sites-platform-summary article { min-height: 126px; grid-template-columns: 1fr; align-content: start; gap: 9px; padding: 12px; }
+  .sites-platform-summary strong { overflow-wrap: normal; word-break: keep-all; font-size: 13px; }
   .sites-backup-readiness ul { grid-template-columns: 1fr; }
   .sites-backups-create { grid-template-columns: 1fr; }
   .sites-backups-create button { width: 100%; justify-content: center; }
