@@ -67,6 +67,34 @@ export type SitesBackupsResponse = {
   readiness: SitesBackupReadiness;
 };
 
+export type SitesRestoreDrillTransfer = {
+  format: "cloudbridge-restore-drill-transfer";
+  version: 1;
+  algorithm: "RSA-OAEP-SHA256+AES-256-GCM";
+  createdAt: string;
+  expiresAt: string;
+  drillToken: string;
+  iv: string;
+  wrappedKey: string;
+  ciphertext: string;
+};
+
+export type SitesRestoreDrillCompletion = {
+  token: string;
+  proof: string;
+  result: {
+    drillId: string;
+    payloadSha256: string;
+    schemaVersion: number;
+    tableCount: number;
+    recordCount: number;
+    readbackRecordCount: number;
+    foreignKeyViolationCount: number;
+    target: "NODE_SQLITE_MEMORY";
+    completedAt: string;
+  };
+};
+
 export const getSitesBackups = async (
   signal?: AbortSignal,
 ): Promise<SitesBackupsResponse> => (
@@ -101,6 +129,34 @@ export const validateSitesBackupRestorePackage = async (
     {
       method: "POST",
       body: JSON.stringify({ reason }),
+    },
+  )
+).data;
+
+export const createSitesBackupRestoreDrillTransfer = async (
+  id: string,
+  reason: string,
+  publicKey: JsonWebKey,
+): Promise<SitesRestoreDrillTransfer> => (
+  await request<SitesRestoreDrillTransfer>(
+    `/admin/backups/${encodeURIComponent(id)}/restore-drill-transfer`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason, publicKey }),
+    },
+  )
+).data;
+
+export const completeSitesBackupRestoreDrill = async (
+  id: string,
+  reason: string,
+  completion: SitesRestoreDrillCompletion,
+): Promise<SitesBackupSnapshot> => (
+  await request<SitesBackupSnapshot>(
+    `/admin/backups/${encodeURIComponent(id)}/restore-drill-complete`,
+    {
+      method: "POST",
+      body: JSON.stringify({ ...completion, reason }),
     },
   )
 ).data;
