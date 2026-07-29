@@ -23,6 +23,17 @@
 - 页面组件不直接决定业务成功。真实写入必须通过 API，由 API 返回稳定结果和错误码。
 - 数据访问、业务规则和界面表现分层；不得在 JSX 文案或 CSS 类名中编码业务状态判断。
 - 外部集成通过明确适配层接入，失败、重试和未连接状态不能伪装为成功。
+- 订单领域集中在 `apps/api/src/orders`：公开下单与后台订单管理使用独立 Controller，共享联系方式保护和订单持久化，但后台路由不再堆放在通用 `admin` 服务中。
+- 后台订单界面集中在 `apps/admin/src/features/orders`：API 客户端、筛选、单行表、详情、时间线和敏感联系方式各自负责单一职责，页面入口只组合模块并传入权限。
+- 订单状态机的唯一可信来源是 API；后台通过 `allowedTransitions` 渲染下一步，不复制一份可写状态转换表。
+- `/admin/disputes` 是订单模块上的人工售后投影视图，只筛选 `REFUND_PENDING`、`REFUNDED`、`DISPUTED` 订单，并复用订单详情、负责人、时间线、`orders.read` / `orders.write`、CAS 和事务审计；它不建立第二套售后状态机。
+- 独立退款申请、部分退款、申请金额、证据、双人审批、支付商事件和真实资金流水属于未来独立领域。未批准数据库与权限设计前，不得把这些字段塞入订单状态原因或前端本地数据。
+- `/admin/payments` 是订单状态历史上的只读人工事件投影：只选择 `OrderStatusHistory.toStatus` 为 `PAID`、`REFUND_PENDING`、`REFUNDED`、`DISPUTED` 的记录，使用状态历史 ID 作为稳定事件 ID，不提供事件更新或删除能力。
+- 人工收款列表复用订单领域的金额快照、汇率快照、操作者和 `orders.read` 权限；详情入口仍进入订单模块并执行原有订单权限。该投影视图不得反向成为订单状态、支付结果或财务余额的可信来源。
+- 支付流水、会计分录、实际到账、部分或多次付款退款、费用税额、支付方式、外部事件、凭证、结算批次、对账与跨币种报表仍属于未实现领域；`/admin/reconciliation` 继续使用明确标识的设计预览。
+- Telegram 新订单通知准备复用现有 `SiteSetting`，以 `notifications.telegram.new-order` 保存版本化非密钥配置；不新增 Prisma 模型，不把 Bot Token、Chat ID 或发送记录编码进 JSON 配置。
+- 服务端是连接真实性的唯一来源：无论 `requestedEnabled` 为何，都固定派生 `NOT_CONNECTED`、`effectiveEnabled: false`、`tokenConfigured: false`、`externalDeliveryVerified: false`。未来真实适配器接入前，前端不得覆盖这些字段。
+- 模拟预览是无外部副作用的服务端纯投影，只接受配置字段并使用固定虚构订单；它不复用真实订单查询，不创建事件、队列、重试或发送记录。`/admin/notifications` 继续走设计预览模块。
 
 ## 语言与迁移策略
 

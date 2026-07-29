@@ -24,6 +24,8 @@ npm run test:security
 npm run test:admin-tables
 npm run test:brand
 npm run test:platform
+npm run test:api
+npm run test:storefront
 npm run build
 npm run test:sites
 npm run typecheck:platform
@@ -41,6 +43,8 @@ npm run check
 - `test:admin-tables`：检查后台结构化数据表的单行记录、独立字段列和移动端横向滚动约束。
 - `test:brand`：检查前后台所有品牌区域复用同一 Logo、移除副标题并保持原始宽高比。
 - `test:platform`：检查主平台技术栈、MySQL 约束、双语订单、认证安全边界和 AWS 高可用模板。
+- `test:api`：检查 DTO、领域服务、权限依赖、幂等、并发条件写入、事务审计和敏感字段边界。
+- `test:storefront`：检查联系渠道动作、接单可用性、订单输入边界及客户端纯逻辑。
 - `build`：生成遗留 Vite 与 Sites 兼容产物。
 - `test:sites`：检查静态 Worker 路由以及构建产物完整性；应在构建后运行。
 - `typecheck:platform`：检查共享契约、API、Next.js 客户端、Vite 后台和 CDK。
@@ -54,11 +58,17 @@ npm run check
 - 文案、本地化、标题和无障碍标签：`test:i18n` 加中英文浏览器检查。
 - 商品、分类和搜索：`test:catalog` 加桌面与移动端商品区检查。
 - 下单、联系渠道和订单凭证：`test:ux` 加成功、失败、取消和恢复流程。
+- 人工售后订单视图：验证 `/admin/disputes` 只展示 `REFUND_PENDING`、`REFUNDED`、`DISPUTED`，读取要求 `orders.read`、写入要求 `orders.write`，合法状态来自服务端，并覆盖 CAS 冲突、事务历史与审计、只读降级、空状态和错误状态。
+- 人工收款记录：验证 `/admin/payments` 只投影 `OrderStatusHistory.toStatus` 为 `PAID`、`REFUND_PENDING`、`REFUNDED`、`DISPUTED` 的稳定事件，读取要求 `orders.read`，所有事件返回 `externalActionVerified: false`，页面和 API 均无事件写入、删除或补写入口。
+- Telegram 新订单通知准备：验证 `notifications.telegram.new-order` 只保存非密钥白名单配置；GET 使用 `settings.read`，PUT 使用 `settings.write`、五分钟最近认证、原因、CAS 与 Serializable 事务审计；服务端始终派生未连接、未有效启用、未配置 Token 和未外部核验。
 - 后台认证、支付、机密和敏感操作设计：`test:security` 加桌面与移动端浏览器检查。
 - 后台数据表、记录列表和列结构：`test:admin-tables` 加桌面与 390px 浏览器检查。
 - Worker、路由或构建：`build` 后运行 `test:sites`。
 - 管理后台写入、权限或敏感信息：必须检查 API 权限、CSRF、审计、重新认证与失败路径。
 - 金额、汇率、库存和人工订单：必须检查精度、边界、并发、幂等和非法状态转换。
+- 售后页面不得用模拟申请金额、部分退款、证据、双人审批、支付商状态或资金成功补齐现有订单模型；自动检查应断言这些未实现能力没有被包装成真实结果。
+- 人工收款页面必须断言没有实际到账、部分或多次付款退款、手续费税费、支付方式、外部 ID、凭证、结算批次、对账和跨币种总额；订单详情权限保持不变，`/admin/reconciliation` 继续显示设计预览标识。
+- Telegram simulation 必须断言只使用固定虚构订单和脱敏字段、`deliveryAttempted: false`、不接收或返回 Bot Token/Chat ID、不请求外部网络、不排队重试、不写发送记录；`/admin/notifications` 继续显示设计预览标识。
 
 ## 完成定义
 
