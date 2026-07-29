@@ -100,6 +100,7 @@ test("团队和角色页面使用真实 MySQL 权限模型与安全写入", () =
   const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
   const controller = read("apps/api/src/access/access.controller.ts");
   const service = read("apps/api/src/access/access.service.ts");
+  const sessions = read("apps/api/src/auth/session.service.ts");
   const guard = read("apps/api/src/auth/admin-session.guard.ts");
   const team = read("apps/admin/src/features/access/team-page.tsx");
   const roles = read("apps/admin/src/features/access/roles-page.tsx");
@@ -119,6 +120,13 @@ test("团队和角色页面使用真实 MySQL 权限模型与安全写入", () =
   assert.match(service, /RECENT_AUTH_WINDOW_MS/u);
   assert.match(service, /Administrators cannot change their own roles/u);
   assert.match(service, /last active super administrator/u);
+  assert.match(service, /updateMemberLifecycle/u);
+  assert.match(service, /team\.member\.totp_reset/u);
+  assert.match(service, /destroyUserAuthenticationState/u);
+  assert.match(service, /totpSecretEncrypted:\s*null/u);
+  assert.match(sessions, /scanKeys\("admin-session:\*"\)/u);
+  assert.match(sessions, /scanKeys\("auth-flow:\*"\)/u);
+  assert.doesNotMatch(sessions, /\.keys\(/u);
   assert.match(service, /TransactionIsolationLevel\.Serializable/u);
   assert.match(service, /result:\s*"SUCCEEDED"[\s\S]*?beforeData:[\s\S]*?afterData:/u);
   assert.match(guard, /currentUser[\s\S]*?currentPermissions/u);
@@ -126,12 +134,15 @@ test("团队和角色页面使用真实 MySQL 权限模型与安全写入", () =
 
   assert.match(team, /getTeamOverview/u);
   assert.match(team, /updateMemberRoles/u);
+  assert.match(team, /updateMemberLifecycle/u);
+  assert.match(team, /sitesRuntime/u);
+  assert.match(team, /RESET_TOTP/u);
   assert.match(roles, /getRolesOverview/u);
   assert.match(roles, /updateRolePermissions/u);
   assert.match(team, /window\.confirm/u);
   assert.match(roles, /window\.confirm/u);
   assert.doesNotMatch(`${team}\n${roles}`, /界面设计预览|Interface design preview/u);
-  assert.match(css, /\.team-table \.table-head,\s*\.team-table \.table-row\s*\{[^}]*min-width:\s*1040px;/u);
+  assert.match(css, /\.team-table \.table-head,\s*\.team-table \.table-row\s*\{[^}]*min-width:\s*1320px;/u);
   assert.match(css, /\.row-icon-action\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.access-permission-grid\s*\{\s*grid-template-columns:\s*1fr;/u);
 });

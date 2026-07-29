@@ -424,7 +424,11 @@ test("安全中心使用真实 Valkey 会话并保持 Sites 身份边界", () =>
   assert.match(auth, /The current session must use sign out/u);
   assert.match(auth, /auth\.session\.revoked/u);
   assert.match(auth, /auth\.sessions\.others_revoked/u);
-  assert.match(sessions, /\.scan\([\s\S]*?"admin-session:\*"/u);
+  assert.match(sessions, /scanKeys\("admin-session:\*"\)/u);
+  assert.match(
+    sessions,
+    /private async scanKeys\(pattern: string\)[\s\S]*?this\.redis\.scan\([\s\S]*?"MATCH"[\s\S]*?pattern/u,
+  );
   assert.doesNotMatch(sessions, /\.keys\(/u);
   assert.match(css, /\.security-session-table\s*\{[^}]*min-width:\s*980px;/u);
   assert.match(css, /\.security-session-table-wrap\s*\{[^}]*overflow-x:\s*auto;/u);

@@ -14,7 +14,11 @@ export type AdminTeamMember = {
   email: string;
   displayName: string;
   status: AdminAccountStatus;
-  totpEnabled: boolean;
+  authProvider: "PASSWORD" | "SITES";
+  passwordConfigured: boolean | null;
+  totpEnabled: boolean | null;
+  failedLoginCount: number | null;
+  lockedUntil: string | null;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -37,6 +41,19 @@ export type AdminSessionSummary = {
 export type AdminSessionOverview = {
   source: "VALKEY";
   sessions: AdminSessionSummary[];
+};
+
+export type AdminMemberLifecycleAction =
+  | "ENABLE"
+  | "DISABLE"
+  | "UNLOCK"
+  | "RESET_TOTP";
+
+export type AdminMemberLifecycleResult = {
+  action: AdminMemberLifecycleAction;
+  member: AdminTeamMember;
+  revokedSessionCount: number;
+  revokedChallengeCount: number;
 };
 
 export type AdminPermissionSummary = {

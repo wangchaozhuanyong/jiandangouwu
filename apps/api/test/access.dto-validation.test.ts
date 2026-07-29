@@ -9,6 +9,7 @@ import {
 
 const dtoPath = "../dist/src/access/access.dto.js";
 const {
+  UpdateMemberLifecycleDto,
   UpdateMemberRolesDto,
   UpdateRolePermissionsDto,
 } = await import(dtoPath) as typeof import("../src/access/access.dto.js");
@@ -36,6 +37,14 @@ test("access DTOs trim reasons and accept unique access keys", async () => {
     reason: "  Support scope changed  ",
   });
   assert.equal(role.reason, "Support scope changed");
+
+  const lifecycle = await validateBody(UpdateMemberLifecycleDto, {
+    action: "RESET_TOTP",
+    expectedUpdatedAt: "2026-07-29T12:00:00.000Z",
+    reason: "  成员遗失了原双重验证设备  ",
+  });
+  assert.equal(lifecycle.action, "RESET_TOTP");
+  assert.equal(lifecycle.reason, "成员遗失了原双重验证设备");
 });
 
 test("access DTOs reject empty, duplicate, stale-shape, and unexplained changes", async () => {
@@ -59,6 +68,16 @@ test("access DTOs reject empty, duplicate, stale-shape, and unexplained changes"
       permissionKeys: ["orders.read"],
       expectedUpdatedAt: "2026-07-29T12:00:00.000Z",
       reason: "short",
+    }],
+    [UpdateMemberLifecycleDto, {
+      action: "DELETE",
+      expectedUpdatedAt: "2026-07-29T12:00:00.000Z",
+      reason: "账号安全操作原因完整",
+    }],
+    [UpdateMemberLifecycleDto, {
+      action: "DISABLE",
+      expectedUpdatedAt: "yesterday",
+      reason: "账号安全操作原因完整",
     }],
   ];
 

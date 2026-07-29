@@ -69,6 +69,7 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 - 文案、本地化、标题和无障碍标签：`test:i18n` 加中英文浏览器检查。
 - 商品、分类和搜索：`test:catalog` 加桌面与移动端商品区检查。
 - 媒体引用清单：验证商品全分页、轮播聚合、相同路径去重但保留全部数据库引用、安全本地栅格路径、类型与双语搜索、局部读取权限、图片加载错误和详情内部表格滚动；断言页面没有上传、替换、删除、文件字节或对象存储操作。
+- 管理员账号生命周期：验证 `team.manage`、最近认证、原因、确认、`updatedAt` CAS、Serializable 事务与同事务审计；覆盖自操作拒绝、最后一名正常超级管理员保护、无密码账号不能启用、状态转换、TOTP 密钥不进入响应/审计，以及目标成员全部 Valkey 会话和 TOTP 登录/绑定流程撤销。真实闭环运行 `npm run verify:admin-lifecycle --workspace @cloudbridge/api`，并要求随机 QA 用户、审计和认证状态最终清理为 0。
 - 下单、联系渠道和订单凭证：`test:ux` 加成功、失败、取消和恢复流程。
 - 人工售后订单视图：验证 `/admin/disputes` 只展示 `REFUND_PENDING`、`REFUNDED`、`DISPUTED`，读取要求 `orders.read`、写入要求 `orders.write`，合法状态来自服务端，并覆盖 CAS 冲突、事务历史与审计、只读降级、空状态和错误状态。
 - 人工收款记录：验证 `/admin/payments` 只投影 `OrderStatusHistory.toStatus` 为 `PAID`、`REFUND_PENDING`、`REFUNDED`、`DISPUTED` 的稳定事件，读取要求 `orders.read`，所有事件返回 `externalActionVerified: false`，页面和 API 均无事件写入、删除或补写入口。

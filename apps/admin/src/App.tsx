@@ -516,6 +516,7 @@ function PageOutlet({
         canWrite={user.authProvider !== "SITES" && user.permissions.includes("team.manage")}
         currentUserId={user.id}
         locale={locale}
+        sitesRuntime={user.authProvider === "SITES"}
       />
     );
   }

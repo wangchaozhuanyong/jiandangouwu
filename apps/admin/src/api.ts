@@ -2,6 +2,8 @@ import type {
   AdminManagedMediaObject,
   AdminMediaReplacement,
   AdminInventoryRiskSummary,
+  AdminMemberLifecycleAction,
+  AdminMemberLifecycleResult,
   AdminOrderListItem,
   AdminRoleDetail,
   AdminRolesOverview,
@@ -18,6 +20,8 @@ export type {
   AdminRolesOverview,
   AdminSessionOverview,
   AdminSessionSummary,
+  AdminMemberLifecycleAction,
+  AdminMemberLifecycleResult,
   AdminTeamMember,
   AdminTeamOverview,
 } from "@cloudbridge/contracts";
@@ -403,6 +407,22 @@ export const updateMemberRoles = async (
     method: "PATCH",
     body: JSON.stringify(input),
   })
+).data;
+export const updateMemberLifecycle = async (
+  memberId: string,
+  input: {
+    action: AdminMemberLifecycleAction;
+    expectedUpdatedAt: string;
+    reason: string;
+  },
+) => (
+  await request<AdminMemberLifecycleResult>(
+    `/admin/access/members/${memberId}/lifecycle`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  )
 ).data;
 export const getRolesOverview = async (signal?: AbortSignal) => (
   await request<AdminRolesOverview>("/admin/access/roles", { signal })
