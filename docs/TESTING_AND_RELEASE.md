@@ -35,6 +35,15 @@ npm audit --omit=dev
 npm run check
 ```
 
+GitHub 上的 `.github/workflows/ci.yml` 对所有指向 `main` 的 PR、`main` 推送和手动触发执行以下门禁：
+
+- 使用 Node.js 24 和锁文件执行 `npm ci`、`npm run check` 与无查找的 CDK `synth`。
+- `npm audit --omit=dev --audit-level=critical` 阻止新增 critical 运行依赖漏洞，同时在日志中持续公开现有 high 公告。
+- 分别构建 API、管理后台和客户端的生产容器镜像，防止源码构建通过但 Dockerfile 已失效。
+- GitHub 官方 Actions 固定到已核对的提交 SHA，工作流权限保持为只读。
+
+CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 AWS staging 发布门禁阻断，不能因为 CI 只对 critical 设置自动失败阈值而被视为接受风险。
+
 - `check:rules`：检查规则文件、文档链接、技术栈约束和环境变量示例。
 - `test:catalog`：检查商品搜索、分类组合、顺序和浏览器存储容错。
 - `test:i18n`：检查双语键完整性及固定文案不串用。

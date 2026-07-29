@@ -109,3 +109,19 @@ test("AWS 模板固定新加坡并保留高可用与部署授权边界", () => {
   assert.match(stack, /CfnWebACL/u);
   assert.equal(infra.scripts.deploy, undefined);
 });
+
+test("GitHub CI 固定只读权限、完整检查和三个生产镜像门禁", () => {
+  const workflow = read(".github/workflows/ci.yml");
+
+  assert.match(workflow, /permissions:\s*\n\s*contents:\s*read/u);
+  assert.match(workflow, /node-version:\s*"24"/u);
+  assert.match(workflow, /run:\s*npm ci/u);
+  assert.match(workflow, /run:\s*npm run check/u);
+  assert.match(workflow, /synth --workspace @cloudbridge\/infra -- --no-lookups/u);
+  assert.match(workflow, /npm audit --omit=dev --audit-level=critical/u);
+  assert.match(workflow, /actions\/checkout@[a-f0-9]{40}/u);
+  assert.match(workflow, /actions\/setup-node@[a-f0-9]{40}/u);
+  for (const target of ["apps/api/Dockerfile", "apps/admin/Dockerfile", "apps/storefront/Dockerfile"]) {
+    assert.match(workflow, new RegExp(target.replace("/", "\\/"), "u"));
+  }
+});

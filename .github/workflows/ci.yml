@@ -1,0 +1,70 @@
+name: CloudBridge CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudbridge-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality and security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CI: "true"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run the complete repository gate
+        run: npm run check
+
+      - name: Synthesize the AWS template without lookups
+        run: npm run synth --workspace @cloudbridge/infra -- --no-lookups
+
+      - name: Block newly disclosed critical runtime vulnerabilities
+        run: npm audit --omit=dev --audit-level=critical
+
+  container-images:
+    name: Container image (${{ matrix.name }})
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            dockerfile: apps/api/Dockerfile
+          - name: admin
+            dockerfile: apps/admin/Dockerfile
+          - name: storefront
+            dockerfile: apps/storefront/Dockerfile
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build ${{ matrix.name }} release image
+        run: >-
+          docker build
+          --file "${{ matrix.dockerfile }}"
+          --tag "cloudbridge-${{ matrix.name }}:${{ github.sha }}"
+          .
