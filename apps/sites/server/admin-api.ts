@@ -51,6 +51,11 @@ const orderTransitions: Readonly<Record<string, readonly string[]>> = {
   REFUNDED: [],
   DISPUTED: ["REFUND_PENDING", "REFUNDED"],
 };
+const auditTimeRangeMs = {
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+  "30d": 30 * 24 * 60 * 60 * 1000,
+} as const;
 
 export async function handleAdminApi(
   request: Request,
@@ -265,16 +270,25 @@ export async function handleAdminApi(
 
   if (pathname === "/v1/admin/audit" && request.method === "GET") {
     await requireAdmin(env.DB, request, "audit.read");
-    const { page, pageSize, offset } = parsePage(url, { page: 1, pageSize: 100 });
-    const total = Number((await env.DB.prepare("SELECT COUNT(*) AS count FROM audit_events")
-      .first<{ count: number }>())?.count ?? 0);
+    const auditQuery = readAuditQuery(url);
+    const whereSql = auditQuery.conditions.length > 0
+      ? ` WHERE ${auditQuery.conditions.join(" AND ")}`
+      : "";
+    const total = Number((await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM audit_events${whereSql}`,
+    ).bind(...auditQuery.bindings).first<{ count: number }>())?.count ?? 0);
     const rows = (await env.DB.prepare(
       `SELECT id, trace_id AS requestId, action,
         COALESCE(target_type, 'SYSTEM') AS targetType, target_id AS targetId,
         result, reason, actor_display_name AS actorDisplayName,
         actor_email AS actorEmail, created_at AS createdAt
-       FROM audit_events ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
-    ).bind(pageSize, offset).all<{
+       FROM audit_events${whereSql}
+       ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+    ).bind(
+      ...auditQuery.bindings,
+      auditQuery.pageSize,
+      auditQuery.offset,
+    ).all<{
       id: string;
       requestId: string;
       action: string;
@@ -286,19 +300,30 @@ export async function handleAdminApi(
       actorEmail: string | null;
       createdAt: string;
     }>()).results ?? [];
-    return success(rows.map((row) => ({
-      id: row.id,
-      requestId: row.requestId,
-      action: row.action,
-      targetType: row.targetType,
-      targetId: row.targetId,
-      result: row.result,
-      reason: row.reason,
-      actor: row.actorEmail
-        ? { displayName: row.actorDisplayName ?? row.actorEmail, email: row.actorEmail }
-        : null,
-      createdAt: row.createdAt,
-    })), { meta: pageMeta(page, pageSize, total) });
+    const targetTypes = (await env.DB.prepare(
+      `SELECT DISTINCT COALESCE(target_type, 'SYSTEM') AS targetType
+       FROM audit_events ORDER BY targetType ASC`,
+    ).all<{ targetType: string }>()).results ?? [];
+    return success({
+      items: rows.map((row) => ({
+        id: row.id,
+        requestId: row.requestId,
+        action: row.action,
+        targetType: row.targetType,
+        targetId: row.targetId,
+        result: row.result,
+        reason: row.reason,
+        actor: row.actorEmail
+          ? { displayName: row.actorDisplayName ?? row.actorEmail, email: row.actorEmail }
+          : null,
+        createdAt: row.createdAt,
+      })),
+      facets: {
+        targetTypes: targetTypes.map((row) => row.targetType),
+      },
+    }, {
+      meta: pageMeta(auditQuery.page, auditQuery.pageSize, total),
+    });
   }
 
   if (pathname === "/v1/admin/backups") {
@@ -1852,6 +1877,110 @@ function heroTranslationUpdate(
   return db.prepare(
     "UPDATE hero_translations SET eyebrow = ?, title = ?, body = ?, cta = ? WHERE hero_id = ? AND locale = ?",
   ).bind(value.eyebrow, value.title, value.body, value.cta, heroId, locale);
+}
+
+function readAuditQuery(url: URL): {
+  page: number;
+  pageSize: number;
+  offset: number;
+  conditions: string[];
+  bindings: Array<string | number>;
+} {
+  const page = auditQueryInteger(url.searchParams.get("page"), "page", 1, 1000, 1);
+  const pageSize = auditQueryInteger(url.searchParams.get("pageSize"), "pageSize", 1, 100, 30);
+  const search = auditQueryString(url.searchParams.get("search"), "search", 160);
+  const result = auditQueryEnum(
+    url.searchParams.get("result"),
+    "result",
+    ["SUCCEEDED", "FAILED", "DENIED"] as const,
+  );
+  const actor = auditQueryEnum(
+    url.searchParams.get("actor"),
+    "actor",
+    ["administrator", "system"] as const,
+  );
+  const targetType = auditQueryString(url.searchParams.get("targetType"), "targetType", 80);
+  const timeRange = auditQueryEnum(
+    url.searchParams.get("timeRange"),
+    "timeRange",
+    ["24h", "7d", "30d", "all"] as const,
+  ) ?? "all";
+  const conditions: string[] = [];
+  const bindings: Array<string | number> = [];
+
+  if (result) {
+    conditions.push("result = ?");
+    bindings.push(result);
+  }
+  if (actor === "administrator") {
+    conditions.push("actor_email IS NOT NULL");
+  } else if (actor === "system") {
+    conditions.push("actor_email IS NULL");
+  }
+  if (targetType) {
+    conditions.push("COALESCE(target_type, 'SYSTEM') = ?");
+    bindings.push(targetType);
+  }
+  if (timeRange !== "all") {
+    conditions.push("created_at >= ?");
+    bindings.push(new Date(Date.now() - auditTimeRangeMs[timeRange]).toISOString());
+  }
+  if (search) {
+    const searchableColumns = [
+      "id",
+      "trace_id",
+      "action",
+      "COALESCE(target_type, 'SYSTEM')",
+      "COALESCE(target_id, '')",
+      "COALESCE(reason, '')",
+      "COALESCE(actor_display_name, '')",
+      "COALESCE(actor_email, '')",
+    ];
+    conditions.push(`(${searchableColumns
+      .map((column) => `instr(lower(${column}), lower(?)) > 0`)
+      .join(" OR ")})`);
+    bindings.push(...searchableColumns.map(() => search));
+  }
+
+  return {
+    page,
+    pageSize,
+    offset: (page - 1) * pageSize,
+    conditions,
+    bindings,
+  };
+}
+
+function auditQueryInteger(
+  value: string | null,
+  field: string,
+  minimum: number,
+  maximum: number,
+  fallback: number,
+): number {
+  if (value === null || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw fieldError(field);
+  }
+  return parsed;
+}
+
+function auditQueryString(value: string | null, field: string, maximum: number): string | null {
+  if (value === null || value === "") return null;
+  const normalized = value.normalize("NFKC").trim();
+  if (normalized.length === 0 || normalized.length > maximum) throw fieldError(field);
+  return normalized;
+}
+
+function auditQueryEnum<const T extends readonly string[]>(
+  value: string | null,
+  field: string,
+  values: T,
+): T[number] | null {
+  if (value === null || value === "") return null;
+  if (!values.includes(value)) throw fieldError(field);
+  return value as T[number];
 }
 
 async function decryptContact(value: string, encodedKey: string | undefined): Promise<string> {

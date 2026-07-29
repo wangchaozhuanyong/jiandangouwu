@@ -3,8 +3,12 @@ import test from "node:test";
 import type { AuditEvent } from "../src/api";
 import {
   auditActionLabel,
+  auditFilterFromQuery,
+  auditQueryFromFilter,
+  auditQuerySearch,
   auditTargetTypes,
   filterAuditEvents,
+  readAuditQuery,
   sortAuditEvents,
   summarizeAuditEvents,
   type AuditEventFilter,
@@ -35,6 +39,50 @@ const defaultFilter: AuditEventFilter = {
   targetType: "all",
   timeRange: "all",
 };
+
+test("audit URL query restores only supported server filters and serializes canonically", () => {
+  const query = readAuditQuery(
+    "?page=3&search=%20ORDER-7%20&result=DENIED&actor=administrator"
+    + "&targetType=Order&timeRange=7d&pageSize=999",
+  );
+  assert.deepEqual(query, {
+    page: 3,
+    pageSize: 30,
+    search: "ORDER-7",
+    result: "DENIED",
+    actor: "administrator",
+    targetType: "Order",
+    timeRange: "7d",
+  });
+  assert.equal(
+    auditQuerySearch(query),
+    "page=3&search=ORDER-7&result=DENIED&actor=administrator&targetType=Order&timeRange=7d",
+  );
+  assert.deepEqual(auditFilterFromQuery(query), {
+    actor: "administrator",
+    result: "DENIED",
+    search: "ORDER-7",
+    targetType: "Order",
+    timeRange: "7d",
+  });
+  assert.deepEqual(auditQueryFromFilter(defaultFilter), {
+    page: 1,
+    pageSize: 30,
+    timeRange: "all",
+  });
+});
+
+test("audit URL query rejects unsupported state without propagating it to the API", () => {
+  const query = readAuditQuery(
+    "?page=0&result=UNKNOWN&actor=owner&timeRange=forever&targetType=%20%20",
+  );
+  assert.deepEqual(query, {
+    page: 1,
+    pageSize: 30,
+    timeRange: "30d",
+  });
+  assert.equal(auditQuerySearch(query), "");
+});
 
 test("audit records sort deterministically and list unique target types", () => {
   const events = sortAuditEvents([

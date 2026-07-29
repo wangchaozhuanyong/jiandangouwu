@@ -1520,6 +1520,7 @@
 .audit-log-table th:nth-child(11), .audit-log-table td:nth-child(11) { width: 70px; text-align: center; }
 .audit-log-table code, .audit-log-detail code { color: #3d5b6d; font: inherit; font-family: "SFMono-Regular", Consolas, monospace; }
 .audit-log-detail-button { width: 44px; height: 44px; display: inline-grid; place-items: center; border-radius: 9px; color: #247f96; background: #edf7f9; }
+.audit-log-pagination { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--line-soft); }
 .audit-log-detail { display: grid; gap: 14px; padding: 18px; }
 .audit-log-detail-heading { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .audit-log-detail-heading code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1951,6 +1952,8 @@
   .audit-log-summary { grid-template-columns: 1fr; }
   .audit-log-summary article { min-height: 80px; }
   .audit-log-filter-actions { grid-template-columns: 1fr; }
+  .audit-log-pagination { display: grid; grid-template-columns: 1fr 1fr; }
+  .audit-log-pagination button { width: 100%; }
   .audit-log-table-heading { align-items: flex-start; flex-direction: column; }
   .audit-log-detail dl { grid-template-columns: 1fr; }
   .security-event-summary { grid-template-columns: 1fr; }

@@ -81,29 +81,38 @@ test("正式后台的24个页面都使用真实或明确受限的专属页面", 
   }
 });
 
-test("审计日志页面读取真实分页元数据并只展示安全白名单字段", () => {
+test("审计日志页面使用服务端筛选与完整历史分页并只展示安全白名单字段", () => {
   const page = read("apps/admin/src/pages/audit-page.tsx");
   const model = read("apps/admin/src/features/audit/model.ts");
   const api = read("apps/admin/src/api.ts");
   const service = read("apps/api/src/admin/admin.service.ts");
   const css = read("apps/admin/src/styles.css");
 
-  assert.match(page, /useCachedAdminResource<AuditEventPage>\("audit-page"/u);
-  assert.match(page, /当前从平台数据库加载最新/u);
+  assert.match(page, /useCachedAdminResource<AuditEventPage>\([\s\S]*?`audit-page:/u);
+  assert.match(page, /当前筛选共/u);
+  assert.match(page, /筛选与分页由服务器执行/u);
   assert.match(page, /前后差异、IP 哈希、导出和正式保留策略尚未开放/u);
   assert.match(page, /<table className="audit-log-table">/u);
   assert.match(page, /事件 ID[\s\S]*?追踪 ID[\s\S]*?发生时间[\s\S]*?动作/u);
-  assert.match(page, /filterAuditEvents/u);
+  assert.match(page, /auditQuerySearch/u);
+  assert.match(page, /audit-log-pagination/u);
+  assert.match(page, /应用筛选/u);
+  assert.doesNotMatch(page, /filterAuditEvents/u);
   assert.match(page, /<Dialog/u);
   assert.doesNotMatch(page, /DesignWorkflowDialog|design-preview-note|下载|exportAudit/u);
   assert.match(model, /auditActionLabel/u);
   assert.match(model, /auditTargetTypes/u);
+  assert.match(model, /readAuditQuery/u);
+  assert.match(model, /auditQueryFromFilter/u);
   assert.match(api, /export const getAuditPage/u);
   assert.match(api, /Audit pagination metadata failed the runtime contract/u);
+  assert.match(service, /const where:\s*Prisma\.AuditEventWhereInput/u);
+  assert.match(service, /auditEvent\.groupBy/u);
   assert.match(service, /auditEvent\.findMany\(\{[\s\S]*?select:\s*\{[\s\S]*?requestId:\s*true/u);
   assert.doesNotMatch(service.match(/async auditEvents[\s\S]*?private async saveNewProduct/u)?.[0] ?? "", /include:\s*\{\s*actor/u);
   assert.match(css, /\.audit-log-table\s*\{[^}]*min-width:\s*1740px;/u);
   assert.match(css, /\.audit-log-detail-button\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
+  assert.match(css, /\.audit-log-pagination\s*\{[^}]*display:\s*flex;/u);
   assert.doesNotMatch(css, /\.admin-content\s*\{[^}]*animation:[^;}]*\bboth\b/u);
 });
 
@@ -256,7 +265,7 @@ test("数据安全中心只读取当前会话与安全审计并明确治理缺�
   assert.match(app, /page === "data-security"[\s\S]*?<DataSecurityPage/u);
   assert.match(page, /user\.permissions\.includes\("audit\.read"\)/u);
   assert.match(page, /canReadAudit\s*\?\s*getAudit\(signal\)/u);
-  assert.match(api, /\/admin\/audit\?page=1&pageSize=100/u);
+  assert.match(api, /getAuditPage\(\{\s*page:\s*1,\s*pageSize:\s*100\s*\},\s*signal\)/u);
   assert.match(page, /当前是代码控制与运行证据，不是合规认证/u);
   assert.match(page, /不会扫描、移动或删除数据/u);
   assert.match(page, /<table className="data-security-audit-table">/u);

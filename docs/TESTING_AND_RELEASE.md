@@ -74,7 +74,7 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 - Telegram 新订单通知准备：验证 `notifications.telegram.new-order` 只保存非密钥白名单配置；GET 使用 `settings.read`，PUT 使用 `settings.write`、五分钟最近认证、原因、CAS 与 Serializable 事务审计；服务端始终派生未连接、未有效启用、未配置 Token 和未外部核验。
 - 通知就绪中心：验证 `/admin/notifications` 只有 `settings.read` 才请求现有 Telegram 配置，页面只显示真实未连接状态、未来意向、白名单与上线门禁；断言旧虚构通知、未读数、追踪编号、处理按钮和预览工作流已经删除，未建立投递事件存储时使用 `NOT_COLLECTED` 而不是零。
 - 数据安全就绪中心：验证 `/admin/data-security` 只组合当前会话、已实现代码控制和受 `audit.read` 保护的最近审计 GET；无权限时不得请求或泄露审计记录，旧 30/365/90 天保留值、设备数据、运行日志、不可变结论和策略检查流程必须删除，治理缺口分别使用 `NOT_DEFINED`、`NOT_IMPLEMENTED`、`NOT_CONNECTED`。
-- 审计日志工作台：验证 `GET /v1/admin/audit` 的 Prisma 查询使用显式白名单投影且不选择 `beforeData`、`afterData`、`ipHash` 或 `actorId`；后台准确区分最近 100 条加载窗口和数据库总数，覆盖排序、五类筛选、双语动作标签、空/错状态与详情，并断言旧 `logs` 预览工作流、差异和导出幻象已经删除。
+- 审计日志工作台：验证 `GET /v1/admin/audit` 的 Prisma 计数与列表复用同一服务端筛选条件，使用显式白名单投影且不选择 `beforeData`、`afterData`、`ipHash` 或 `actorId`；Sites 使用真实 SQLite migration 覆盖分页、关键词字面匹配、结果/来源/目标/时间筛选、目标类型分面、无缓存和非法参数失败。后台覆盖 URL 恢复、规范化序列化、30 条分页、前后页、双语动作标签、空/错状态与详情，并断言旧 `logs` 预览工作流、差异和导出幻象已经删除。
 - 工作台真实性：验证 `/admin/dashboard` 只使用现有 `Overview` 响应，未启用商品不出现负数，最近订单样本与时间来自已加载记录；断言临期订单、低库存、通知失败的演示数量和 `dashboard-insights` / `order-workbench` 旧流程已经删除，缺失证据分别保持 `NOT_COLLECTED` 或 `NOT_IMPLEMENTED`。
 - 分类影响与权限：验证 `/admin/categories` 只从现有分类响应统计关联商品、非启用、空分类、重复顺序和双语缺失；`catalog.write` 缺失时不挂载新增、编辑或保存入口，旧 `categories` 设计流程已删除。非启用/归档分类不能被描述为自动隐藏、移动或删除关联商品。
 - 商品库存与上架影响：验证 `/admin/products` 只统计当前搜索第一页的已加载商品并与可用分类列表交叉检查；覆盖前台既有 0 售罄、1–3 低库存边界、双语缺失、库存数据冲突、分类导航状态和在售顺序重复。`catalog.write` 缺失时不挂载新增、编辑或保存入口，旧 `inventory-center` 设计流程必须删除，页面不得宣称全库库存、告警、库存流水、预留返库或发布历史。

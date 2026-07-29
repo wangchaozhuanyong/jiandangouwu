@@ -2,9 +2,11 @@ import type { AdminOrderListItem, OrderStatus } from "@cloudbridge/contracts";
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service.js";
 import type { AdminActor } from "../common/admin-actor.js";
+import type { Prisma } from "../generated/prisma/client.js";
 import { deriveManualPaymentStage } from "../orders/orders.admin.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type {
+  AdminAuditQueryDto,
   AdminListQueryDto,
   CreateCategoryDto,
   CreateProductDto,
@@ -14,6 +16,11 @@ import type {
 } from "./admin.dto.js";
 
 const normalizeName = (value: string): string => value.normalize("NFKC").trim().toLocaleLowerCase();
+const auditTimeRangeMs = {
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+  "30d": 30 * 24 * 60 * 60 * 1000,
+} as const;
 
 @Injectable()
 export class AdminService {
@@ -369,10 +376,47 @@ export class AdminService {
     return { code, rate: rate.rate.toFixed(10), effectiveAt: rate.effectiveAt };
   }
 
-  async auditEvents(query: AdminListQueryDto) {
-    const [total, events] = await this.prisma.$transaction([
-      this.prisma.auditEvent.count(),
+  async auditEvents(query: AdminAuditQueryDto) {
+    const search = query.search?.normalize("NFKC").trim();
+    const timeRange = query.timeRange ?? "all";
+    const where: Prisma.AuditEventWhereInput = {
+      ...(query.result ? { result: query.result } : {}),
+      ...(query.actor === "administrator"
+        ? { actorId: { not: null } }
+        : query.actor === "system"
+          ? { actorId: null }
+          : {}),
+      ...(query.targetType ? { targetType: query.targetType.trim() } : {}),
+      ...(timeRange === "all"
+        ? {}
+        : { createdAt: { gte: new Date(Date.now() - auditTimeRangeMs[timeRange]) } }),
+      ...(search
+        ? {
+            OR: [
+              { id: { contains: search } },
+              { requestId: { contains: search } },
+              { action: { contains: search } },
+              { targetType: { contains: search } },
+              { targetId: { contains: search } },
+              { reason: { contains: search } },
+              {
+                actor: {
+                  is: {
+                    OR: [
+                      { displayName: { contains: search } },
+                      { email: { contains: search } },
+                    ],
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+    const [total, events, targetTypes] = await this.prisma.$transaction([
+      this.prisma.auditEvent.count({ where }),
       this.prisma.auditEvent.findMany({
+        where,
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -393,9 +437,18 @@ export class AdminService {
           },
         },
       }),
+      this.prisma.auditEvent.groupBy({
+        by: ["targetType"],
+        orderBy: { targetType: "asc" },
+      }),
     ]);
     return {
-      data: events,
+      data: {
+        items: events,
+        facets: {
+          targetTypes: targetTypes.map((row) => row.targetType),
+        },
+      },
       meta: { page: query.page, pageSize: query.pageSize, total, pageCount: Math.ceil(total / query.pageSize) },
     };
   }
