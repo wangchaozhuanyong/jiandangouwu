@@ -1,6 +1,7 @@
 import type {
   AdminManagedMediaObject,
   AdminMediaReplacement,
+  AdminInventoryRiskSummary,
   AdminOrderListItem,
   AdminRoleDetail,
   AdminRolesOverview,
@@ -62,6 +63,7 @@ export type PasswordLoginResult =
   | { requiresTotp: false; csrfToken: string };
 export type Overview = {
   metrics: { productCount: number; activeProducts: number; openOrders: number; categoryCount: number };
+  inventoryRisk: AdminInventoryRiskSummary;
   latestOrders: AdminOrderListItem[];
 };
 export type AdminCategory = {

@@ -370,8 +370,8 @@
   .product-admin-filter-actions { grid-template-columns: 1fr; }
   .product-admin-pagination { display: grid; grid-template-columns: 1fr 1fr; }
   .product-admin-pagination button { width: 100%; }
-  .dashboard-boundary-panel .panel-heading { align-items: stretch; flex-direction: column; }
-  .dashboard-boundary-panel .panel-heading > .admin-secondary { width: 100%; }
+  .dashboard-boundary-panel .panel-heading, .dashboard-inventory-panel .panel-heading { align-items: stretch; flex-direction: column; }
+  .dashboard-boundary-panel .panel-heading > .admin-secondary, .dashboard-inventory-panel .panel-heading > .admin-secondary { width: 100%; }
   .admin-dialog { max-height: 93vh; }
   .dialog-backdrop { padding: 10px; }
   .auth-card { padding: 26px 22px; }
@@ -602,7 +602,7 @@
 .dashboard-boundary-panel { margin-top: 13px; overflow: hidden; }
 .dashboard-boundary-panel .panel-heading > div { min-width: 0; }
 .dashboard-boundary-panel .panel-heading p { margin-top: 5px; }
-.dashboard-source-strip { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border-bottom: 1px solid var(--line-soft); }
+.dashboard-source-strip { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-bottom: 1px solid var(--line-soft); }
 .dashboard-source-strip article { min-width: 0; min-height: 104px; padding: 17px 18px; border-right: 1px solid var(--line-soft); }
 .dashboard-source-strip article:last-child { border-right: 0; }
 .dashboard-source-strip small, .dashboard-source-strip strong, .dashboard-source-strip span { display: block; }
@@ -621,9 +621,25 @@
 .dashboard-capability-list article > div > p { margin: 5px 0 0; color: #7e929e; font-size: 8px; line-height: 1.55; }
 .dashboard-capability-state { min-height: 28px; display: inline-flex; align-items: center; padding: 0 9px; border-radius: 999px; font-size: 8px; font-weight: 800; white-space: nowrap; }
 .dashboard-capability-state.is-implemented_request_driven { color: #0d6570; background: #e2f3f3; }
+.dashboard-capability-state.is-implemented_live_query { color: #0d6570; background: #e2f3f3; }
 .dashboard-capability-state.is-not_collected { color: #7c6236; background: #f8efd9; }
 .dashboard-capability-state.is-not_implemented { color: #687d88; background: #edf2f4; }
 .dashboard-capability-list .admin-secondary { min-width: 132px; }
+.dashboard-inventory-panel .panel-heading > .admin-secondary { min-width: 132px; }
+.dashboard-inventory-note { display: flex; align-items: flex-start; gap: 9px; margin: 14px 18px; padding: 11px 12px; border: 1px solid #ead7a9; border-radius: 10px; color: #765d2d; background: #fff9ec; font-size: 9px; line-height: 1.6; }
+.dashboard-inventory-note svg { flex: none; margin-top: 1px; }
+.dashboard-inventory-table-wrap { margin: 0 18px 18px; overflow-x: auto; border: 1px solid var(--line-soft); border-radius: 12px; outline: 0; }
+.dashboard-inventory-table-wrap:focus { border-color: #9bcbd5; box-shadow: 0 0 0 3px rgba(52,167,190,.08); }
+.dashboard-inventory-table { width: 100%; min-width: 760px; border-collapse: collapse; table-layout: fixed; }
+.dashboard-inventory-table th, .dashboard-inventory-table td { height: 54px; padding: 0 12px; overflow: hidden; border-top: 1px solid var(--line-soft); color: #587382; font-size: 8px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-inventory-table th { height: 42px; border-top: 0; color: #91a3ad; background: #f8fafb; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.dashboard-inventory-table th:nth-child(1), .dashboard-inventory-table th:nth-child(2) { width: 190px; }
+.dashboard-inventory-table th:nth-child(3) { width: 90px; }
+.dashboard-inventory-table th:nth-child(4) { width: 150px; }
+.dashboard-inventory-table th:nth-child(5) { width: 140px; }
+.dashboard-inventory-risk { min-height: 28px; display: inline-flex; align-items: center; padding: 0 9px; border-radius: 999px; font-size: 8px; font-weight: 800; white-space: nowrap; }
+.dashboard-inventory-risk.is-low_stock { color: #7c6236; background: #f8efd9; }
+.dashboard-inventory-risk.is-sold_out, .dashboard-inventory-risk.is-invalid_stock { color: #98505a; background: #faedef; }
 .design-flow { padding: 16px 20px 0; }
 .design-preview-note.is-dialog-note { margin-bottom: 10px; }
 .design-flow-statebar { display: flex; align-items: center; gap: 5px; padding: 7px; overflow-x: auto; border: 1px solid var(--line); border-radius: 11px; background: #f8fafb; }

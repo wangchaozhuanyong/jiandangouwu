@@ -1,10 +1,11 @@
+import { STOREFRONT_LOW_STOCK_MAX } from "@cloudbridge/contracts";
 import type {
   AdminCategory,
   AdminProduct,
   AdminProductQuery,
 } from "../../api";
 
-export const STOREFRONT_LOW_STOCK_MAX = 3;
+export { STOREFRONT_LOW_STOCK_MAX };
 
 export type ProductQueryFilter = {
   search: string;

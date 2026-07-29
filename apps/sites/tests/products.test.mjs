@@ -102,6 +102,67 @@ test("Sites product catalog rejects invalid filters instead of changing their me
   }
 });
 
+test("Sites overview returns full-catalog live inventory risks with stable priority", async () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(migration);
+  seedAdministrator(sqlite);
+  sqlite.exec(`
+    UPDATE products
+      SET stock_quantity = 5
+      WHERE id = 'product-chatgpt' AND stock_mode = 'UNLIMITED';
+  `);
+
+  try {
+    const response = await handleAdminApi(
+      productRequest("/v1/admin/overview"),
+      { DB: d1Adapter(sqlite), MEDIA: {} },
+      "/v1/admin/overview",
+    );
+    assert.ok(response);
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+
+    assert.deepEqual(payload.data.inventoryRisk, {
+      source: "LIVE_DATABASE_QUERY",
+      threshold: 3,
+      evaluatedProductCount: 8,
+      affectedProductCount: 3,
+      soldOutCount: 1,
+      lowStockCount: 1,
+      invalidStockCount: 1,
+      sampleLimit: 6,
+      items: [
+        {
+          id: "product-chatgpt",
+          slug: "chatgpt",
+          name: { zh: "ChatGPT Plus", en: "ChatGPT Plus" },
+          stockQuantity: 5,
+          risk: "INVALID_STOCK",
+          updatedAt: "2026-07-29T00:00:00.000Z",
+        },
+        {
+          id: "product-midjourney",
+          slug: "midjourney",
+          name: { zh: "Midjourney Standard", en: "Midjourney Standard" },
+          stockQuantity: 0,
+          risk: "SOLD_OUT",
+          updatedAt: "2026-07-29T00:00:00.000Z",
+        },
+        {
+          id: "product-claude",
+          slug: "claude",
+          name: { zh: "Claude Pro", en: "Claude Pro" },
+          stockQuantity: 3,
+          risk: "LOW_STOCK",
+          updatedAt: "2026-07-29T00:00:00.000Z",
+        },
+      ],
+    });
+  } finally {
+    sqlite.close();
+  }
+});
+
 async function productPayload(sqlite, path) {
   const response = await handleAdminApi(
     productRequest(path),

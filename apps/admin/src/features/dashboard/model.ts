@@ -3,6 +3,7 @@ import type { Page } from "../../admin-model";
 
 export type DashboardCapabilityState =
   | "IMPLEMENTED_REQUEST_DRIVEN"
+  | "IMPLEMENTED_LIVE_QUERY"
   | "NOT_COLLECTED"
   | "NOT_IMPLEMENTED";
 
@@ -22,6 +23,7 @@ export type DashboardSnapshot = {
   inactiveProductCount: number;
   latestOrderCount: number;
   latestOrderAt: string | null;
+  inventoryRisk: Overview["inventoryRisk"];
   capabilities: DashboardCapabilityBoundary[];
 };
 
@@ -33,7 +35,7 @@ const capabilityBoundaries: readonly DashboardCapabilityBoundary[] = [
   },
   {
     code: "LOW_STOCK_ALERT",
-    state: "NOT_COLLECTED",
+    state: "IMPLEMENTED_LIVE_QUERY",
     ownerPage: "products",
   },
   {
@@ -61,6 +63,13 @@ export function buildDashboardSnapshot(overview: Overview): DashboardSnapshot {
     ),
     latestOrderCount: overview.latestOrders.length,
     latestOrderAt,
+    inventoryRisk: {
+      ...overview.inventoryRisk,
+      items: overview.inventoryRisk.items.map((item) => ({
+        ...item,
+        name: { ...item.name },
+      })),
+    },
     capabilities: capabilityBoundaries.map((capability) => ({ ...capability })),
   };
 }

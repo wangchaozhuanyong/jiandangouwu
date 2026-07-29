@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "node --env-file-if-exists=../../.env scripts/migrate-deploy.mjs",
     "db:seed": "node --env-file-if-exists=../../.env --import tsx prisma/seed.ts",
+    "verify:inventory-risk": "node --env-file-if-exists=../../.env --import tsx scripts/verify-inventory-risk.ts",
     "verify:order-reservations": "node --env-file-if-exists=../../.env --import tsx scripts/verify-order-reservations.ts",
     "test": "npm run build && node --import tsx --test \"test/**/*.test.ts\""
   },
