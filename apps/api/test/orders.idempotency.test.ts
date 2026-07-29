@@ -4,6 +4,10 @@ import { ConflictException } from "@nestjs/common";
 import { Prisma } from "../src/generated/prisma/client.js";
 import { OrdersService } from "../src/orders/orders.service.js";
 
+const reservations = {
+  reconcileExpired: async () => ({ candidates: 0, cancelled: 0, stockRestored: 0 }),
+};
+
 const input = () => ({
   locale: "zh" as const,
   productId: "product-1",
@@ -67,7 +71,11 @@ function replayHarness() {
     }),
   };
   return {
-    service: new OrdersService(prisma as never, contacts as never),
+    service: new OrdersService(
+      prisma as never,
+      contacts as never,
+      reservations as never,
+    ),
     transactionCalls: () => transactionCalls,
   };
 }

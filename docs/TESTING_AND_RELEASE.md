@@ -75,7 +75,7 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 - 通知就绪中心：验证 `/admin/notifications` 只有 `settings.read` 才请求现有 Telegram 配置，页面只显示真实未连接状态、未来意向、白名单与上线门禁；断言旧虚构通知、未读数、追踪编号、处理按钮和预览工作流已经删除，未建立投递事件存储时使用 `NOT_COLLECTED` 而不是零。
 - 数据安全就绪中心：验证 `/admin/data-security` 只组合当前会话、已实现代码控制和受 `audit.read` 保护的最近审计 GET；无权限时不得请求或泄露审计记录，旧 30/365/90 天保留值、设备数据、运行日志、不可变结论和策略检查流程必须删除，治理缺口分别使用 `NOT_DEFINED`、`NOT_IMPLEMENTED`、`NOT_CONNECTED`。
 - 审计日志工作台：验证 `GET /v1/admin/audit` 的 Prisma 计数与列表复用同一服务端筛选条件，使用显式白名单投影且不选择 `beforeData`、`afterData`、`ipHash` 或 `actorId`；Sites 使用真实 SQLite migration 覆盖分页、关键词字面匹配、结果/来源/目标/时间筛选、目标类型分面、无缓存和非法参数失败。后台覆盖 URL 恢复、规范化序列化、30 条分页、前后页、双语动作标签、空/错状态与详情，并断言旧 `logs` 预览工作流、差异和导出幻象已经删除。
-- 工作台真实性：验证 `/admin/dashboard` 只使用现有 `Overview` 响应，未启用商品不出现负数，最近订单样本与时间来自已加载记录；断言临期订单、低库存、通知失败的演示数量和 `dashboard-insights` / `order-workbench` 旧流程已经删除，缺失证据分别保持 `NOT_COLLECTED` 或 `NOT_IMPLEMENTED`。
+- 工作台真实性：验证 `/admin/dashboard` 只使用现有 `Overview` 响应，未启用商品不出现负数，最近订单样本与时间来自已加载记录；到期预留必须显示 `IMPLEMENTED_REQUEST_DRIVEN` 且明确请求驱动边界，低库存、通知和安全告警的缺失证据继续保持 `NOT_COLLECTED` 或 `NOT_IMPLEMENTED`；临期订单演示数量和 `dashboard-insights` / `order-workbench` 旧流程必须保持删除。
 - 分类影响与权限：验证 `/admin/categories` 只从现有分类响应统计关联商品、非启用、空分类、重复顺序和双语缺失；`catalog.write` 缺失时不挂载新增、编辑或保存入口，旧 `categories` 设计流程已删除。非启用/归档分类不能被描述为自动隐藏、移动或删除关联商品。
 - 商品目录与库存影响：验证 `/admin/products` 在 MySQL 与 Sites 中使用相同的 30 条服务端分页、字面关键词、状态白名单、默认非归档范围、稳定排序和分页元数据；覆盖 URL 恢复、规范化序列化、前后页、越界页回正、空/错状态和非法参数失败。库存影响只统计当前结果页并与可用分类列表交叉检查，覆盖前台既有 0 售罄、1–3 低库存边界、双语缺失、库存数据冲突、分类导航状态和在售顺序重复。`catalog.write` 缺失时不挂载新增、编辑或保存入口，旧 `inventory-center` 设计流程必须删除，页面不得宣称全库库存、告警、库存流水、预留返库或发布历史。
 - 机密配置就绪中心：验证 `/admin/secrets` 只投影 `.env.example`、API 和 CDK 中的六个稳定服务端绑定；断言前端绑定为 0、运行与轮换门禁保持关闭、旧 Stripe/数据库/Telegram 假密钥名、伪造后缀与轮换天数、查看/新增/轮换工作流已删除，并静态核对每个绑定都来自 `ecs.Secret.fromSecretsManager`。
@@ -85,6 +85,8 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 - 后台数据表、记录列表和列结构：`test:admin-tables` 加桌面与 390px 浏览器检查。
 - Worker、路由或构建：`build` 后运行 `test:sites`。
 - Sites 订单预留：使用真实 SQLite migration 验证到期 `MANUAL_PENDING` 订单只取消一次、有限库存只返还一次、状态历史和审计各写一条，未到期预留不变。
+- MySQL 订单预留：验证迁移将历史订单安全默认为未预留；新有限库存订单在扣减事务中写入预留标记；候选扫描最多 100 条；条件更新竞争失败不得返库、写历史或审计；自动到期和人工取消只返一次；状态、库存、历史和审计使用同一 Serializable 事务。使用隔离的本地 QA 数据完成真实扣减、到期、触发、返库和清理闭环。
+- 本地 MySQL 闭环命令：在应用 migration 后运行 `npm run verify:order-reservations --workspace @cloudbridge/api`。脚本只创建带随机 `qa-reservation-*` 标识的分类、商品和订单，回读取消、库存、历史和审计后再次核对幂等，并在 `finally` 中按精确 ID 清理全部 QA 记录。
 - Sites 备份：使用真实 SQLite migration 与内存 R2 验证每日唯一快照、AES-GCM 密文、R2 回读、SHA-256、解密、逐表记录数、重新校验和禁止缓存下载。恢复测试必须覆盖主键/关联/JSON/加密联系方式逻辑验证、一次性 RSA-OAEP 转移包、内存 SQLite 全表导入与回读、`foreign_key_check`、限时令牌和 HMAC 完成证明；可选新 D1 候选必须核对 `0700/0600`、拒绝覆盖、SQL/验证文件 SHA-256、逐表清单，并把生成的 `restore.sql` 重新导入空 SQLite 验证。损坏关联、篡改记录数、错误证明或过期转移必须失败关闭，测试输出不得显示密钥或明文联系方式。五项异常门禁中，外部告警未真实送达时必须保持失败。
 - 管理后台写入、权限或敏感信息：必须检查 API 权限、CSRF、审计、重新认证与失败路径。
 - 金额、汇率、库存和人工订单：必须检查精度、边界、并发、幂等和非法状态转换。

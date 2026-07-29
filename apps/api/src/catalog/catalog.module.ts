@@ -1,10 +1,11 @@
 import { Module } from "@nestjs/common";
+import { OrdersModule } from "../orders/orders.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { CatalogController } from "./catalog.controller.js";
 import { CatalogService } from "./catalog.service.js";
 
 @Module({
-  imports: [SettingsModule],
+  imports: [SettingsModule, OrdersModule],
   controllers: [CatalogController],
   providers: [CatalogService],
   exports: [CatalogService],

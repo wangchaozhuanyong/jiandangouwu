@@ -84,7 +84,8 @@
 - `PATCH /v1/admin/orders/:id/status` 使用预期旧状态和预期更新时间做条件更新；订单状态、状态历史和审计必须在同一 Serializable 事务内成功或回滚。
 - `PATCH /v1/admin/orders/:id/assignment` 使用预期旧负责人和预期更新时间防止覆盖，并在同一事务记录审计。
 - `POST /v1/admin/orders/:id/reveal-contact` 要求 `contacts.reveal`、最近认证和业务原因，响应使用 `Cache-Control: no-store`；明文不得进入列表、审计差异、日志或通用前端缓存。
-- 当前取消和预留到期不会自动返还库存；返库时点与付款后取消策略属于未决业务规则，确认前不得由后台状态按钮暗中执行。
+- 新版本创建且真实扣过有限库存的订单会保存 `inventoryReserved`。到期且仍为 `MANUAL_PENDING` 的订单在下一次商品、下单、工作台或订单访问前通过条件更新取消，并在同一 Serializable 事务写入 `inventoryReleasedAt`、返还一件库存、状态历史和 `order.reservation.expired` 审计；并发扫描只有一个能成功。
+- 历史订单迁移默认 `inventoryReserved = false`，不会推断或返还历史库存。`CONTACTED` 及后续状态不自动到期取消；管理员通过合法状态机人工转为 `CANCELLED` 时，只有尚未释放的真实预留可以在同一事务返还一次。`PAYMENT_PROCESSING`、付款、履约、售后和争议状态没有任何自动资金或库存动作。
 - 当前 `PAID`、`REFUNDED` 与 `DISPUTED` 是人工内部记录，不包含支付商回执、退款流水或独立争议案件。
 
 ### 人工售后订单视图

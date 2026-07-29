@@ -18,6 +18,7 @@ import type { AdminActor } from "../common/admin-actor.js";
 import { Prisma } from "../generated/prisma/client.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { ContactProtectionService } from "./contact-protection.service.js";
+import { OrderReservationService } from "./order-reservation.service.js";
 import type {
   AdminOrderListQueryDto,
   AssignAdminOrderDto,
@@ -164,9 +165,11 @@ export class OrdersAdminService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly contacts: ContactProtectionService,
+    private readonly reservations: OrderReservationService,
   ) {}
 
   async list(query: AdminOrderListQueryDto) {
+    await this.reservations.reconcileExpired();
     const search = query.search?.trim();
     if (
       query.scope === "AFTER_SALES"
@@ -249,6 +252,7 @@ export class OrdersAdminService {
   }
 
   async detail(id: string): Promise<AdminOrderDetail> {
+    await this.reservations.reconcileExpired();
     return this.loadDetail(this.prisma, id);
   }
 
@@ -257,12 +261,16 @@ export class OrdersAdminService {
     input: UpdateAdminOrderStatusDto,
     actor: AdminActor,
   ): Promise<AdminOrderDetail> {
+    await this.reservations.reconcileExpired();
     return this.prisma.$transaction(async (transaction) => {
       const current = await transaction.order.findUnique({
         where: { id },
         select: {
           id: true,
           status: true,
+          productId: true,
+          inventoryReserved: true,
+          inventoryReleasedAt: true,
           updatedAt: true,
         },
       });
@@ -280,19 +288,38 @@ export class OrdersAdminService {
         );
       }
 
+      const shouldReleaseInventory = input.status === "CANCELLED"
+        && current.inventoryReserved
+        && current.inventoryReleasedAt === null;
+      const inventoryReleasedAt = shouldReleaseInventory ? new Date() : undefined;
       const updated = await transaction.order.updateMany({
         where: {
           id,
           status: input.expectedStatus,
           updatedAt: expectedUpdatedAt,
+          ...(shouldReleaseInventory ? { inventoryReleasedAt: null } : {}),
         },
         data: {
           status: input.status,
+          inventoryReleasedAt,
         },
       });
       if (updated.count !== 1) {
         throw new ConflictException("Order changed. Reload the latest order before saving.");
       }
+      const stockUpdate = shouldReleaseInventory
+        ? await transaction.product.updateMany({
+            where: {
+              id: current.productId,
+              stockMode: "FINITE",
+              stockQuantity: { not: null },
+            },
+            data: {
+              stockQuantity: { increment: 1 },
+              version: { increment: 1 },
+            },
+          })
+        : { count: 0 };
       await transaction.orderStatusHistory.create({
         data: {
           orderId: id,
@@ -313,6 +340,12 @@ export class OrdersAdminService {
         afterData: {
           status: input.status,
           externalActionVerified: false,
+          ...(input.status === "CANCELLED"
+            ? {
+                inventoryReleased: shouldReleaseInventory,
+                stockRestored: stockUpdate.count === 1,
+              }
+            : {}),
         },
         ...actor,
       }, transaction);
@@ -327,6 +360,7 @@ export class OrdersAdminService {
     input: AssignAdminOrderDto,
     actor: AdminActor,
   ): Promise<AdminOrderDetail> {
+    await this.reservations.reconcileExpired();
     return this.prisma.$transaction(async (transaction) => {
       const current = await transaction.order.findUnique({
         where: { id },

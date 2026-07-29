@@ -16,6 +16,10 @@ const input = {
   },
 };
 
+const reservations = {
+  reconcileExpired: async () => ({ candidates: 0, cancelled: 0, stockRestored: 0 }),
+};
+
 function orderHarness(
   settingsValue: unknown,
   activeChannel: boolean,
@@ -55,7 +59,11 @@ function orderHarness(
     protect: () => ({ encrypted: "encrypted", hash: "hash", masked: "***" }),
   };
   return {
-    service: new OrdersService(prisma as never, contacts as never),
+    service: new OrdersService(
+      prisma as never,
+      contacts as never,
+      reservations as never,
+    ),
     productReads: () => productReads,
   };
 }

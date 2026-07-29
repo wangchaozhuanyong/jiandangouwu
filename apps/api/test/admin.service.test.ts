@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { AdminService } from "../src/admin/admin.service.js";
 
+const reservations = {
+  reconcileExpired: async () => ({ candidates: 0, cancelled: 0, stockRestored: 0 }),
+};
+
 test("product listing applies one deterministic server filter to count and page queries", async () => {
   let countQuery: Record<string, unknown> | null = null;
   let findManyQuery: Record<string, unknown> | null = null;
@@ -56,6 +60,7 @@ test("product listing applies one deterministic server filter to count and page 
   const service = new AdminService(
     prisma as never,
     { record: async () => undefined } as never,
+    reservations as never,
   );
 
   const result = await service.products({
@@ -128,7 +133,11 @@ test("audit listing projects an explicit frontend-safe field allowlist", async (
     },
     $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations),
   };
-  const service = new AdminService(prisma as never, { record: async () => undefined } as never);
+  const service = new AdminService(
+    prisma as never,
+    { record: async () => undefined } as never,
+    reservations as never,
+  );
 
   const result = await service.auditEvents({
     page: 2,

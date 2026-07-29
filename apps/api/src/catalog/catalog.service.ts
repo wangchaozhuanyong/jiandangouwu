@@ -8,6 +8,7 @@ import type {
   StorefrontConfig,
 } from "@cloudbridge/contracts";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { OrderReservationService } from "../orders/order-reservation.service.js";
 import { SettingsService } from "../settings/settings.service.js";
 import type { CatalogQueryDto, LocaleQueryDto } from "./catalog.dto.js";
 
@@ -19,6 +20,7 @@ export class CatalogService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
+    private readonly reservations: OrderReservationService,
   ) {}
 
   private async getRate(currency: string) {
@@ -113,6 +115,7 @@ export class CatalogService {
   }
 
   async products(query: CatalogQueryDto): Promise<{ data: ProductSummary[]; meta: PageMeta }> {
+    await this.reservations.reconcileExpired();
     const locale = query.locale as Locale;
     const normalized = query.search ? normalizeSearch(query.search) : undefined;
     const where = {
@@ -164,6 +167,7 @@ export class CatalogService {
   }
 
   async product(slug: string, query: LocaleQueryDto): Promise<ProductDetail> {
+    await this.reservations.reconcileExpired();
     const locale = query.locale as Locale;
     const product = await this.prisma.product.findFirst({
       where: { slug, status: "ACTIVE" },
