@@ -143,10 +143,11 @@ test("正式后台页面按路由懒加载并使用三十秒会话缓存", () =>
     assert.match(app, new RegExp(`lazy\\(\\(\\) => import\\("\\./pages/${page}-page"\\)\\)`, "u"));
   }
   assert.match(app, /lazy\(\(\) => import\("\.\/pages\/audit-page"\)\)/u);
-  assert.match(app, /lazy\(\(\) => import\("\.\/pages\/design-preview-page"\)\)/u);
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/integrations\/integration-readiness-page"\)\)/u);
+  assert.doesNotMatch(app, /design-preview-page|DesignPreviewPage/u);
   assert.match(app, /window\.history\[[^\]]+\]\(\{ page: next \}, "", pagePath\(next\)\)/u);
   assert.match(app, /popstate/u);
-  assert.match(read("apps/admin/src/styles.css"), /@media \(max-width: 440px\)[\s\S]*?\.design-dashboard-queue \.panel-heading \{ align-items: stretch; flex-direction: column; \}/u);
+  assert.match(read("apps/admin/src/styles.css"), /@media \(max-width: 440px\)[\s\S]*?\.dashboard-boundary-panel \.panel-heading \{ align-items: stretch; flex-direction: column; \}/u);
   assert.match(model, /if \(candidate === "audit"\) return "logs"/u);
   assert.match(model, /cacheTtlMs:\s*30_000/u);
   assert.match(experience, /resourceCache/u);
@@ -198,29 +199,18 @@ test("正式后台使用可展开的任务分组并自动定位当前二级入�
   assert.match(css, /\.admin-nav-child\s*\{\s*min-height:\s*44px;/u);
 });
 
-test("正式后台完整设计24个页面并明确区分设计预览与真实功能", () => {
+test("正式后台24个页面均为真实或明确受限页面且不再保留独立设计预览", () => {
   const model = read("apps/admin/src/admin-model.ts");
-  const preview = read("apps/admin/src/pages/design-preview-page.tsx");
-  const css = read("apps/admin/src/styles.css");
+  const app = read("apps/admin/src/App.tsx");
   const pagesBlock = model.match(/export const ADMIN_PAGES:[\s\S]*?= \[([\s\S]*?)\];/u)?.[1] ?? "";
   const pageIds = [...pagesBlock.matchAll(/"([^"]+)"/gu)].map((match) => match[1]);
-  const designPages = [
-    "media", "translations", "notifications",
-    "reconciliation", "team", "roles", "security-events",
-    "data-security", "secrets", "backups", "integrations",
-  ];
 
   assert.equal(pageIds.length, 24);
   assert.equal(new Set(pageIds).size, 24);
-  designPages.forEach((page) => assert.match(preview, new RegExp(`page === "${page}"`, "u")));
-  for (const realPage of ["banners", "contacts", "settings"]) {
-    assert.doesNotMatch(preview, new RegExp(`page === "${realPage}"`, "u"));
-  }
-  assert.match(preview, /界面设计预览/u);
-  assert.match(preview, /暂不修改服务器数据/u);
-  assert.doesNotMatch(preview, /\bfetch\(|from "\.\.\/api".*get[A-Z]/u);
-  assert.match(css, /\.design-preview-note/u);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.design-settings-layout\s*\{\s*grid-template-columns:\s*1fr;/u);
+  assert.equal(existsSync(new URL("../apps/admin/src/pages/design-preview-page.tsx", import.meta.url)), false);
+  assert.doesNotMatch(app, /design-preview-page|DesignPreviewPage/u);
+  assert.match(app, /page === "integrations"[\s\S]*?<IntegrationReadinessPage/u);
+  assert.match(app, /const unhandledPage:\s*never = page/u);
 });
 
 test("遗留客户端移动端下单弹窗保持水平居中和对称安全边距", () => {

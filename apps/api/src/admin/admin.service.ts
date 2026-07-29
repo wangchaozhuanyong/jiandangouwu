@@ -375,8 +375,23 @@ export class AdminService {
       this.prisma.auditEvent.findMany({
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
-        orderBy: { createdAt: "desc" },
-        include: { actor: { select: { displayName: true, email: true } } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          requestId: true,
+          action: true,
+          targetType: true,
+          targetId: true,
+          result: true,
+          reason: true,
+          createdAt: true,
+          actor: {
+            select: {
+              displayName: true,
+              email: true,
+            },
+          },
+        },
       }),
     ]);
     return {

@@ -225,6 +225,77 @@ export const permissionSeeds = [
   "settings.write",
 ] as const;
 
+export const roleSeeds = [
+  {
+    key: "SUPER_ADMIN",
+    nameZh: "超级管理员",
+    nameEn: "Super admin",
+    description: "Full CloudBridge administration access",
+    permissions: [...permissionSeeds],
+    systemProtected: true,
+  },
+  {
+    key: "OPERATIONS_MANAGER",
+    nameZh: "运营管理员",
+    nameEn: "Operations manager",
+    description: "Catalog, content, orders, support, settings, and audit operations",
+    permissions: [
+      "catalog.read",
+      "catalog.write",
+      "orders.read",
+      "orders.write",
+      "contacts.reveal",
+      "currencies.write",
+      "audit.read",
+      "content.read",
+      "content.write",
+      "support.read",
+      "support.write",
+      "settings.read",
+      "settings.write",
+    ],
+    systemProtected: false,
+  },
+  {
+    key: "ORDER_SUPPORT",
+    nameZh: "订单客服",
+    nameEn: "Order support",
+    description: "Order handling and controlled contact access",
+    permissions: [
+      "orders.read",
+      "orders.write",
+      "contacts.reveal",
+      "support.read",
+    ],
+    systemProtected: false,
+  },
+  {
+    key: "CONTENT_EDITOR",
+    nameZh: "内容编辑",
+    nameEn: "Content editor",
+    description: "Catalog, hero, and bilingual storefront content",
+    permissions: [
+      "catalog.read",
+      "catalog.write",
+      "content.read",
+      "content.write",
+      "settings.read",
+    ],
+    systemProtected: false,
+  },
+  {
+    key: "FINANCE_REVIEWER",
+    nameZh: "财务审核",
+    nameEn: "Finance reviewer",
+    description: "Read-only order payment history and audit evidence",
+    permissions: [
+      "orders.read",
+      "audit.read",
+    ],
+    systemProtected: false,
+  },
+] as const;
+
 export const storefrontSettingsSeed = {
   siteName: {
     zh: "云桥",

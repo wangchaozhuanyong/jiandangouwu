@@ -7,6 +7,7 @@ import {
   merchantChannelSeeds,
   permissionSeeds,
   productSeeds,
+  roleSeeds,
   storefrontSettingsSeedForPolicy,
 } from "./seed-data.js";
 
@@ -183,38 +184,50 @@ async function seed(): Promise<void> {
     });
   }
 
-  const role = await prisma.role.upsert({
-    where: { key: "SUPER_ADMIN" },
-    update: {
-      nameZh: "超级管理员",
-      nameEn: "Super admin",
-    },
-    create: {
-      key: "SUPER_ADMIN",
-      nameZh: "超级管理员",
-      nameEn: "Super admin",
-      description: "Full CloudBridge administration access",
-    },
-  });
+  const permissions = new Map<string, string>();
   for (const key of permissionSeeds) {
     const permission = await prisma.permission.upsert({
       where: { key },
       update: {},
       create: { key },
     });
-    await prisma.rolePermission.upsert({
-      where: {
-        roleId_permissionId: {
-          roleId: role.id,
-          permissionId: permission.id,
-        },
+    permissions.set(key, permission.id);
+  }
+  for (const roleSeed of roleSeeds) {
+    const existing = await prisma.role.findUnique({ where: { key: roleSeed.key } });
+    const role = await prisma.role.upsert({
+      where: { key: roleSeed.key },
+      update: {
+        nameZh: roleSeed.nameZh,
+        nameEn: roleSeed.nameEn,
+        description: roleSeed.description,
       },
-      update: {},
       create: {
-        roleId: role.id,
-        permissionId: permission.id,
+        key: roleSeed.key,
+        nameZh: roleSeed.nameZh,
+        nameEn: roleSeed.nameEn,
+        description: roleSeed.description,
       },
     });
+    if (!existing || roleSeed.systemProtected) {
+      for (const key of roleSeed.permissions) {
+        const permissionId = permissions.get(key);
+        if (!permissionId) throw new Error(`Missing permission ${key}`);
+        await prisma.rolePermission.upsert({
+          where: {
+            roleId_permissionId: {
+              roleId: role.id,
+              permissionId,
+            },
+          },
+          update: {},
+          create: {
+            roleId: role.id,
+            permissionId,
+          },
+        });
+      }
+    }
   }
 
   const policySetting = await prisma.siteSetting.upsert({

@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+const readOptional = (file) => (
+  existsSync(new URL(`../${file}`, import.meta.url)) ? read(file) : ""
+);
 
-test("正式后台的24个页面都具备完整流程设计或专属设计入口", () => {
+test("正式后台的24个页面都使用真实或明确受限的专属页面", () => {
   const workflows = read("apps/admin/src/design-workflows.tsx");
-  const preview = read("apps/admin/src/pages/design-preview-page.tsx");
   const app = read("apps/admin/src/App.tsx");
   const dashboard = read("apps/admin/src/pages/dashboard-page.tsx");
   const orders = read("apps/admin/src/pages/orders-page.tsx");
@@ -15,28 +17,371 @@ test("正式后台的24个页面都具备完整流程设计或专属设计入口
   const currencies = read("apps/admin/src/pages/currencies-page.tsx");
   const security = read("apps/admin/src/pages/security-page.tsx");
   const audit = read("apps/admin/src/pages/audit-page.tsx");
+  const securityEvents = read("apps/admin/src/features/security-events/security-events-page.tsx");
+  const media = read("apps/admin/src/features/media/media-page.tsx");
+  const notifications = read("apps/admin/src/features/notifications/notifications-page.tsx");
+  const reconciliation = read("apps/admin/src/features/finance/reconciliation-page.tsx");
+  const dataSecurity = read("apps/admin/src/features/data-security/data-security-page.tsx");
+  const secrets = read("apps/admin/src/features/secrets/secrets-readiness-page.tsx");
+  const backups = read("apps/admin/src/features/backups/backup-readiness-page.tsx");
+  const integrations = read("apps/admin/src/features/integrations/integration-readiness-page.tsx");
 
-  for (const id of [
-    "disputes", "media", "translations", "notifications",
-    "telegram-bot", "payments", "reconciliation", "team", "roles", "security-events",
-    "data-security", "secrets", "backups", "integrations",
-  ]) {
-    assert.match(workflows, new RegExp(`(?:^|\\n)\\s*(?:["']${id}["']|${id}):\\s*workflow\\(`, "u"), `${id} should define a complete workflow`);
-  }
-
-  assert.match(preview, /<DesignWorkflowDialog/u);
-  assert.match(app, /id="account-center"/u);
-  assert.match(dashboard, /id="dashboard-insights"/u);
+  assert.equal(existsSync(new URL("../apps/admin/src/pages/design-preview-page.tsx", import.meta.url)), false);
+  assert.doesNotMatch(app, /DesignPreviewPage|design-preview-page/u);
+  assert.match(app, /<AccountCenterDialog/u);
+  assert.match(app, /ChatGPT 管理登录/u);
+  assert.match(dashboard, /buildDashboardSnapshot/u);
+  assert.match(dashboard, /NOT_COLLECTED/u);
+  assert.doesNotMatch(dashboard, /DesignWorkflowDialog|dashboard-insights|Operations alert design|运营提醒设计/u);
   assert.match(orders, /<OrderDetailDialog/u);
   assert.doesNotMatch(orders, /DesignWorkflowDialog|order-workbench|design-preview-note/u);
-  assert.match(products, /id="inventory-center"/u);
-  assert.match(categories, /id="categories"/u);
-  assert.match(currencies, /id="currencies"/u);
+  assert.match(products, /buildProductImpact/u);
+  assert.match(products, /canWrite/u);
+  assert.doesNotMatch(products, /DesignWorkflowDialog|inventory-center|Inventory and publishing design|库存与发布设计/u);
+  assert.match(app, /<ProductsPage[\s\S]*?permissions\.includes\("catalog\.write"\)/u);
+  assert.match(categories, /buildCategoryImpact/u);
+  assert.match(categories, /canWrite/u);
+  assert.match(app, /<CategoriesPage[\s\S]*?permissions\.includes\("catalog\.write"\)/u);
+  assert.match(categories, /不会自动隐藏、移动或删除关联商品/u);
+  assert.doesNotMatch(categories, /DesignWorkflowDialog|id="categories"|影响与排序设计|Impact and ordering design/u);
+  assert.match(currencies, /getCurrencyRateHistory/u);
+  assert.doesNotMatch(currencies, /DesignWorkflowDialog|id="currencies"/u);
   assert.match(security, /id="security"/u);
-  assert.match(audit, /id="logs"/u);
+  assert.match(audit, /getAuditPage/u);
+  assert.doesNotMatch(audit, /DesignWorkflowDialog|design-preview-note|id="logs"/u);
   assert.match(app, /page === "banners"[\s\S]*?<BannersPage/u);
   assert.match(app, /page === "contacts"[\s\S]*?<ContactsPage/u);
   assert.match(app, /page === "settings"[\s\S]*?<SettingsPage/u);
+  assert.match(app, /page === "team"[\s\S]*?<TeamPage/u);
+  assert.match(app, /page === "roles"[\s\S]*?<RolesPage/u);
+  assert.match(app, /page === "translations"[\s\S]*?<TranslationsPage/u);
+  assert.match(app, /page === "security-events"[\s\S]*?<SecurityEventsPage/u);
+  assert.match(app, /page === "media"[\s\S]*?<MediaPage/u);
+  assert.match(app, /page === "notifications"[\s\S]*?<NotificationsPage/u);
+  assert.match(app, /page === "reconciliation"[\s\S]*?<ReconciliationPage/u);
+  assert.match(app, /page === "data-security"[\s\S]*?<DataSecurityPage/u);
+  assert.match(app, /page === "secrets"[\s\S]*?<SecretsReadinessPage/u);
+  assert.match(app, /page === "backups"[\s\S]*?<BackupReadinessPage/u);
+  assert.match(app, /page === "integrations"[\s\S]*?<IntegrationReadinessPage/u);
+  assert.match(securityEvents, /getAudit/u);
+  assert.match(media, /getAllProducts/u);
+  assert.match(media, /getHeroes/u);
+  assert.match(notifications, /getTelegramNewOrderSettings/u);
+  assert.match(reconciliation, /getAllManualPaymentEvents/u);
+  assert.match(dataSecurity, /getAudit/u);
+  assert.match(secrets, /buildSecretReadiness/u);
+  assert.match(backups, /buildBackupReadiness/u);
+  assert.match(integrations, /buildIntegrationReadiness/u);
+  for (const stalePage of ["disputes", "payments", "reconciliation", "telegram-bot", "security-events", "media", "notifications", "data-security", "secrets", "backups", "integrations", "logs", "order-workbench", "dashboard-insights", "categories"]) {
+    assert.doesNotMatch(
+      workflows,
+      new RegExp(`(?:^|\\n)\\s*(?:["']${stalePage}["']|${stalePage}):\\s*workflow\\(`, "u"),
+      `${stalePage} should not keep an unreachable preview workflow`,
+    );
+  }
+});
+
+test("审计日志页面读取真实分页元数据并只展示安全白名单字段", () => {
+  const page = read("apps/admin/src/pages/audit-page.tsx");
+  const model = read("apps/admin/src/features/audit/model.ts");
+  const api = read("apps/admin/src/api.ts");
+  const service = read("apps/api/src/admin/admin.service.ts");
+  const css = read("apps/admin/src/styles.css");
+
+  assert.match(page, /useCachedAdminResource<AuditEventPage>\("audit-page"/u);
+  assert.match(page, /当前从平台数据库加载最新/u);
+  assert.match(page, /前后差异、IP 哈希、导出和正式保留策略尚未开放/u);
+  assert.match(page, /<table className="audit-log-table">/u);
+  assert.match(page, /事件 ID[\s\S]*?追踪 ID[\s\S]*?发生时间[\s\S]*?动作/u);
+  assert.match(page, /filterAuditEvents/u);
+  assert.match(page, /<Dialog/u);
+  assert.doesNotMatch(page, /DesignWorkflowDialog|design-preview-note|下载|exportAudit/u);
+  assert.match(model, /auditActionLabel/u);
+  assert.match(model, /auditTargetTypes/u);
+  assert.match(api, /export const getAuditPage/u);
+  assert.match(api, /Audit pagination metadata failed the runtime contract/u);
+  assert.match(service, /auditEvent\.findMany\(\{[\s\S]*?select:\s*\{[\s\S]*?requestId:\s*true/u);
+  assert.doesNotMatch(service.match(/async auditEvents[\s\S]*?private async saveNewProduct/u)?.[0] ?? "", /include:\s*\{\s*actor/u);
+  assert.match(css, /\.audit-log-table\s*\{[^}]*min-width:\s*1740px;/u);
+  assert.match(css, /\.audit-log-detail-button\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
+  assert.doesNotMatch(css, /\.admin-content\s*\{[^}]*animation:[^;}]*\bboth\b/u);
+});
+
+test("集成就绪中心只读取真实证据并删除旧健康与任务幻象", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const api = read("apps/admin/src/api.ts");
+  const page = read("apps/admin/src/features/integrations/integration-readiness-page.tsx");
+  const model = read("apps/admin/src/features/integrations/model.ts");
+  const workflows = read("apps/admin/src/design-workflows.tsx");
+  const css = read("apps/admin/src/styles.css");
+  const health = read("apps/api/src/health/health.controller.ts");
+  const healthContract = read("packages/contracts/src/health.ts");
+  const compose = read("compose.yaml");
+  const session = read("apps/api/src/auth/session.service.ts");
+  const infra = read("infra/lib/cloudbridge-stack.ts");
+
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/integrations\/integration-readiness-page"\)\)/u);
+  assert.match(app, /page === "integrations"[\s\S]*?<IntegrationReadinessPage/u);
+  assert.match(app, /permissions=\{user\.permissions\}/u);
+  assert.match(page, /getHealth\(signal\)/u);
+  assert.match(page, /canReadCurrencies \? getCurrencies\(signal\) : Promise\.resolve\(null\)/u);
+  assert.match(page, /canReadTelegram \? getTelegramNewOrderSettings\(signal\) : Promise\.resolve\(null\)/u);
+  assert.match(page, /一次健康请求不等于全系统健康/u);
+  assert.match(page, /刷新只重新读取现有 GET 接口/u);
+  assert.match(page, /旧预览中的追踪编号、计划时间和成功结果已经删除/u);
+  assert.doesNotMatch(page, /method:\s*"POST"|method:\s*"PUT"|method:\s*"PATCH"|method:\s*"DELETE"|simulateTelegramNewOrder|updateTelegramNewOrderSettings/u);
+  assert.match(api, /request<HealthStatus>\("\/health", \{ signal \}\)/u);
+  assert.match(api, /health\.valkey !== "connected"/u);
+  assert.match(api, /isNonNegativeSafeInteger\(health\.latencyMs\?\.database\)/u);
+  assert.match(api, /isNonNegativeSafeInteger\(health\.latencyMs\?\.valkey\)/u);
+  assert.match(healthContract, /valkey:\s*"connected"/u);
+  assert.match(healthContract, /latencyMs:\s*\{[\s\S]*?database:\s*number;[\s\S]*?valkey:\s*number;/u);
+  assert.match(health, /\$queryRaw`SELECT 1`/u);
+  assert.match(health, /SessionService/u);
+  assert.match(health, /sessions\.assertAvailable\(\)/u);
+  assert.match(health, /Promise\.all/u);
+  assert.match(health, /HEALTH_PROBE_TIMEOUT_MS\s*=\s*1_500/u);
+  assert.match(health, /ServiceUnavailableException/u);
+  assert.doesNotMatch(health, /new Redis/u);
+  assert.match(session, /async assertAvailable\(\): Promise<void>/u);
+  assert.match(session, /this\.redis\.ping\(\)/u);
+  assert.match(page, /API 响应 \+ MySQL SELECT 1 \+ Valkey PING/u);
+  assert.match(model, /healthProbeResultCount:\s*3/u);
+  assert.doesNotMatch(`${page}\n${model}`, /NOT_QUERIED|VALKEY_HEALTH_PROBE/u);
+
+  for (const state of ["RUNTIME_VERIFIED", "IMPLEMENTED_LOCAL", "RESTRICTED", "NOT_CONNECTED", "NOT_DEPLOYED", "NOT_IMPLEMENTED"]) {
+    assert.match(model, new RegExp(state, "u"));
+  }
+  assert.match(model, /activeExternalConnectionCount:\s*0/u);
+  assert.match(model, /implementedBackgroundJobCount:\s*0/u);
+  assert.match(compose, /image:\s*mysql:8\.4/u);
+  assert.match(compose, /image:\s*valkey\/valkey:8-alpine/u);
+  assert.match(session, /new Redis\(redisUrl/u);
+  assert.match(infra, /engine:\s*"valkey"/u);
+  assert.match(infra, /new s3\.Bucket\(this, "AccessLogsBucket"/u);
+  assert.doesNotMatch(`${page}\n${model}\n${workflows}`, /99\.99%|TRACE-CB-JOB|2 个通知等待重试|每 30 分钟同步|3 项正常|每日数据备份/u);
+  assert.doesNotMatch(workflows, /integrations:\s*workflow/u);
+  assert.equal(existsSync(new URL("../apps/admin/src/pages/design-preview-page.tsx", import.meta.url)), false);
+  assert.match(css, /\.integration-readiness-table\s*\{[^}]*min-width:\s*1420px;/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.integration-readiness-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
+  assert.match(css, /\.integration-readiness-table-wrap\s*\{[^}]*overflow-x:\s*auto;/u);
+  assert.match(css, /\.admin-topbar > div:first-of-type\s*\{[^}]*flex:\s*1 1 auto;/u);
+  assert.match(css, /\.admin-language\s*\{[^}]*flex:\s*none;/u);
+  assert.match(css, /@media \(max-width: 340px\)[\s\S]*?\.admin-topbar h1\s*\{[^}]*overflow-wrap:\s*anywhere;/u);
+});
+
+test("备份就绪页只投影仓库定义并明确关闭恢复门禁", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const page = read("apps/admin/src/features/backups/backup-readiness-page.tsx");
+  const model = read("apps/admin/src/features/backups/model.ts");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
+  const workflows = read("apps/admin/src/design-workflows.tsx");
+  const css = read("apps/admin/src/styles.css");
+  const compose = read("compose.yaml");
+  const infra = read("infra/lib/cloudbridge-stack.ts");
+
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/backups\/backup-readiness-page"\)\)/u);
+  assert.match(app, /page === "backups"[\s\S]*?<BackupReadinessPage/u);
+  assert.match(page, /持久化不等于备份，模板定义不等于已经可恢复/u);
+  assert.match(page, /不存在创建快照或开始恢复按钮/u);
+  assert.match(page, /<table className="backup-readiness-table">/u);
+  assert.doesNotMatch(page, /\bfetch\(|method:\s*"POST"|method:\s*"PUT"|method:\s*"PATCH"|method:\s*"DELETE"/u);
+
+  for (const value of ["LOCAL_MYSQL_VOLUME", "LOCAL_VALKEY_VOLUME", "AWS_RDS_AUTOMATED_BACKUP", "AWS_VALKEY_SNAPSHOT"]) {
+    assert.match(model, new RegExp(value, "u"));
+  }
+  for (const state of ["DEFINED_LOCAL_CONFIG", "DEFINED_INFRA", "NOT_A_BACKUP", "NOT_DEPLOYED", "NOT_IMPLEMENTED", "NOT_DEFINED", "NOT_PERFORMED"]) {
+    assert.match(model, new RegExp(state, "u"));
+  }
+  assert.match(compose, /cloudbridge_mysql:\/var\/lib\/mysql/u);
+  assert.match(compose, /cloudbridge_redis:\/data/u);
+  assert.match(compose, /--appendonly",\s*"yes"/u);
+  assert.match(infra, /backupRetention:\s*Duration\.days\(7\)/u);
+  assert.match(infra, /deleteAutomatedBackups:\s*false/u);
+  assert.match(infra, /deletionProtection:\s*true/u);
+  assert.match(infra, /snapshotRetentionLimit:\s*7/u);
+  assert.match(infra, /snapshotWindow:\s*"18:00-19:00"/u);
+
+  assert.doesNotMatch(`${page}\n${model}`, /BKP-|1\.8[149] GB|04:00|30 days|21m 48s|完整备份成功|备份存储正常|全部通过/u);
+  assert.doesNotMatch(preview, /page === "backups"|function BackupsDesign|BKP-/u);
+  assert.doesNotMatch(workflows, /["']?backups["']?\s*:\s*workflow|BKP-/u);
+  assert.match(css, /\.backup-readiness-table\s*\{[^}]*min-width:\s*1500px;/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.backup-readiness-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
+});
+
+test("机密配置页只投影仓库定义并关闭未具备证据的上线门禁", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const page = read("apps/admin/src/features/secrets/secrets-readiness-page.tsx");
+  const model = read("apps/admin/src/features/secrets/model.ts");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
+  const workflows = read("apps/admin/src/design-workflows.tsx");
+  const css = read("apps/admin/src/styles.css");
+  const infra = read("infra/lib/cloudbridge-stack.ts");
+
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/secrets\/secrets-readiness-page"\)\)/u);
+  assert.match(app, /page === "secrets"[\s\S]*?<SecretsReadinessPage/u);
+  assert.match(page, /只展示仓库定义，不读取任何机密值/u);
+  assert.match(page, /不存在新增、查看或轮换按钮/u);
+  assert.match(page, /SHA-256 · NOT_HMAC/u);
+  assert.match(page, /<table className="secrets-readiness-table">/u);
+  assert.doesNotMatch(page, /\bfetch\(|method:\s*"POST"|method:\s*"PUT"|method:\s*"PATCH"|method:\s*"DELETE"/u);
+
+  for (const code of ["DB_HOST", "DB_USER", "DB_PASSWORD", "REDIS_PASSWORD", "SESSION_SECRET", "AUTH_ENCRYPTION_KEY"]) {
+    assert.match(model, new RegExp(code, "u"));
+    assert.match(infra, new RegExp(`${code}:\\s*ecs\\.Secret\\.fromSecretsManager`, "u"));
+  }
+  for (const state of ["DEFINED_INFRA", "NOT_DEPLOYED", "NOT_IMPLEMENTED", "NOT_DEFINED"]) {
+    assert.match(model, new RegExp(state, "u"));
+  }
+  for (const fabricatedCode of ["STRIPE_SIGNING_SECRET", "DATABASE_APP_PASSWORD", "CONTACT_ENCRYPTION_KEY", "TELEGRAM_BOT_TOKEN"]) {
+    assert.doesNotMatch(`${page}\n${model}`, new RegExp(fabricatedCode, "u"));
+  }
+  assert.doesNotMatch(`${page}\n${model}`, /••••|14 天|32 天|71 天|rotateSecret|createSecret/u);
+  assert.doesNotMatch(preview, /page === "secrets"|function SecretsDesign/u);
+  assert.doesNotMatch(workflows, /["']?secrets["']?\s*:\s*workflow/u);
+  assert.match(css, /\.secrets-readiness-table\s*\{[^}]*min-width:\s*1340px;/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.secrets-readiness-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
+});
+
+test("数据安全中心只读取当前会话与安全审计并明确治理缺口", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const page = read("apps/admin/src/features/data-security/data-security-page.tsx");
+  const model = read("apps/admin/src/features/data-security/model.ts");
+  const api = read("apps/admin/src/api.ts");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
+  const workflows = read("apps/admin/src/design-workflows.tsx");
+  const css = read("apps/admin/src/styles.css");
+
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/data-security\/data-security-page"\)\)/u);
+  assert.match(app, /page === "data-security"[\s\S]*?<DataSecurityPage/u);
+  assert.match(page, /user\.permissions\.includes\("audit\.read"\)/u);
+  assert.match(page, /canReadAudit\s*\?\s*getAudit\(signal\)/u);
+  assert.match(api, /\/admin\/audit\?page=1&pageSize=100/u);
+  assert.match(page, /当前是代码控制与运行证据，不是合规认证/u);
+  assert.match(page, /不会扫描、移动或删除数据/u);
+  assert.match(page, /<table className="data-security-audit-table">/u);
+  assert.doesNotMatch(page, /method:\s*"POST"|method:\s*"PUT"|method:\s*"PATCH"|method:\s*"DELETE"/u);
+
+  for (const state of ["IMPLEMENTED_CODE", "NOT_DEFINED", "NOT_IMPLEMENTED", "NOT_CONNECTED"]) {
+    assert.match(model, new RegExp(state, "u"));
+  }
+  for (const code of ["CONTACT_PROTECTION", "SERVER_SESSION", "DATABASE_RBAC", "AUDIT_RECORDING"]) {
+    assert.match(model, new RegExp(code, "u"));
+  }
+  assert.match(model, /visibleAuditEvents = canReadAudit \? auditEvents : null/u);
+  assert.doesNotMatch(page, /30 天|365 天|90 天|设备数据|运行日志|不可篡改|执行策略检查/u);
+  assert.doesNotMatch(preview, /page === "data-security"|function DataSecurityDesign/u);
+  assert.doesNotMatch(workflows, /["']?data-security["']?\s*:\s*workflow/u);
+  assert.match(css, /\.data-security-audit-table\s*\{[^}]*min-width:\s*1320px;/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.data-security-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
+});
+
+test("对账中心只读取内部人工状态并明确外部证据未采集", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const page = read("apps/admin/src/features/finance/reconciliation-page.tsx");
+  const model = read("apps/admin/src/features/finance/reconciliation-model.ts");
+  const api = read("apps/admin/src/features/finance/api.ts");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
+  const workflows = read("apps/admin/src/design-workflows.tsx");
+  const css = read("apps/admin/src/styles.css");
+
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/finance\/reconciliation-page"\)\)/u);
+  assert.match(app, /page === "reconciliation"[\s\S]*?<ReconciliationPage/u);
+  assert.match(app, /canRead=\{user\.permissions\.includes\("orders\.read"\)\}/u);
+  assert.match(page, /canRead\s*\?\s*getAllManualPaymentEvents\(signal\)/u);
+  assert.match(page, /manual-payment-events:reconciliation-all/u);
+  assert.match(page, /这些数据是未采集，不是零/u);
+  assert.match(page, /onOpenPayments/u);
+  assert.match(page, /<table className="reconciliation-record-table">/u);
+  assert.doesNotMatch(page, /Stripe|结算总额|差异金额|导出对账|method:\s*"POST"|method:\s*"PUT"|method:\s*"PATCH"|method:\s*"DELETE"/u);
+
+  assert.match(api, /getAllManualPaymentEvents/u);
+  assert.match(api, /pageSize:\s*100/u);
+  assert.match(api, /\} while \(page <= pageCount\)/u);
+  assert.match(model, /NOT_COLLECTED/u);
+  assert.match(model, /NOT_IMPLEMENTED/u);
+  assert.match(model, /event\.externalActionVerified !== false/u);
+  assert.doesNotMatch(model, /totalAmount|settledAmount|variance/u);
+
+  assert.doesNotMatch(preview, /page === "reconciliation"|function ReconciliationDesign|Stripe/u);
+  assert.doesNotMatch(workflows, /reconciliation:\s*workflow/u);
+  assert.match(css, /\.reconciliation-record-table\s*\{[^}]*min-width:\s*1120px;/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.reconciliation-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
+});
+
+test("通知中心只读取真实未连接状态且不伪造投递记录", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const page = read("apps/admin/src/features/notifications/notifications-page.tsx");
+  const model = read("apps/admin/src/features/notifications/model.ts");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
+  const workflows = read("apps/admin/src/design-workflows.tsx");
+  const css = read("apps/admin/src/styles.css");
+
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/notifications\/notifications-page"\)\)/u);
+  assert.match(app, /page === "notifications"[\s\S]*?<NotificationsPage/u);
+  assert.match(app, /canRead=\{user\.permissions\.includes\("settings\.read"\)\}/u);
+  assert.match(page, /canRead\s*\?\s*getTelegramNewOrderSettings\(signal\)/u);
+  assert.match(page, /"telegram-new-order-settings"/u);
+  assert.match(model, /NOT_COLLECTED/u);
+  assert.match(page, /这些数据是未采集，不是零/u);
+  assert.match(page, /onOpenTelegram/u);
+  assert.doesNotMatch(page, /simulateTelegramNewOrder|updateTelegramNewOrderSettings|method:\s*"POST"|method:\s*"PUT"/u);
+  assert.doesNotMatch(page, /未读 2|新订单等待领取|邮件通知发送失败|法币汇率更新完成|TRACE-CB-NTF/u);
+  assert.match(model, /DELIVERY_EVENT_STORE/u);
+  assert.match(model, /RETRY_QUEUE/u);
+  assert.match(model, /state:\s*"NOT_IMPLEMENTED"/u);
+  assert.doesNotMatch(preview, /page === "notifications"|function NotificationsDesign|TRACE-CB-NTF/u);
+  assert.doesNotMatch(workflows, /notifications:\s*workflow/u);
+  assert.match(css, /\.notification-toolbar button\s*\{[^}]*white-space:\s*nowrap;/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.notification-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
+});
+
+test("媒体页只聚合真实图片引用并明确排除未实现的存储操作", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const page = read("apps/admin/src/features/media/media-page.tsx");
+  const model = read("apps/admin/src/features/media/model.ts");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
+  const workflows = read("apps/admin/src/design-workflows.tsx");
+  const css = read("apps/admin/src/styles.css");
+
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/media\/media-page"\)\)/u);
+  assert.match(app, /page === "media"[\s\S]*?<MediaPage/u);
+  assert.match(page, /permissions\.includes\("catalog\.read"\)/u);
+  assert.match(page, /permissions\.includes\("content\.read"\)/u);
+  assert.match(page, /getAllProducts\(signal\)/u);
+  assert.match(page, /getHeroes\(signal\)/u);
+  assert.match(read("apps/admin/src/api.ts"), /do \{[\s\S]*?pageSize=100[\s\S]*?pageCount[\s\S]*?\} while \(page <= pageCount\)/u);
+  assert.match(page, /不是磁盘或对象存储的完整扫描/u);
+  assert.match(page, /不会上传、替换或删除图片/u);
+  assert.doesNotMatch(page, /createProduct|updateProduct|createHero|updateHero|fetch\(/u);
+  assert.match(model, /localRasterAsset/u);
+  assert.match(model, /referencesByPath/u);
+  assert.doesNotMatch(preview, /page === "media"|function MediaDesign|mediaAssets/u);
+  assert.doesNotMatch(workflows, /media:\s*workflow/u);
+  assert.match(css, /\.media-detail-button\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
+  assert.match(css, /\.media-reference-scroll\s*\{[^}]*overflow-x:\s*auto;/u);
+});
+
+test("安全事件页面只投影真实审计信号且不伪造威胁检测结论", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const page = read("apps/admin/src/features/security-events/security-events-page.tsx");
+  const model = read("apps/admin/src/features/security-events/model.ts");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
+  const css = read("apps/admin/src/styles.css");
+
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/security-events\/security-events-page"\)\)/u);
+  assert.match(app, /page === "security-events"[\s\S]*?<SecurityEventsPage/u);
+  assert.match(page, /useCachedAdminResource<AuditEvent\[\]>\("audit"/u);
+  assert.match(page, /最近 100 条审计记录/u);
+  assert.match(page, /不代表已经接入威胁检测、SIEM、自动告警、账号锁定或会话撤销/u);
+  assert.doesNotMatch(page, /安全评分|实时风险事件|已阻止行为/u);
+  assert.match(model, /event\.result !== "DENIED"/u);
+  assert.match(model, /securityActionProfiles/u);
+  assert.doesNotMatch(preview, /page === "security-events"|SecurityEventsDesign/u);
+  assert.match(page, /事件 ID[\s\S]*?追踪 ID[\s\S]*?发生时间/u);
+  assert.match(page, /event\.requestId/u);
+  assert.match(css, /\.security-event-table\s*\{[^}]*min-width:\s*1750px;/u);
+  assert.match(css, /\.security-event-detail-button\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
 });
 
 test("设计工作流覆盖主流程与恢复状态且不产生服务器写入", () => {

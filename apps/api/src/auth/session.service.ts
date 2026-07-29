@@ -47,6 +47,10 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     await this.redis.connect();
+    await this.assertAvailable();
+  }
+
+  async assertAvailable(): Promise<void> {
     const pong = await this.redis.ping();
     if (pong !== "PONG") throw new InternalServerErrorException("Session store is unavailable.");
   }

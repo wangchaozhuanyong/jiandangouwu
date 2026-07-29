@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { Reflector } from "@nestjs/core";
 import { timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
+import { PrismaService } from "../prisma/prisma.service.js";
 import { PERMISSIONS_KEY, PUBLIC_ADMIN_KEY } from "./auth.decorators.js";
 import { SessionService } from "./session.service.js";
 
@@ -12,6 +13,7 @@ export class AdminSessionGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly sessions: SessionService,
     private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -25,6 +27,40 @@ export class AdminSessionGuard implements CanActivate {
     const token = request.cookies?.[cookieName] as string | undefined;
     const session = token ? await this.sessions.get(token) : null;
     if (!session) throw new UnauthorizedException("Admin session is required.");
+    const currentUser = await this.prisma.adminUser.findUnique({
+      where: { id: session.userId },
+      select: {
+        status: true,
+        roles: {
+          select: {
+            role: {
+              select: {
+                permissions: {
+                  select: {
+                    permission: {
+                      select: { key: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!currentUser || currentUser.status !== "ACTIVE") {
+      if (token) await this.sessions.destroy(token);
+      throw new UnauthorizedException("Admin account is not active.");
+    }
+    const currentPermissions = [...new Set(currentUser.roles.flatMap(({ role }) =>
+      role.permissions.map(({ permission }) => permission.key)))].sort();
+    const sessionPermissions = [...new Set(session.permissions)].sort();
+    if (
+      currentPermissions.length !== sessionPermissions.length
+      || currentPermissions.some((permission, index) => permission !== sessionPermissions[index])
+    ) {
+      await this.sessions.synchronizePermissions(token!, currentPermissions);
+    }
 
     if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
       const csrf = request.header("x-csrf-token") ?? "";
@@ -46,7 +82,7 @@ export class AdminSessionGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]) ?? [];
-    const permissions = new Set(session.permissions);
+    const permissions = new Set(currentPermissions);
     if (required.some((permission) => !permissions.has(permission))) {
       throw new ForbiddenException("Permission is required.");
     }

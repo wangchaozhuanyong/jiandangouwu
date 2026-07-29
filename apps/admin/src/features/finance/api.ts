@@ -39,3 +39,26 @@ export const getManualPaymentEvents = async (
     },
   };
 };
+
+export const getAllManualPaymentEvents = async (
+  signal?: AbortSignal,
+): Promise<AdminManualPaymentEvent[]> => {
+  const events = new Map<string, AdminManualPaymentEvent>();
+  let page = 1;
+  let pageCount = 1;
+
+  do {
+    const response = await getManualPaymentEvents({ page, pageSize: 100 }, signal);
+    response.items.forEach((event) => events.set(event.statusHistoryId, event));
+    pageCount = response.meta.pageCount;
+    if (!Number.isSafeInteger(pageCount) || pageCount < 0 || pageCount > 1_000) {
+      throw new Error("Invalid manual payment pagination metadata.");
+    }
+    page += 1;
+  } while (page <= pageCount);
+
+  return [...events.values()].sort((left, right) => {
+    const timeDifference = Date.parse(right.recordedAt) - Date.parse(left.recordedAt);
+    return timeDifference || right.statusHistoryId.localeCompare(left.statusHistoryId);
+  });
+};

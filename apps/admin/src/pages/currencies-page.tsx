@@ -6,8 +6,10 @@ import {
 import { useCallback, useState } from "react";
 import {
   getCurrencies,
+  getCurrencyRateHistory,
   updateRate,
   type AdminCurrency,
+  type AdminCurrencyRate,
   type Locale,
 } from "../api";
 import {
@@ -16,15 +18,22 @@ import {
   useCachedAdminResource,
   useSlowAdminRequest,
 } from "../admin-experience";
-import { DesignWorkflowDialog } from "../design-workflows";
 import {
+  Dialog,
+  formatDate,
   PanelState,
   RefreshNotice,
   StatusPill,
 } from "../admin-ui";
 import { adminCopy } from "../i18n";
 
-export default function CurrenciesPage({ locale }: { locale: Locale }) {
+export default function CurrenciesPage({
+  canWrite,
+  locale,
+}: {
+  canWrite: boolean;
+  locale: Locale;
+}) {
   const t = adminCopy[locale];
   const { notify } = useAdminStatus();
   const loader = useCallback((signal: AbortSignal) => getCurrencies(signal), []);
@@ -35,19 +44,29 @@ export default function CurrenciesPage({ locale }: { locale: Locale }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyCode, setHistoryCode] = useState<string | null>(null);
+  const [history, setHistory] = useState<AdminCurrencyRate[] | null>(null);
+  const [historyError, setHistoryError] = useState("");
+
+  const openHistory = (code: string) => {
+    setHistoryCode(code);
+    setHistory(null);
+    setHistoryError("");
+    void getCurrencyRateHistory(code)
+      .then(setHistory)
+      .catch(() => setHistoryError(locale === "zh" ? "汇率历史加载失败，请重试。" : "Rate history failed to load. Try again."));
+  };
 
   return (
     <>
       <div className="design-preview-note" role="note">
         <Eye size={17} />
         <span>
-          <strong>{locale === "zh" ? "汇率历史与启停设计" : "Rate history and activation design"}</strong>
-          {locale === "zh" ? "现有单笔汇率更新连接本地服务器；历史、过期提醒和币种启停仅为设计预览。" : "Single-rate updates remain locally connected; history, stale-rate alerts, and activation are design previews."}
+          <strong>{locale === "zh" ? "Sites D1 实时汇率" : "Live Sites D1 rates"}</strong>
+          {locale === "zh"
+            ? "当前报价与历史记录均从 Sites 数据库读取；更新会新增一条带生效时间的记录，不会覆盖旧记录。"
+            : "Current quotes and history come from the Sites database. Updating appends a timestamped record without overwriting earlier values."}
         </span>
-        <button className="admin-secondary design-note-action" onClick={() => setHistoryOpen(true)}>
-          {locale === "zh" ? "打开流程" : "Open flow"}
-        </button>
       </div>
       <section className="admin-panel">
         <RefreshNotice state={state} locale={locale} retry={() => void reload()} slow={slow} />
@@ -60,10 +79,19 @@ export default function CurrenciesPage({ locale }: { locale: Locale }) {
               <div className="currency-token"><b>{item.token}</b></div>
               <strong className="currency-code">{item.code}</strong>
               <span className="currency-name" title={item.name[locale]}>{item.name[locale]}</span>
-              <code>1 MYR = {Number(item.rate ?? 0).toFixed(item.digits === 0 ? 2 : 4)}</code>
+              <code>1 MYR = {item.rate ?? "—"}</code>
               <span>{item.digits} {locale === "zh" ? "位小数" : "decimals"}</span>
               <StatusPill status={item.active ? "ACTIVE" : "INACTIVE"} locale={locale} />
-              <button aria-label={`${t.changeRate as string} ${item.code}`} aria-expanded={editing === item.code} onClick={() => { setEditing(item.code); setRate(item.rate ?? ""); setReason(""); }}><CaretRight /></button>
+              <div className="currency-row-actions">
+                <button
+                  aria-label={`${locale === "zh" ? "查看汇率历史" : "View rate history"} ${item.code}`}
+                  onClick={() => openHistory(item.code)}
+                  type="button"
+                ><Eye /></button>
+                {canWrite && (
+                  <button aria-label={`${t.changeRate as string} ${item.code}`} aria-expanded={editing === item.code} onClick={() => { setEditing(item.code); setRate(item.rate ?? ""); setReason(""); }}><CaretRight /></button>
+                )}
+              </div>
               {editing === item.code && (
                 <form className="inline-rate-editor" onSubmit={(event) => {
                   event.preventDefault();
@@ -95,7 +123,38 @@ export default function CurrenciesPage({ locale }: { locale: Locale }) {
           </div>
         )}
       </section>
-      {historyOpen && <DesignWorkflowDialog id="currencies" locale={locale} onClose={() => setHistoryOpen(false)} />}
+      {historyCode && (
+        <Dialog
+          closeLabel={locale === "zh" ? "关闭汇率历史" : "Close rate history"}
+          onClose={() => setHistoryCode(null)}
+          title={`${historyCode} · ${locale === "zh" ? "汇率历史" : "Rate history"}`}
+          wide
+        >
+          <div className="currency-history">
+            {!history && !historyError && <PanelState state="initial-loading" locale={locale} retry={() => undefined} />}
+            {historyError && <p className="table-action-error" role="alert"><WarningCircle />{historyError}</p>}
+            {history && history.length === 0 && <div className="table-empty">{t.empty as string}</div>}
+            {history && history.length > 0 && (
+              <div className="currency-history-table-wrap" tabIndex={0}>
+                <table>
+                  <thead><tr><th>{locale === "zh" ? "换算" : "Pair"}</th><th>{locale === "zh" ? "汇率" : "Rate"}</th><th>{locale === "zh" ? "来源" : "Source"}</th><th>{locale === "zh" ? "生效时间" : "Effective at"}</th><th>{locale === "zh" ? "过期时间" : "Expires at"}</th></tr></thead>
+                  <tbody>
+                    {history.map((entry) => (
+                      <tr key={entry.id}>
+                        <td><code>{entry.fromCode} → {entry.toCode}</code></td>
+                        <td><code>{entry.rate}</code></td>
+                        <td>{entry.source}</td>
+                        <td>{formatDate(entry.effectiveAt, locale)}</td>
+                        <td>{entry.expiresAt ? formatDate(entry.expiresAt, locale) : locale === "zh" ? "未设置" : "Not set"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </Dialog>
+      )}
     </>
   );
 }

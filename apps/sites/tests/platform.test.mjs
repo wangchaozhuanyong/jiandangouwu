@@ -1,0 +1,54 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import test from "node:test";
+
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+
+test("D1 migration creates the production catalog with safe launch defaults", () => {
+  const migration = read("drizzle/0000_salty_fat_cobra.sql");
+  const query = [
+    migration.replaceAll("--> statement-breakpoint", ""),
+    "PRAGMA foreign_key_check;",
+    "SELECT",
+    "  (SELECT COUNT(*) FROM products),",
+    "  (SELECT COUNT(*) FROM categories),",
+    "  (SELECT COUNT(*) FROM currencies),",
+    "  json_extract((SELECT value_json FROM site_settings WHERE key='storefront.settings'),'$.acceptOrders'),",
+    "  (SELECT COUNT(*) FROM merchant_channels WHERE active=1);",
+  ].join("\n");
+  const result = spawnSync("sqlite3", [":memory:"], {
+    encoding: "utf8",
+    input: query,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "8|4|9|0|0");
+});
+
+test("Sites build declares D1 and R2 and ships the migration", () => {
+  const sourceHosting = JSON.parse(read("../../.openai/hosting.json"));
+  const builtHosting = JSON.parse(read("dist/.openai/hosting.json"));
+  assert.equal(sourceHosting.d1, "DB");
+  assert.equal(sourceHosting.r2, "MEDIA");
+  assert.deepEqual(builtHosting, sourceHosting);
+  assert.match(read("dist/.openai/drizzle/0000_salty_fat_cobra.sql"), /CREATE TABLE `orders`/u);
+});
+
+test("Sites admin uses ChatGPT authentication and never enables customer login", () => {
+  const packageJson = read("package.json");
+  const adminRoute = read("app/admin/[[...path]]/page.tsx");
+  const storefrontProvider = read("../storefront/components/experience-provider.tsx");
+  assert.match(packageJson, /VITE_ADMIN_AUTH_PROVIDER=sites/u);
+  assert.match(adminRoute, /requireChatGPTUser/u);
+  assert.doesNotMatch(storefrontProvider, /password|signIn|loginWithPassword/u);
+});
+
+test("Sites runtime contains public, admin, health, D1, and R2 routes", () => {
+  const router = read("server/router.ts");
+  const admin = read("server/admin-api.ts");
+  assert.match(router, /handlePublicApi/u);
+  assert.match(router, /handleAdminApi/u);
+  assert.match(router, /\/media\//u);
+  assert.match(admin, /\/v1\/admin\/sites-readiness/u);
+  assert.match(admin, /valkey: "not_required"/u);
+});
