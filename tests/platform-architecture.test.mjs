@@ -24,6 +24,7 @@ test("主平台技术栈和 MySQL 数据约束保持一致", () => {
   assert.equal(root.dependencies["react-dom"], admin.dependencies["react-dom"]);
   assert.match(root.scripts["prepare:platform"], /build --workspace @cloudbridge\/contracts/u);
   assert.match(root.scripts["prepare:platform"], /db:generate --workspace @cloudbridge\/api/u);
+  assert.match(admin.scripts.pretest, /build --workspace @cloudbridge\/contracts/u);
   assert.match(root.scripts["test:api"], /^npm run prepare:platform &&/u);
   assert.match(root.scripts["typecheck:platform"], /^npm run prepare:platform &&/u);
   assert.match(root.scripts["build:platform"], /^npm run prepare:platform &&/u);

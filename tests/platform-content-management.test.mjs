@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+const readOptional = (file) => (
+  existsSync(new URL(`../${file}`, import.meta.url)) ? read(file) : ""
+);
 
 test("内容、客服和网站设置使用独立 API 领域模块", () => {
   const appModule = read("apps/api/src/app.module.ts");
@@ -50,7 +53,7 @@ test("订单服务在扣库存前执行接单、政策与渠道门禁", () => {
 
 test("三个正式后台页面不再经过设计预览并调用真实接口", () => {
   const app = read("apps/admin/src/App.tsx");
-  const preview = read("apps/admin/src/pages/design-preview-page.tsx");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
   const banners = read("apps/admin/src/features/content/banners-page.tsx");
   const contacts = read("apps/admin/src/features/support/contacts-page.tsx");
   const settings = read("apps/admin/src/features/settings/settings-page.tsx");
@@ -65,6 +68,89 @@ test("三个正式后台页面不再经过设计预览并调用真实接口", ()
   assert.match(contacts, /updateContactChannel\(|reorderContactChannels\(/u);
   assert.match(settings, /updateSiteSettings\(/u);
   assert.doesNotMatch(`${banners}\n${contacts}\n${settings}`, /界面设计预览|Interface design preview/u);
+});
+
+test("团队和角色页面使用真实 MySQL 权限模型与安全写入", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
+  const controller = read("apps/api/src/access/access.controller.ts");
+  const service = read("apps/api/src/access/access.service.ts");
+  const guard = read("apps/api/src/auth/admin-session.guard.ts");
+  const team = read("apps/admin/src/features/access/team-page.tsx");
+  const roles = read("apps/admin/src/features/access/roles-page.tsx");
+  const css = read("apps/admin/src/styles.css");
+
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/access\/team-page"\)\)/u);
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/access\/roles-page"\)\)/u);
+  assert.match(app, /page === "team"[\s\S]*?<TeamPage/u);
+  assert.match(app, /page === "roles"[\s\S]*?<RolesPage/u);
+  for (const page of ["team", "roles"]) {
+    assert.doesNotMatch(preview, new RegExp(`page === "${page}"`, "u"));
+  }
+
+  assert.match(controller, /@Controller\("admin\/access"\)/u);
+  assert.match(controller, /@RequirePermissions\("team\.manage"\)/u);
+  assert.match(controller, /@RequirePermissions\("roles\.manage"\)/u);
+  assert.match(service, /RECENT_AUTH_WINDOW_MS/u);
+  assert.match(service, /Administrators cannot change their own roles/u);
+  assert.match(service, /last active super administrator/u);
+  assert.match(service, /TransactionIsolationLevel\.Serializable/u);
+  assert.match(service, /result:\s*"SUCCEEDED"[\s\S]*?beforeData:[\s\S]*?afterData:/u);
+  assert.match(guard, /currentUser[\s\S]*?currentPermissions/u);
+  assert.match(guard, /synchronizePermissions/u);
+
+  assert.match(team, /getTeamOverview/u);
+  assert.match(team, /updateMemberRoles/u);
+  assert.match(roles, /getRolesOverview/u);
+  assert.match(roles, /updateRolePermissions/u);
+  assert.match(team, /window\.confirm/u);
+  assert.match(roles, /window\.confirm/u);
+  assert.doesNotMatch(`${team}\n${roles}`, /界面设计预览|Interface design preview/u);
+  assert.match(css, /\.team-table \.table-head,\s*\.team-table \.table-row\s*\{[^}]*min-width:\s*1040px;/u);
+  assert.match(css, /\.row-icon-action\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.access-permission-grid\s*\{\s*grid-template-columns:\s*1fr;/u);
+});
+
+test("双语内容工作台聚合现有领域并保持原权限边界", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
+  const workflows = read("apps/admin/src/design-workflows.tsx");
+  const page = read("apps/admin/src/features/translations/translations-page.tsx");
+  const api = read("apps/admin/src/features/translations/api.ts");
+  const sharedApi = read("apps/admin/src/api.ts");
+  const model = read("apps/admin/src/features/translations/model.ts");
+  const css = read("apps/admin/src/styles.css");
+
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/translations\/translations-page"\)\)/u);
+  assert.match(app, /page === "translations"[\s\S]*?<TranslationsPage/u);
+  assert.doesNotMatch(preview, /page === "translations"|function TranslationsDesign/u);
+  assert.doesNotMatch(workflows, /translations:\s*workflow/u);
+
+  for (const permission of [
+    "catalog.read", "content.read", "support.read", "settings.read",
+  ]) {
+    assert.match(page, new RegExp(`"${permission}"`, "u"));
+  }
+  for (const writePermission of [
+    "catalog.write", "content.write", "support.write", "settings.write",
+  ]) {
+    assert.match(model, new RegExp(`allowed\\.has\\("${writePermission}"\\)`, "u"));
+  }
+  for (const owningWrite of [
+    "updateProduct", "updateCategory", "updateHero",
+    "updateContactChannel", "updateSiteSettings",
+  ]) {
+    assert.match(api, new RegExp(`\\b${owningWrite}\\b`, "u"));
+  }
+  assert.match(api, /getAllProducts/u);
+  assert.match(sharedApi, /pageSize=100/u);
+  assert.match(sharedApi, /page <= pageCount/u);
+  assert.match(page, /normalizeTranslationDraft/u);
+  assert.match(page, /requestError instanceof ApiError && requestError\.status === 409/u);
+  assert.match(page, /不跨语言自动回退/u);
+  assert.doesNotMatch(page, /界面设计预览|Interface design preview/u);
+  assert.match(css, /\.translation-workbench\s*\{[^}]*grid-template-columns:/u);
+  assert.match(css, /@media \(max-width: 440px\)[\s\S]*?\.translation-field-pair\s*\{\s*grid-template-columns:\s*1fr;/u);
 });
 
 test("售后处理复用真实订单中心并限制为人工售后状态", () => {
@@ -89,10 +175,13 @@ test("售后处理复用真实订单中心并限制为人工售后状态", () =>
   assert.match(orderApi, /if \(query\.scope\) params\.set\("scope", query\.scope\)/u);
 });
 
-test("人工收款记录是真实只读历史且对账继续保留设计预览", () => {
+test("人工收款与对账准备都使用真实只读内部历史", () => {
   const app = read("apps/admin/src/App.tsx");
-  const preview = read("apps/admin/src/pages/design-preview-page.tsx");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
+  const workflows = read("apps/admin/src/design-workflows.tsx");
   const page = read("apps/admin/src/features/finance/manual-payments-page.tsx");
+  const reconciliation = read("apps/admin/src/features/finance/reconciliation-page.tsx");
+  const reconciliationModel = read("apps/admin/src/features/finance/reconciliation-model.ts");
   const api = read("apps/admin/src/features/finance/api.ts");
   const filters = read("apps/admin/src/features/finance/filters.tsx");
   const table = read("apps/admin/src/features/finance/table.tsx");
@@ -101,7 +190,10 @@ test("人工收款记录是真实只读历史且对账继续保留设计预览",
   assert.match(app, /lazy\(\(\) => import\("\.\/features\/finance\/manual-payments-page"\)\)/u);
   assert.match(app, /page === "payments"[\s\S]*?<ManualPaymentsPage/u);
   assert.match(app, /<ManualPaymentsPage[\s\S]*?permissions\.includes\("contacts\.reveal"\)[\s\S]*?permissions\.includes\("orders\.write"\)/u);
-  assert.match(preview, /page === "reconciliation"[\s\S]*?<ReconciliationDesign/u);
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/finance\/reconciliation-page"\)\)/u);
+  assert.match(app, /page === "reconciliation"[\s\S]*?<ReconciliationPage/u);
+  assert.doesNotMatch(preview, /page === "reconciliation"|ReconciliationDesign/u);
+  assert.doesNotMatch(workflows, /reconciliation:\s*workflow/u);
   assert.match(page, /readManualPaymentQuery\(window\.location\.search\)/u);
   assert.match(page, /<OrderDetailDialog/u);
   assert.match(page, /不是支付流水，不证明款项到账或退款完成/u);
@@ -110,7 +202,14 @@ test("人工收款记录是真实只读历史且对账继续保留设计预览",
 
   assert.match(api, /\/admin\/manual-payment-events\?/u);
   assert.match(api, /request<AdminManualPaymentEvent\[\]>/u);
+  assert.match(api, /getAllManualPaymentEvents/u);
+  assert.match(api, /pageSize:\s*100/u);
+  assert.match(api, /\} while \(page <= pageCount\)/u);
   assert.doesNotMatch(api, /method:|POST|PATCH|PUT|DELETE/u);
+  assert.match(reconciliation, /Only internal manual records exist; this is not external reconciliation/u);
+  assert.match(reconciliation, /No cross-currency total/u);
+  assert.match(reconciliationModel, /externalEvidenceState:\s*"NOT_COLLECTED"/u);
+  assert.match(reconciliationModel, /allExternalActionsUnverified:\s*true/u);
   for (const queryField of ["search", "eventType", "currencyCode", "actorId", "assigneeId"]) {
     assert.match(api, new RegExp(`params\\.set\\("${queryField}"`, "u"));
   }
@@ -137,15 +236,21 @@ test("人工收款记录是真实只读历史且对账继续保留设计预览",
 
 test("Telegram 页面只保存未来意向并使用服务器脱敏模拟", () => {
   const app = read("apps/admin/src/App.tsx");
-  const preview = read("apps/admin/src/pages/design-preview-page.tsx");
+  const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
   const api = read("apps/admin/src/features/notifications/api.ts");
   const page = read("apps/admin/src/features/notifications/telegram-new-order-page.tsx");
+  const readiness = read("apps/admin/src/features/notifications/notifications-page.tsx");
+  const readinessModel = read("apps/admin/src/features/notifications/model.ts");
   const css = read("apps/admin/src/styles.css");
 
   assert.match(app, /lazy\(\(\) => import\("\.\/features\/notifications\/telegram-new-order-page"\)\)/u);
   assert.match(app, /page === "telegram-bot"[\s\S]*?<TelegramNewOrderPage/u);
   assert.match(app, /<TelegramNewOrderPage[\s\S]*?permissions\.includes\("settings\.write"\)/u);
-  assert.match(preview, /page === "notifications"[\s\S]*?<NotificationsDesign/u);
+  assert.match(app, /page === "notifications"[\s\S]*?<NotificationsPage/u);
+  assert.match(readiness, /getTelegramNewOrderSettings/u);
+  assert.match(readinessModel, /NOT_COLLECTED/u);
+  assert.doesNotMatch(readiness, /simulateTelegramNewOrder|updateTelegramNewOrderSettings/u);
+  assert.doesNotMatch(preview, /page === "notifications"|NotificationsDesign/u);
 
   assert.match(api, /\/admin\/telegram-new-order-settings/u);
   assert.match(api, /method:\s*"PUT"/u);

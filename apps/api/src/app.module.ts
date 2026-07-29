@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { AccessModule } from "./access/access.module.js";
 import { AdminModule } from "./admin/admin.module.js";
 import { AuditModule } from "./audit/audit.module.js";
 import { AuthModule } from "./auth/auth.module.js";
@@ -25,6 +26,7 @@ import { SupportModule } from "./support/support.module.js";
     SecurityModule,
     AuditModule,
     AuthModule,
+    AccessModule,
     AdminModule,
     ContentModule,
     FinanceModule,

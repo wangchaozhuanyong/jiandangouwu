@@ -21,6 +21,7 @@ import {
 } from "react";
 import { ApiError } from "../../api";
 import {
+  invalidateAdminCacheByPrefix,
   useAdminPageDirty,
   useAdminStatus,
   useCachedAdminResource,
@@ -91,6 +92,7 @@ export default function BannersPage({ canWrite, locale }: { canWrite: boolean; l
       const response = await reorderHeroes({
         items: ordered.map((item) => ({ id: item.id, version: item.version })),
       });
+      invalidateAdminCacheByPrefix("media-references:");
       commit(response.data);
       setOrdered(response.data);
       notify(copy(locale, "轮播顺序已保存。", "Hero order saved."));
@@ -320,6 +322,7 @@ function HeroDialog({
       } else {
         saved = (await updateHero(item.id, { ...normalized, version: item.version })).data;
       }
+      invalidateAdminCacheByPrefix("media-references:");
       notify(copy(locale, "轮播内容已保存。", "Hero story saved."));
       onSaved(saved);
     } catch (requestError) {

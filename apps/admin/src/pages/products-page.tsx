@@ -1,5 +1,6 @@
 import {
   Eye,
+  Info,
   MagnifyingGlass,
   NotePencil,
   Plus,
@@ -27,15 +28,21 @@ import {
   useCachedAdminResource,
   useSlowAdminRequest,
 } from "../admin-experience";
-import { DesignWorkflowDialog } from "../design-workflows";
 import {
   Dialog,
+  formatDate,
   PanelState,
   RefreshNotice,
   StatusPill,
   statusLabels,
   useUnsavedChanges,
 } from "../admin-ui";
+import {
+  buildProductImpact,
+  STOREFRONT_LOW_STOCK_MAX,
+  type ProductCategoryState,
+  type ProductImpactSignal,
+} from "../features/products/model";
 import { adminCopy } from "../i18n";
 
 type ProductDraft = {
@@ -74,12 +81,39 @@ const emptyProduct: ProductDraft = {
   descriptionEn: "",
 };
 
-export default function ProductsPage({ locale }: { locale: Locale }) {
+const copy = (locale: Locale, zh: string, en: string): string => locale === "zh" ? zh : en;
+
+const productImpactSignalCopy: Record<ProductImpactSignal, Record<Locale, string>> = {
+  MISSING_TRANSLATION: { zh: "双语内容缺失", en: "Missing bilingual content" },
+  STOCK_DATA_CONFLICT: { zh: "库存数据冲突", en: "Stock data conflict" },
+  CATEGORY_NOT_LOADED: { zh: "分类未在列表中", en: "Category not in loaded list" },
+  CATEGORY_NOT_ACTIVE: { zh: "分类未启用", en: "Category is not active" },
+  ACTIVE_SOLD_OUT: { zh: "在售但已售罄", en: "Active and sold out" },
+  ACTIVE_LOW_STOCK: { zh: "前台低库存提示", en: "Storefront low-stock label" },
+  ORDER_REPEATED: { zh: "在售顺序值重复", en: "Repeated active order" },
+  CLEAR: { zh: "当前无提示", en: "No current signal" },
+};
+
+const categoryStateCopy: Record<
+  Exclude<ProductCategoryState, AdminCategory["status"]>,
+  Record<Locale, string>
+> = {
+  NOT_LOADED: { zh: "未在已加载列表中", en: "Not in loaded list" },
+  NOT_CHECKED: { zh: "未交叉检查", en: "Not cross-checked" },
+};
+
+export default function ProductsPage({
+  canWrite,
+  locale,
+}: {
+  canWrite: boolean;
+  locale: Locale;
+}) {
   const t = adminCopy[locale];
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [editing, setEditing] = useState<AdminProduct | "new" | null>(null);
-  const [workflowProduct, setWorkflowProduct] = useState<AdminProduct | null>(null);
+  const [impactOpen, setImpactOpen] = useState(false);
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 260);
     return () => window.clearTimeout(timer);
@@ -98,13 +132,33 @@ export default function ProductsPage({ locale }: { locale: Locale }) {
       <div className="panel-heading is-action-only">
         <button
           className="admin-secondary"
-          disabled={!products?.length}
-          onClick={() => products?.[0] && setWorkflowProduct(products[0])}
+          disabled={!products}
+          onClick={() => setImpactOpen(true)}
+          type="button"
         >
-          <Eye />{locale === "zh" ? "库存与发布设计" : "Inventory and publishing design"}
+          <Eye />{copy(locale, "库存与上架概览", "Inventory and availability overview")}
         </button>
-        <button className="admin-primary" disabled={!categories.length} onClick={() => setEditing("new")}><Plus />{t.addProduct as string}</button>
+        {canWrite && (
+          <button
+            className="admin-primary"
+            disabled={!categories.length}
+            onClick={() => setEditing("new")}
+            type="button"
+          >
+            <Plus />{t.addProduct as string}
+          </button>
+        )}
       </div>
+      {!canWrite && (
+        <p className="product-readonly-note" role="note">
+          <Info aria-hidden="true" size={18} />
+          {copy(
+            locale,
+            "当前账号只有 catalog.read；可以查看真实商品、搜索结果和库存影响概览，但新增和编辑要求 catalog.write。",
+            "This account has catalog.read only. Live products, search results, and inventory impact are visible, while create and edit require catalog.write.",
+          )}
+        </p>
+      )}
       <label className="admin-search">
         <MagnifyingGlass aria-hidden="true" />
         <span className="sr-only">{t.searchProducts as string}</span>
@@ -116,19 +170,34 @@ export default function ProductsPage({ locale }: { locale: Locale }) {
           {products.length === 0 && <div className="table-empty">{t.empty as string}</div>}
           {products.map((item) => (
             <article key={item.id}>
-              <img src={item.imageKey} alt="" width={86} height={96} loading="lazy" decoding="async" />
+              <img
+                src={item.imageKey}
+                alt={item.translations[locale]?.name || item.slug}
+                width={86}
+                height={96}
+                loading="lazy"
+                decoding="async"
+              />
               <div className="product-admin-copy">
-                <p>{item.category.name[locale]}</p>
-                <h3 title={item.translations[locale]?.name}>{item.translations[locale]?.name}</h3>
+                <p>{item.category.name[locale] || item.category.slug}</p>
+                <h3 title={item.translations[locale]?.name}>{item.translations[locale]?.name || "—"}</h3>
                 <div><strong>MYR {item.basePrice}</strong><StatusPill status={item.status} locale={locale} /></div>
                 <small>{item.stockMode === "UNLIMITED" ? (locale === "zh" ? "不限库存" : "Unlimited") : `${t.stock as string} ${item.stockQuantity ?? 0}`}</small>
               </div>
-              <button onClick={() => setEditing(item)} aria-label={`${t.edit as string} ${item.translations[locale]?.name}`}><NotePencil /></button>
+              {canWrite && (
+                <button
+                  onClick={() => setEditing(item)}
+                  aria-label={`${t.edit as string} ${item.translations[locale]?.name || item.slug}`}
+                  type="button"
+                >
+                  <NotePencil />
+                </button>
+              )}
             </article>
           ))}
         </div>
       )}
-      {editing && (
+      {canWrite && editing && (
         <ProductDialog
           locale={locale}
           item={editing}
@@ -140,15 +209,152 @@ export default function ProductsPage({ locale }: { locale: Locale }) {
           }}
         />
       )}
-      {workflowProduct && (
-        <DesignWorkflowDialog
-          id="inventory-center"
+      {impactOpen && products && (
+        <ProductImpactDialog
+          categories={categoriesResource.data ?? null}
           locale={locale}
-          contextLabel={workflowProduct.translations[locale]?.name}
-          onClose={() => setWorkflowProduct(null)}
+          products={products}
+          search={debouncedSearch}
+          onClose={() => setImpactOpen(false)}
         />
       )}
     </section>
+  );
+}
+
+function ProductImpactDialog({
+  categories,
+  locale,
+  products,
+  search,
+  onClose,
+}: {
+  categories: AdminCategory[] | null;
+  locale: Locale;
+  products: AdminProduct[];
+  search: string;
+  onClose: () => void;
+}) {
+  const t = adminCopy[locale];
+  const impact = useMemo(
+    () => buildProductImpact(products, categories),
+    [categories, products],
+  );
+  const summary = [
+    [
+      copy(locale, "已加载商品", "Loaded products"),
+      impact.loadedProductCount,
+      search
+        ? copy(locale, `当前搜索“${search}”`, `Current search “${search}”`)
+        : copy(locale, "当前第一页，最多 100 条", "Current first page, up to 100"),
+    ],
+    [
+      copy(locale, "在售 / 非在售", "Active / non-active"),
+      `${impact.activeProductCount} / ${impact.nonActiveProductCount}`,
+      copy(locale, "公开列表只读取在售商品", "The public list reads active products only"),
+    ],
+    [
+      copy(locale, "有限 / 不限库存", "Finite / unlimited"),
+      `${impact.finiteStockCount} / ${impact.unlimitedStockCount}`,
+      copy(locale, "只显示当前库存快照", "Current stock snapshot only"),
+    ],
+    [
+      copy(locale, "当前提示", "Current signals"),
+      impact.needsReviewCount,
+      copy(
+        locale,
+        `售罄 ${impact.activeSoldOutCount} · 低库存 ${impact.activeLowStockCount}`,
+        `${impact.activeSoldOutCount} sold out · ${impact.activeLowStockCount} low-stock labels`,
+      ),
+    ],
+  ] as const;
+
+  return (
+    <Dialog
+      closeLabel={t.close as string}
+      onClose={onClose}
+      title={copy(locale, "商品库存与上架概览", "Product inventory and availability overview")}
+      wide
+    >
+      <div className="product-impact-dialog">
+        <div className="product-impact-summary">
+          {summary.map(([label, value, note]) => (
+            <article key={label}>
+              <small>{label}</small>
+              <strong>{value}</strong>
+              <span>{note}</span>
+            </article>
+          ))}
+        </div>
+        <p className="product-impact-truth-note">
+          <Info aria-hidden="true" size={18} />
+          <span>
+            {copy(
+              locale,
+              `本概览只读取当前商品搜索结果第一页（最多 100 条）${impact.categoryCrossCheckAvailable ? "和单独加载的非归档分类列表；两次读取不是同一事务快照" : "；分类列表未成功加载，因此没有推断分类状态"}。公开列表只接收 ACTIVE 商品；分类未启用时会退出分类筛选导航，但其中的 ACTIVE 商品仍可出现在“全部”列表。前台现有规则把有限库存 0 显示为售罄、1–${STOREFRONT_LOW_STOCK_MAX} 显示低库存。本页不提供库存流水、预留返库、阈值配置、告警或发布记录。`,
+              `This overview reads only the first page of the current product search (up to 100 rows)${impact.categoryCrossCheckAvailable ? " and a separately loaded non-archived category list; the two reads are not one transactional snapshot" : "; the category list did not load, so category state was not inferred"}. The public list accepts ACTIVE products only. A non-active category leaves category filter navigation, while its ACTIVE products may still appear under All. Existing storefront rules show finite stock 0 as sold out and 1–${STOREFRONT_LOW_STOCK_MAX} as low stock. This page does not provide stock history, reservation release, threshold configuration, alerts, or publishing records.`,
+            )}
+          </span>
+        </p>
+        <div
+          aria-label={copy(locale, "商品影响表，可横向滚动", "Product impact table, horizontally scrollable")}
+          className="product-impact-table-wrap"
+          tabIndex={0}
+        >
+          <table className="product-impact-table">
+            <thead>
+              <tr>
+                <th scope="col">{t.order as string}</th>
+                <th scope="col">{copy(locale, "中文名称", "Chinese name")}</th>
+                <th scope="col">{copy(locale, "英文名称", "English name")}</th>
+                <th scope="col">{t.slug as string}</th>
+                <th scope="col">{t.category as string}</th>
+                <th scope="col">{copy(locale, "商品状态", "Product status")}</th>
+                <th scope="col">{copy(locale, "分类状态", "Category state")}</th>
+                <th scope="col">{copy(locale, "库存模式", "Stock mode")}</th>
+                <th scope="col">{t.stock as string}</th>
+                <th scope="col">{t.price as string} MYR</th>
+                <th scope="col">{copy(locale, "更新时间", "Updated")}</th>
+                <th scope="col">{copy(locale, "影响提示", "Impact signal")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {impact.rows.map((product) => (
+                <tr key={product.id}>
+                  <td><code>{String(product.sortOrder).padStart(2, "0")}</code></td>
+                  <td title={product.translations.zh?.name}>{product.translations.zh?.name || "—"}</td>
+                  <td title={product.translations.en?.name}>{product.translations.en?.name || "—"}</td>
+                  <td><code>{product.slug}</code></td>
+                  <td title={product.category.name[locale]}>{product.category.name[locale] || product.category.slug}</td>
+                  <td><StatusPill locale={locale} status={product.status} /></td>
+                  <td>
+                    {product.categoryState === "NOT_LOADED" || product.categoryState === "NOT_CHECKED"
+                      ? categoryStateCopy[product.categoryState][locale]
+                      : <StatusPill locale={locale} status={product.categoryState} />}
+                  </td>
+                  <td>{copy(
+                    locale,
+                    product.stockMode === "FINITE" ? "有限" : "不限",
+                    product.stockMode === "FINITE" ? "Finite" : "Unlimited",
+                  )}</td>
+                  <td>{product.stockQuantity ?? "—"}</td>
+                  <td><code>{product.basePrice}</code></td>
+                  <td><time dateTime={product.updatedAt}>{formatDate(product.updatedAt, locale)}</time></td>
+                  <td>
+                    <span className={`product-impact-signal is-${product.signal.toLocaleLowerCase()}`}>
+                      {productImpactSignalCopy[product.signal][locale]}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {impact.rows.length === 0 && (
+            <div className="table-empty" role="status">{t.empty as string}</div>
+          )}
+        </div>
+      </div>
+    </Dialog>
   );
 }
 
@@ -220,6 +426,7 @@ function ProductDialog({
       else await updateProduct(item.id, { ...payload, version: item.version });
       invalidateAdminCache("dashboard", "categories");
       invalidateAdminCacheByPrefix("products:");
+      invalidateAdminCacheByPrefix("media-references:");
       notify(locale === "zh" ? "商品已保存。" : "Product saved.");
       onSaved();
     } catch {

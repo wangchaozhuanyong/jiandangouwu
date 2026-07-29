@@ -48,11 +48,15 @@ test("正式客户端保留筛选上下文并让订单重试复用幂等键", ()
 test("正式客户端商品卡片与详情标题不显示分类或 kicker 微标签", () => {
   const home = read("apps/storefront/components/storefront-home.tsx");
   const detail = read("apps/storefront/components/product-detail.tsx");
+  const copy = read("apps/storefront/lib/copy.ts");
 
   assert.doesNotMatch(home, /\{product\.kicker\}/u);
   assert.doesNotMatch(home, /<span>\{t\.serviceLabel\}<\/span>/u);
   assert.doesNotMatch(detail, /\{product\.kicker\}/u);
   assert.doesNotMatch(detail, /\{product\.category\.name\}/u);
+  assert.match(copy, /available: "现货"/u);
+  assert.match(copy, /available: "Available"/u);
+  assert.doesNotMatch(copy, /available: "可下单"/u);
 });
 
 test("正式客户端刷新公开配置、恢复订单冲突并保持移动端卡片节奏", () => {
@@ -67,6 +71,7 @@ test("正式客户端刷新公开配置、恢复订单冲突并保持移动端�
   assert.match(shell, /settings\?\.transitServiceEnabled === true/u);
   assert.match(shell, /initialConfig=\{config\}/u);
   assert.match(shell, /transit-service-notice\$\{isProductDetail \? " is-detail"/u);
+  assert.match(shell, /\{children\}[\s\S]*?transit-service-entry[\s\S]*?\{!isProductDetail && \(/u);
   assert.match(detail, /resolveOrderAvailability\(config\) !== "available"/u);
   assert.match(detail, /error instanceof ApiRequestError && error\.status === 409/u);
   assert.match(detail, /Promise\.all\(\[\s*getConfig\(locale\),\s*getProduct\(slug, locale, currency\)/u);
@@ -76,6 +81,7 @@ test("正式客户端刷新公开配置、恢复订单冲突并保持移动端�
   assert.match(css, /@media \(max-width: 390px\)[\s\S]*?\.product-copy \{ grid-template-rows:\s*40px 68px 72px;/u);
   assert.match(css, /\.product-purchase \{[^}]*height:\s*72px;/u);
   assert.match(css, /\.transit-service-notice\.is-detail/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.transit-service-entry:not\(\.is-detail\) \{ position: relative;[^}]*right: auto;[^}]*bottom: auto;/u);
   assert.match(css, /\.brand \{[^}]*min-width:\s*0;/u);
   assert.match(css, /\.brand strong \{[^}]*text-overflow:\s*ellipsis;/u);
 });
@@ -99,7 +105,9 @@ test("遗留后台登录入口首屏直接挂载且关键控制具备 44px 点�
   assert.doesNotMatch(home, /className="hero-controls"/u);
   assert.match(home, /onTouchStart=/u);
   assert.match(home, /onPointerDown=/u);
+  assert.match(storefrontCss, /\.hero-dots button \{ width: 44px; height: 44px;/u);
   assert.match(storefrontCss, /\.hero-dots button::before/u);
+  assert.match(storefrontCss, /@media \(max-width: 760px\)[\s\S]*?\.language-picker \{ width: 112px; height: 44px; \}/u);
   assert.doesNotMatch(storefrontCss, /\.hero-controls/u);
   assert.match(storefrontCss, /\.footer-links > a,\s*\.footer-links > button \{[^}]*min-height:\s*44px;/u);
   assert.match(adminCss, /\.auth-links button \{ min-height: 44px;/u);
@@ -114,12 +122,21 @@ test("正式客户端恢复可访问币种菜单、客服抽屉、旧版编辑�
 
   assert.match(controls, /role="combobox"/u);
   assert.match(controls, /role="listbox"/u);
+  assert.match(controls, /export function LanguagePicker/u);
+  assert.match(controls, /<strong>\{activeCurrency\?\.name \?\? ariaLabel\}<\/strong>/u);
+  assert.match(controls, /<span><strong>\{currency\.name\}<\/strong><\/span>/u);
+  assert.doesNotMatch(controls, /<strong>\{activeCurrency\?\.code/u);
+  assert.doesNotMatch(controls, /<strong>\{currency\.code\}<\/strong>/u);
   assert.match(controls, /event\.key === "Home" \|\| event\.key === "End"/u);
   assert.match(controls, /event\.key === "Escape"/u);
   assert.match(controls, /aria-modal="true"/u);
   assert.match(controls, /document\.body\.style\.overflow = "hidden"/u);
   assert.match(controls, /returnFocusRef\.current\?\.focus\(\)/u);
-  assert.match(shell, /aria-label=\{t\.navSupport\}[\s\S]*?className="support-trigger"/u);
+  assert.match(shell, /aria-label=\{t\.customerSupport\}[\s\S]*?className="support-trigger"/u);
+  assert.doesNotMatch(shell, /\{supportEnabled && \(\s*<button[\s\S]*?className="support-trigger"/u);
+  assert.doesNotMatch(shell, /\{supportEnabled && \(\s*<SupportDrawer/u);
+  assert.match(shell, /<LanguagePicker/u);
+  assert.doesNotMatch(shell, /className="language-switch"/u);
   assert.match(shell, /<SupportDrawer[\s\S]*?initialConfig=\{config\}[\s\S]*?locale=\{locale\}/u);
   assert.match(shell, /const isProductDetail = pathname\.startsWith\(`\/\$\{locale\}\/products\/`\)/u);
   assert.match(shell, /\{!isProductDetail && \(/u);
@@ -143,10 +160,11 @@ test("正式后台页面按路由懒加载并使用三十秒会话缓存", () =>
     assert.match(app, new RegExp(`lazy\\(\\(\\) => import\\("\\./pages/${page}-page"\\)\\)`, "u"));
   }
   assert.match(app, /lazy\(\(\) => import\("\.\/pages\/audit-page"\)\)/u);
-  assert.match(app, /lazy\(\(\) => import\("\.\/pages\/design-preview-page"\)\)/u);
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/integrations\/integration-readiness-page"\)\)/u);
+  assert.doesNotMatch(app, /design-preview-page|DesignPreviewPage/u);
   assert.match(app, /window\.history\[[^\]]+\]\(\{ page: next \}, "", pagePath\(next\)\)/u);
   assert.match(app, /popstate/u);
-  assert.match(read("apps/admin/src/styles.css"), /@media \(max-width: 440px\)[\s\S]*?\.design-dashboard-queue \.panel-heading \{ align-items: stretch; flex-direction: column; \}/u);
+  assert.match(read("apps/admin/src/styles.css"), /@media \(max-width: 440px\)[\s\S]*?\.dashboard-boundary-panel \.panel-heading \{ align-items: stretch; flex-direction: column; \}/u);
   assert.match(model, /if \(candidate === "audit"\) return "logs"/u);
   assert.match(model, /cacheTtlMs:\s*30_000/u);
   assert.match(experience, /resourceCache/u);
@@ -198,29 +216,18 @@ test("正式后台使用可展开的任务分组并自动定位当前二级入�
   assert.match(css, /\.admin-nav-child\s*\{\s*min-height:\s*44px;/u);
 });
 
-test("正式后台完整设计24个页面并明确区分设计预览与真实功能", () => {
+test("正式后台24个页面均为真实或明确受限页面且不再保留独立设计预览", () => {
   const model = read("apps/admin/src/admin-model.ts");
-  const preview = read("apps/admin/src/pages/design-preview-page.tsx");
-  const css = read("apps/admin/src/styles.css");
+  const app = read("apps/admin/src/App.tsx");
   const pagesBlock = model.match(/export const ADMIN_PAGES:[\s\S]*?= \[([\s\S]*?)\];/u)?.[1] ?? "";
   const pageIds = [...pagesBlock.matchAll(/"([^"]+)"/gu)].map((match) => match[1]);
-  const designPages = [
-    "media", "translations", "notifications",
-    "reconciliation", "team", "roles", "security-events",
-    "data-security", "secrets", "backups", "integrations",
-  ];
 
   assert.equal(pageIds.length, 24);
   assert.equal(new Set(pageIds).size, 24);
-  designPages.forEach((page) => assert.match(preview, new RegExp(`page === "${page}"`, "u")));
-  for (const realPage of ["banners", "contacts", "settings"]) {
-    assert.doesNotMatch(preview, new RegExp(`page === "${realPage}"`, "u"));
-  }
-  assert.match(preview, /界面设计预览/u);
-  assert.match(preview, /暂不修改服务器数据/u);
-  assert.doesNotMatch(preview, /\bfetch\(|from "\.\.\/api".*get[A-Z]/u);
-  assert.match(css, /\.design-preview-note/u);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.design-settings-layout\s*\{\s*grid-template-columns:\s*1fr;/u);
+  assert.equal(existsSync(new URL("../apps/admin/src/pages/design-preview-page.tsx", import.meta.url)), false);
+  assert.doesNotMatch(app, /design-preview-page|DesignPreviewPage/u);
+  assert.match(app, /page === "integrations"[\s\S]*?<IntegrationReadinessPage/u);
+  assert.match(app, /const unhandledPage:\s*never = page/u);
 });
 
 test("遗留客户端移动端下单弹窗保持水平居中和对称安全边距", () => {

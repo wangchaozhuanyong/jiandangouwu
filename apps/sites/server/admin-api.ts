@@ -1,0 +1,1803 @@
+import {
+  adminPermissions,
+  ApiInputError,
+  bootstrapOrReadAdmin,
+  headerUser,
+  pageMeta,
+  parsePage,
+  readJson,
+  requireAdmin,
+  requireCsrf,
+  success,
+  writeAudit,
+  type AdminIdentity,
+} from "./http";
+import {
+  completeBackupRestoreDrill,
+  createManualBackup,
+  createBackupRestoreDrillTransfer,
+  downloadBackupSnapshot,
+  ensureDailyBackup,
+  getBackupReadiness,
+  listBackupSnapshots,
+  validateBackupRestorePackage,
+  verifyBackupSnapshot,
+} from "./backup-api";
+import { reconcileExpiredOrders } from "./order-expiry";
+import { normalizeLegacyLineBreaks } from "./text";
+import type { D1Database, SitesEnv } from "./types";
+
+const orderTransitions: Readonly<Record<string, readonly string[]>> = {
+  MANUAL_PENDING: ["CONTACTED", "CANCELLED"],
+  CONTACTED: ["AWAITING_PAYMENT", "CANCELLED"],
+  AWAITING_PAYMENT: ["PAYMENT_PROCESSING", "PAID", "CANCELLED"],
+  PAYMENT_PROCESSING: ["PAID", "CANCELLED", "DISPUTED"],
+  PAID: ["FULFILLING", "REFUND_PENDING", "DISPUTED"],
+  FULFILLING: ["COMPLETED", "REFUND_PENDING", "DISPUTED"],
+  COMPLETED: ["REFUND_PENDING", "DISPUTED"],
+  CANCELLED: [],
+  REFUND_PENDING: ["REFUNDED", "DISPUTED"],
+  REFUNDED: [],
+  DISPUTED: ["REFUND_PENDING", "REFUNDED"],
+};
+
+export async function handleAdminApi(
+  request: Request,
+  env: SitesEnv,
+  pathname: string,
+): Promise<Response | null> {
+  if (!pathname.startsWith("/v1/admin/")) return null;
+  const url = new URL(request.url);
+
+  if (request.method === "GET" && pathname === "/v1/admin/auth/me") {
+    const identity = await bootstrapOrReadAdmin(env.DB, request);
+    if (!identity) throw new ApiInputError("ADMIN_AUTH_REQUIRED", "ChatGPT sign-in is required.", 401);
+    return success({
+      user: adminUser(identity),
+      csrfToken: "sites-siwc",
+    });
+  }
+  if (request.method === "GET" && pathname === "/v1/admin/auth/setup/status") {
+    return success({ available: false });
+  }
+  if (request.method === "POST" && pathname === "/v1/admin/auth/logout") {
+    requireCsrf(request);
+    return new Response(null, { status: 204 });
+  }
+  if (pathname.startsWith("/v1/admin/auth/totp/")) {
+    throw new ApiInputError(
+      "SITES_AUTH_MANAGED",
+      "CloudBridge Sites uses ChatGPT sign-in. Password and TOTP are managed outside this site.",
+      409,
+    );
+  }
+
+  if (request.method === "GET" && pathname === "/v1/admin/sites-readiness") {
+    const identity = await requireAdmin(env.DB, request, "settings.read");
+    const settingsRow = await env.DB.prepare(
+      "SELECT value_json AS valueJson FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
+    ).first<{ valueJson: string }>();
+    const settings = parseJsonRecord(settingsRow?.valueJson);
+    const activeContactChannels = Number((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM merchant_channels WHERE active = 1",
+    ).first<{ count: number }>())?.count ?? 0);
+    return success({
+      runtime: "sites",
+      database: "connected",
+      objectStorage: env.MEDIA ? "bound" : "missing",
+      chatgptAuthentication: headerUser(request) ? "connected" : "missing",
+      dataEncryptionKey: env.CLOUDBRIDGE_DATA_KEY ? "configured" : "not_configured",
+      administrator: { email: identity.email, displayName: identity.displayName },
+      storefront: {
+        acceptOrders: settings.acceptOrders === true,
+        supportEnabled: settings.supportEnabled === true,
+        activeContactChannels,
+      },
+      checkedAt: new Date().toISOString(),
+    });
+  }
+
+  if (request.method === "GET" && pathname === "/v1/admin/overview") {
+    await requireAdmin(env.DB, request);
+    await reconcileExpiredOrders(env.DB);
+    return success(await overview(env.DB));
+  }
+  if (pathname === "/v1/admin/categories") {
+    if (request.method === "GET") {
+      await requireAdmin(env.DB, request, "catalog.read");
+      return success(await adminCategories(env.DB));
+    }
+    if (request.method === "POST") {
+      const actor = await writeIdentity(env.DB, request, "catalog.write");
+      return success(await createCategory(env.DB, request, actor), { status: 201 });
+    }
+  }
+  const categoryMatch = pathname.match(/^\/v1\/admin\/categories\/([^/]+)$/u);
+  if (categoryMatch && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "catalog.write");
+    return success(await updateCategory(env.DB, request, decodeURIComponent(categoryMatch[1]), actor));
+  }
+
+  if (pathname === "/v1/admin/products") {
+    if (request.method === "GET") {
+      await requireAdmin(env.DB, request, "catalog.read");
+      const { page, pageSize, offset } = parsePage(url, { page: 1, pageSize: 100 });
+      const search = (url.searchParams.get("search") ?? "").normalize("NFKC").trim().toLocaleLowerCase();
+      const result = await adminProducts(env.DB, search, pageSize, offset);
+      return success(result.items, { meta: pageMeta(page, pageSize, result.total) });
+    }
+    if (request.method === "POST") {
+      const actor = await writeIdentity(env.DB, request, "catalog.write");
+      return success(await createProduct(env.DB, request, actor), { status: 201 });
+    }
+  }
+  const productMatch = pathname.match(/^\/v1\/admin\/products\/([^/]+)$/u);
+  if (productMatch && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "catalog.write");
+    return success(await updateProduct(env.DB, request, decodeURIComponent(productMatch[1]), actor));
+  }
+
+  if (pathname === "/v1/admin/currencies" && request.method === "GET") {
+    await requireAdmin(env.DB, request, "catalog.read");
+    return success(await adminCurrencies(env.DB));
+  }
+  const rateHistoryMatch = pathname.match(/^\/v1\/admin\/currencies\/([^/]+)\/rates$/u);
+  if (rateHistoryMatch && request.method === "GET") {
+    await requireAdmin(env.DB, request, "catalog.read");
+    return success(await currencyRateHistory(
+      env.DB,
+      decodeURIComponent(rateHistoryMatch[1]).toUpperCase(),
+    ));
+  }
+  const rateMatch = pathname.match(/^\/v1\/admin\/currencies\/([^/]+)\/rate$/u);
+  if (rateMatch && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "currencies.write");
+    return success(await updateCurrencyRate(
+      env.DB,
+      request,
+      decodeURIComponent(rateMatch[1]).toUpperCase(),
+      actor,
+    ));
+  }
+
+  if (pathname === "/v1/admin/heroes") {
+    if (request.method === "GET") {
+      await requireAdmin(env.DB, request, "content.read");
+      return success(await adminHeroes(env.DB));
+    }
+    if (request.method === "POST") {
+      const actor = await writeIdentity(env.DB, request, "content.write");
+      return success(await createHero(env.DB, request, actor), { status: 201 });
+    }
+  }
+  if (pathname === "/v1/admin/heroes/order" && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "content.write");
+    return success(await reorderRows(env.DB, request, actor, "heroes", "content.hero.reordered"));
+  }
+  const heroMatch = pathname.match(/^\/v1\/admin\/heroes\/([^/]+)$/u);
+  if (heroMatch && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "content.write");
+    return success(await updateHero(env.DB, request, decodeURIComponent(heroMatch[1]), actor));
+  }
+
+  if (pathname === "/v1/admin/contact-channels" && request.method === "GET") {
+    await requireAdmin(env.DB, request, "support.read");
+    return success(await adminChannels(env.DB));
+  }
+  if (pathname === "/v1/admin/contact-channels/order" && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "support.write");
+    return success(await reorderRows(
+      env.DB,
+      request,
+      actor,
+      "merchant_channels",
+      "support.channel.reordered",
+    ));
+  }
+  const channelMatch = pathname.match(/^\/v1\/admin\/contact-channels\/([^/]+)$/u);
+  if (channelMatch && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "support.write");
+    return success(await updateChannel(env.DB, request, decodeURIComponent(channelMatch[1]), actor));
+  }
+
+  if (pathname === "/v1/admin/site-settings") {
+    if (request.method === "GET") {
+      await requireAdmin(env.DB, request, "settings.read");
+      return success(await adminSettings(env.DB));
+    }
+    if (request.method === "PATCH") {
+      const actor = await writeIdentity(env.DB, request, "settings.write");
+      return success(await updateSettings(env.DB, request, actor));
+    }
+  }
+
+  if (pathname === "/v1/admin/audit" && request.method === "GET") {
+    await requireAdmin(env.DB, request, "audit.read");
+    const { page, pageSize, offset } = parsePage(url, { page: 1, pageSize: 100 });
+    const total = Number((await env.DB.prepare("SELECT COUNT(*) AS count FROM audit_events")
+      .first<{ count: number }>())?.count ?? 0);
+    const rows = (await env.DB.prepare(
+      `SELECT id, trace_id AS requestId, action,
+        COALESCE(target_type, 'SYSTEM') AS targetType, target_id AS targetId,
+        result, reason, actor_display_name AS actorDisplayName,
+        actor_email AS actorEmail, created_at AS createdAt
+       FROM audit_events ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+    ).bind(pageSize, offset).all<{
+      id: string;
+      requestId: string;
+      action: string;
+      targetType: string;
+      targetId: string | null;
+      result: "SUCCEEDED" | "FAILED" | "DENIED";
+      reason: string | null;
+      actorDisplayName: string | null;
+      actorEmail: string | null;
+      createdAt: string;
+    }>()).results ?? [];
+    return success(rows.map((row) => ({
+      id: row.id,
+      requestId: row.requestId,
+      action: row.action,
+      targetType: row.targetType,
+      targetId: row.targetId,
+      result: row.result,
+      reason: row.reason,
+      actor: row.actorEmail
+        ? { displayName: row.actorDisplayName ?? row.actorEmail, email: row.actorEmail }
+        : null,
+      createdAt: row.createdAt,
+    })), { meta: pageMeta(page, pageSize, total) });
+  }
+
+  if (pathname === "/v1/admin/backups") {
+    if (request.method === "GET") {
+      await requireAdmin(env.DB, request, "settings.read");
+      await ensureDailyBackup(env);
+      return success({
+        items: await listBackupSnapshots(env.DB),
+        readiness: await getBackupReadiness(env.DB),
+      });
+    }
+    if (request.method === "POST") {
+      const actor = await writeIdentity(env.DB, request, "settings.write");
+      return success(await createManualBackup(env, request, actor), { status: 201 });
+    }
+  }
+  const backupVerifyMatch = pathname.match(/^\/v1\/admin\/backups\/([^/]+)\/verify$/u);
+  if (backupVerifyMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    return success(await verifyBackupSnapshot(
+      env,
+      request,
+      decodeURIComponent(backupVerifyMatch[1]),
+      actor,
+    ));
+  }
+  const backupRestoreValidationMatch = pathname.match(
+    /^\/v1\/admin\/backups\/([^/]+)\/restore-validation$/u,
+  );
+  if (backupRestoreValidationMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    return success(await validateBackupRestorePackage(
+      env,
+      request,
+      decodeURIComponent(backupRestoreValidationMatch[1]),
+      actor,
+    ));
+  }
+  const backupRestoreDrillTransferMatch = pathname.match(
+    /^\/v1\/admin\/backups\/([^/]+)\/restore-drill-transfer$/u,
+  );
+  if (backupRestoreDrillTransferMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    return success(await createBackupRestoreDrillTransfer(
+      env,
+      request,
+      decodeURIComponent(backupRestoreDrillTransferMatch[1]),
+      actor,
+    ));
+  }
+  const backupRestoreDrillCompleteMatch = pathname.match(
+    /^\/v1\/admin\/backups\/([^/]+)\/restore-drill-complete$/u,
+  );
+  if (backupRestoreDrillCompleteMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    return success(await completeBackupRestoreDrill(
+      env,
+      request,
+      decodeURIComponent(backupRestoreDrillCompleteMatch[1]),
+      actor,
+    ));
+  }
+  const backupDownloadMatch = pathname.match(/^\/v1\/admin\/backups\/([^/]+)\/download$/u);
+  if (backupDownloadMatch && request.method === "GET") {
+    await requireAdmin(env.DB, request, "settings.read");
+    return downloadBackupSnapshot(env, decodeURIComponent(backupDownloadMatch[1]));
+  }
+
+  if (pathname === "/v1/admin/orders" && request.method === "GET") {
+    await requireAdmin(env.DB, request, "orders.read");
+    await reconcileExpiredOrders(env.DB);
+    return listOrders(env.DB, url);
+  }
+  if (pathname === "/v1/admin/orders/assignees" && request.method === "GET") {
+    await requireAdmin(env.DB, request, "orders.read");
+    const rows = await env.DB.prepare(
+      "SELECT id, display_name AS displayName FROM admin_members WHERE status = 'ACTIVE' ORDER BY display_name ASC",
+    ).all<{ id: string; displayName: string }>();
+    return success(rows.results ?? []);
+  }
+  const orderStatusMatch = pathname.match(/^\/v1\/admin\/orders\/([^/]+)\/status$/u);
+  if (orderStatusMatch && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "orders.write");
+    await reconcileExpiredOrders(env.DB);
+    return success(await updateOrderStatus(
+      env.DB,
+      request,
+      decodeURIComponent(orderStatusMatch[1]),
+      actor,
+    ));
+  }
+  const orderAssignmentMatch = pathname.match(/^\/v1\/admin\/orders\/([^/]+)\/assignment$/u);
+  if (orderAssignmentMatch && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "orders.write");
+    return success(await updateOrderAssignment(
+      env.DB,
+      request,
+      decodeURIComponent(orderAssignmentMatch[1]),
+      actor,
+    ));
+  }
+  const orderRevealMatch = pathname.match(/^\/v1\/admin\/orders\/([^/]+)\/reveal-contact$/u);
+  if (orderRevealMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "contacts.reveal");
+    return success(await revealOrderContact(
+      env,
+      request,
+      decodeURIComponent(orderRevealMatch[1]),
+      actor,
+    ));
+  }
+  const orderMatch = pathname.match(/^\/v1\/admin\/orders\/([^/]+)$/u);
+  if (orderMatch && request.method === "GET") {
+    await requireAdmin(env.DB, request, "orders.read");
+    await reconcileExpiredOrders(env.DB);
+    return success(await orderDetail(env.DB, decodeURIComponent(orderMatch[1])));
+  }
+
+  if (pathname === "/v1/admin/access/members" && request.method === "GET") {
+    await requireAdmin(env.DB, request, "team.manage");
+    return success(await teamOverview(env.DB));
+  }
+  if (pathname === "/v1/admin/access/roles" && request.method === "GET") {
+    await requireAdmin(env.DB, request, "roles.manage");
+    return success(await rolesOverview(env.DB));
+  }
+
+  if (pathname === "/v1/admin/manual-payment-events" && request.method === "GET") {
+    await requireAdmin(env.DB, request, "orders.read");
+    return manualPaymentEvents(env.DB, url);
+  }
+
+  if (pathname === "/v1/admin/telegram-new-order-settings") {
+    if (request.method === "GET") {
+      await requireAdmin(env.DB, request, "settings.read");
+      return success(await telegramSettings(env.DB));
+    }
+    if (request.method === "PUT") {
+      const actor = await writeIdentity(env.DB, request, "settings.write");
+      return success(await updateTelegramSettings(env.DB, request, actor));
+    }
+  }
+  if (pathname === "/v1/admin/telegram-new-order-settings/simulation" && request.method === "POST") {
+    await writeIdentity(env.DB, request, "settings.read");
+    const settings = await telegramSettings(env.DB);
+    return success({
+      mode: "SIMULATED",
+      recipientGroupLabel: settings.recipientGroupLabel,
+      fields: [
+        { code: "ORDER_NUMBER", value: "CB-DEMO-0001" },
+        { code: "PRODUCT", value: "CloudBridge Demo Product" },
+        { code: "AMOUNT", value: "89.00" },
+        { code: "CURRENCY", value: "MYR" },
+        { code: "STATUS", value: "MANUAL_PENDING" },
+        { code: "CREATED_AT", value: new Date().toISOString() },
+        { code: "CONTACT_CHANNEL", value: "EMAIL" },
+        { code: "MASKED_CONTACT", value: "de***@invalid.example" },
+      ].filter((field) => settings.includedFields.includes(field.code)),
+      generatedAt: new Date().toISOString(),
+      deliveryAttempted: false,
+      externalDeliveryVerified: false,
+    });
+  }
+
+  return null;
+}
+
+export async function handleSitesHealth(env: SitesEnv): Promise<Response> {
+  const start = performance.now();
+  await env.DB.prepare("SELECT 1 AS ok").first();
+  const databaseLatency = Math.max(0, Math.round(performance.now() - start));
+  return success({
+    status: "healthy",
+    database: "connected",
+    valkey: "not_required",
+    runtime: "sites",
+    latencyMs: {
+      database: databaseLatency,
+      valkey: 0,
+    },
+    timestamp: new Date().toISOString(),
+  });
+}
+
+async function writeIdentity(
+  db: D1Database,
+  request: Request,
+  permission: string,
+): Promise<AdminIdentity> {
+  requireCsrf(request);
+  return requireAdmin(db, request, permission);
+}
+
+function adminUser(identity: AdminIdentity) {
+  return {
+    id: identity.id,
+    email: identity.email,
+    displayName: identity.displayName,
+    roles: [{ key: "SUPER_ADMIN", name: { zh: "超级管理员", en: "Super admin" } }],
+    permissions: identity.permissions,
+    totpEnabled: false,
+    authProvider: "SITES",
+  };
+}
+
+async function overview(db: D1Database) {
+  const [productCount, activeProducts, openOrders, categoryCount] = await Promise.all([
+    count(db, "SELECT COUNT(*) AS count FROM products WHERE status <> 'ARCHIVED'"),
+    count(db, "SELECT COUNT(*) AS count FROM products WHERE status = 'ACTIVE'"),
+    count(db, "SELECT COUNT(*) AS count FROM orders WHERE status NOT IN ('COMPLETED','CANCELLED','REFUNDED')"),
+    count(db, "SELECT COUNT(*) AS count FROM categories WHERE status = 'ACTIVE'"),
+  ]);
+  const latest = (await db.prepare(
+    `${orderListSql()} ORDER BY o.created_at DESC, o.id DESC LIMIT 6`,
+  ).all<OrderListRow>()).results ?? [];
+  return {
+    metrics: { productCount, activeProducts, openOrders, categoryCount },
+    latestOrders: latest.map(orderListItem),
+  };
+}
+
+async function adminCategories(db: D1Database) {
+  const rows = await db.prepare(
+    `SELECT c.id, c.slug, c.status, c.sort_order AS sortOrder, c.version,
+      zh.name AS nameZh, en.name AS nameEn, c.updated_at AS updatedAt,
+      COUNT(p.id) AS productCount
+     FROM categories c
+     LEFT JOIN category_translations zh ON zh.category_id = c.id AND zh.locale = 'ZH'
+     LEFT JOIN category_translations en ON en.category_id = c.id AND en.locale = 'EN'
+     LEFT JOIN products p ON p.category_id = c.id AND p.status <> 'ARCHIVED'
+     WHERE c.status <> 'ARCHIVED'
+     GROUP BY c.id
+     ORDER BY c.sort_order ASC, c.id ASC`,
+  ).all<{
+    id: string;
+    slug: string;
+    status: string;
+    sortOrder: number;
+    version: number;
+    nameZh: string | null;
+    nameEn: string | null;
+    updatedAt: string;
+    productCount: number;
+  }>();
+  return (rows.results ?? []).map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    status: row.status,
+    sortOrder: row.sortOrder,
+    version: row.version,
+    name: { zh: row.nameZh ?? "", en: row.nameEn ?? "" },
+    productCount: Number(row.productCount),
+    updatedAt: row.updatedAt,
+  }));
+}
+
+async function createCategory(db: D1Database, request: Request, actor: AdminIdentity) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const input = categoryInput(body);
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.batch([
+    db.prepare(
+      "INSERT INTO categories (id, slug, status, sort_order, version, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+    ).bind(id, input.slug, input.status, input.sortOrder, now, now),
+    db.prepare(
+      "INSERT INTO category_translations (category_id, locale, name) VALUES (?, 'ZH', ?)",
+    ).bind(id, input.nameZh),
+    db.prepare(
+      "INSERT INTO category_translations (category_id, locale, name) VALUES (?, 'EN', ?)",
+    ).bind(id, input.nameEn),
+  ]);
+  await writeAudit(db, {
+    action: "catalog.category.created",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "CATEGORY",
+    targetId: id,
+  });
+  return (await adminCategories(db)).find((item) => item.id === id);
+}
+
+async function updateCategory(
+  db: D1Database,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const input = categoryInput(body);
+  const version = safeInteger(body.version, "version", 1);
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE categories SET slug = ?, status = ?, sort_order = ?,
+      version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
+  ).bind(input.slug, input.status, input.sortOrder, now, id, version).run();
+  if (changes(result) !== 1) throw new ApiInputError("VERSION_CONFLICT", "The category changed. Refresh and try again.", 409);
+  await db.batch([
+    db.prepare("UPDATE category_translations SET name = ? WHERE category_id = ? AND locale = 'ZH'")
+      .bind(input.nameZh, id),
+    db.prepare("UPDATE category_translations SET name = ? WHERE category_id = ? AND locale = 'EN'")
+      .bind(input.nameEn, id),
+  ]);
+  await writeAudit(db, {
+    action: "catalog.category.updated",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "CATEGORY",
+    targetId: id,
+  });
+  const saved = (await adminCategories(db)).find((item) => item.id === id);
+  if (!saved) throw new ApiInputError("CATEGORY_NOT_FOUND", "Category was not found.", 404);
+  return saved;
+}
+
+async function adminProducts(
+  db: D1Database,
+  search: string,
+  pageSize: number,
+  offset: number,
+) {
+  const where = search
+    ? "WHERE p.status <> 'ARCHIVED' AND (LOWER(zh.name) LIKE ? OR LOWER(en.name) LIKE ? OR p.slug LIKE ?)"
+    : "WHERE p.status <> 'ARCHIVED'";
+  const pattern = `%${search}%`;
+  const bindings = search ? [pattern, pattern, pattern] : [];
+  const total = Number((await db.prepare(
+    `SELECT COUNT(*) AS count FROM products p
+     JOIN product_translations zh ON zh.product_id = p.id AND zh.locale = 'ZH'
+     JOIN product_translations en ON en.product_id = p.id AND en.locale = 'EN'
+     ${where}`,
+  ).bind(...bindings).first<{ count: number }>())?.count ?? 0);
+  const rows = await db.prepare(
+    `${adminProductSql()} ${where}
+     ORDER BY p.sort_order ASC, p.id ASC LIMIT ? OFFSET ?`,
+  ).bind(...bindings, pageSize, offset).all<AdminProductRow>();
+  return {
+    items: (rows.results ?? []).map(adminProductItem),
+    total,
+  };
+}
+
+async function createProduct(db: D1Database, request: Request, actor: AdminIdentity) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const input = productInput(body);
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.batch([
+    db.prepare(
+      `INSERT INTO products (
+        id, slug, category_id, image_key, base_price, compare_at_price,
+        stock_mode, stock_quantity, status, sort_order, version, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    ).bind(
+      id,
+      input.slug,
+      input.categoryId,
+      input.imageKey,
+      input.basePrice,
+      input.compareAtPrice,
+      input.stockMode,
+      input.stockQuantity,
+      input.status,
+      input.sortOrder,
+      now,
+      now,
+    ),
+    productTranslationInsert(db, id, "ZH", input.nameZh, input.kickerZh, input.descriptionZh),
+    productTranslationInsert(db, id, "EN", input.nameEn, input.kickerEn, input.descriptionEn),
+  ]);
+  await writeAudit(db, {
+    action: "catalog.product.created",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "PRODUCT",
+    targetId: id,
+  });
+  return adminProductById(db, id);
+}
+
+async function updateProduct(
+  db: D1Database,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const input = productInput(body);
+  const version = safeInteger(body.version, "version", 1);
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE products SET slug = ?, category_id = ?, image_key = ?, base_price = ?,
+      compare_at_price = ?, stock_mode = ?, stock_quantity = ?, status = ?,
+      sort_order = ?, version = version + 1, updated_at = ?
+     WHERE id = ? AND version = ?`,
+  ).bind(
+    input.slug,
+    input.categoryId,
+    input.imageKey,
+    input.basePrice,
+    input.compareAtPrice,
+    input.stockMode,
+    input.stockQuantity,
+    input.status,
+    input.sortOrder,
+    now,
+    id,
+    version,
+  ).run();
+  if (changes(result) !== 1) throw new ApiInputError("VERSION_CONFLICT", "The product changed. Refresh and try again.", 409);
+  await db.batch([
+    productTranslationUpdate(db, id, "ZH", input.nameZh, input.kickerZh, input.descriptionZh),
+    productTranslationUpdate(db, id, "EN", input.nameEn, input.kickerEn, input.descriptionEn),
+  ]);
+  await writeAudit(db, {
+    action: "catalog.product.updated",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "PRODUCT",
+    targetId: id,
+  });
+  return adminProductById(db, id);
+}
+
+async function adminProductById(db: D1Database, id: string) {
+  const row = await db.prepare(`${adminProductSql()} WHERE p.id = ? LIMIT 1`)
+    .bind(id).first<AdminProductRow>();
+  if (!row) throw new ApiInputError("PRODUCT_NOT_FOUND", "Product was not found.", 404);
+  return adminProductItem(row);
+}
+
+async function adminCurrencies(db: D1Database) {
+  const rows = await db.prepare(
+    `SELECT c.code, c.token, c.name_zh AS nameZh, c.name_en AS nameEn,
+      c.digits, c.active, r.rate, r.effective_at AS effectiveAt
+     FROM currencies c
+     LEFT JOIN exchange_rates r ON r.id = (
+       SELECT id FROM exchange_rates latest
+       WHERE latest.from_code = 'MYR' AND latest.to_code = c.code
+       ORDER BY latest.effective_at DESC, latest.id DESC LIMIT 1
+     )
+     ORDER BY c.sort_order ASC, c.code ASC`,
+  ).all<{
+    code: string;
+    token: string;
+    nameZh: string;
+    nameEn: string;
+    digits: number;
+    active: number;
+    rate: string | null;
+    effectiveAt: string | null;
+  }>();
+  return (rows.results ?? []).map((row) => ({
+    code: row.code,
+    token: row.token,
+    name: { zh: row.nameZh, en: row.nameEn },
+    digits: row.digits,
+    active: Boolean(row.active),
+    rate: row.rate,
+    effectiveAt: row.effectiveAt,
+  }));
+}
+
+async function currencyRateHistory(db: D1Database, code: string) {
+  const currency = await db.prepare("SELECT code FROM currencies WHERE code = ? LIMIT 1")
+    .bind(code).first<{ code: string }>();
+  if (!currency) throw new ApiInputError("CURRENCY_NOT_FOUND", "Currency was not found.", 404);
+  const rows = await db.prepare(
+    `SELECT id, from_code AS fromCode, to_code AS toCode, rate, source,
+      effective_at AS effectiveAt, expires_at AS expiresAt, created_at AS createdAt
+     FROM exchange_rates
+     WHERE from_code = 'MYR' AND to_code = ?
+     ORDER BY effective_at DESC, id DESC
+     LIMIT 100`,
+  ).bind(code).all<{
+    id: string;
+    fromCode: string;
+    toCode: string;
+    rate: string;
+    source: string;
+    effectiveAt: string;
+    expiresAt: string | null;
+    createdAt: string;
+  }>();
+  return rows.results ?? [];
+}
+
+async function updateCurrencyRate(
+  db: D1Database,
+  request: Request,
+  code: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const rate = decimalString(body.rate, "rate", 10);
+  const reason = requiredString(body.reason, "reason", 8, 500);
+  const currency = await db.prepare("SELECT code FROM currencies WHERE code = ? LIMIT 1")
+    .bind(code).first<{ code: string }>();
+  if (!currency) throw new ApiInputError("CURRENCY_NOT_FOUND", "Currency was not found.", 404);
+  const now = new Date().toISOString();
+  await db.prepare(
+    "INSERT INTO exchange_rates (id, from_code, to_code, rate, source, effective_at, expires_at, created_at) VALUES (?, 'MYR', ?, ?, 'sites-admin-manual', ?, NULL, ?)",
+  ).bind(crypto.randomUUID(), code, rate, now, now).run();
+  await writeAudit(db, {
+    action: "currency.rate.updated",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "CURRENCY",
+    targetId: code,
+    reason,
+  });
+  return (await adminCurrencies(db)).find((item) => item.code === code);
+}
+
+async function adminHeroes(db: D1Database) {
+  const rows = await db.prepare(
+    `SELECT h.id, h.key, h.image_key AS imageKey, h.target_slug AS targetSlug,
+      h.tone, h.status, h.sort_order AS sortOrder, h.version,
+      zh.eyebrow AS zhEyebrow, zh.title AS zhTitle, zh.body AS zhBody, zh.cta AS zhCta,
+      en.eyebrow AS enEyebrow, en.title AS enTitle, en.body AS enBody, en.cta AS enCta,
+      h.created_at AS createdAt, h.updated_at AS updatedAt
+     FROM heroes h
+     JOIN hero_translations zh ON zh.hero_id = h.id AND zh.locale = 'ZH'
+     JOIN hero_translations en ON en.hero_id = h.id AND en.locale = 'EN'
+     ORDER BY h.sort_order ASC, h.id ASC`,
+  ).all<HeroRow>();
+  return (rows.results ?? []).map(heroItem);
+}
+
+async function createHero(db: D1Database, request: Request, actor: AdminIdentity) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const input = heroInput(body);
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.batch([
+    db.prepare(
+      "INSERT INTO heroes (id, key, image_key, target_slug, tone, status, sort_order, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+    ).bind(id, input.key, input.imageKey, input.targetSlug, input.tone, input.status, input.sortOrder, now, now),
+    heroTranslationInsert(db, id, "ZH", input.translations.zh),
+    heroTranslationInsert(db, id, "EN", input.translations.en),
+  ]);
+  await writeAudit(db, {
+    action: "content.hero.created",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "HERO",
+    targetId: id,
+  });
+  return (await adminHeroes(db)).find((item) => item.id === id);
+}
+
+async function updateHero(db: D1Database, request: Request, id: string, actor: AdminIdentity) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const input = heroInput(body);
+  const version = safeInteger(body.version, "version", 1);
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE heroes SET key = ?, image_key = ?, target_slug = ?, tone = ?, status = ?,
+      sort_order = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
+  ).bind(
+    input.key,
+    input.imageKey,
+    input.targetSlug,
+    input.tone,
+    input.status,
+    input.sortOrder,
+    now,
+    id,
+    version,
+  ).run();
+  if (changes(result) !== 1) throw new ApiInputError("VERSION_CONFLICT", "The hero changed. Refresh and try again.", 409);
+  await db.batch([
+    heroTranslationUpdate(db, id, "ZH", input.translations.zh),
+    heroTranslationUpdate(db, id, "EN", input.translations.en),
+  ]);
+  await writeAudit(db, {
+    action: "content.hero.updated",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "HERO",
+    targetId: id,
+  });
+  return (await adminHeroes(db)).find((item) => item.id === id);
+}
+
+async function adminChannels(db: D1Database) {
+  const rows = await db.prepare(
+    `SELECT id, type, mode, label_zh AS labelZh, label_en AS labelEn,
+      public_account AS publicAccount, direct_target AS directTarget,
+      service_hours_zh AS serviceHoursZh, service_hours_en AS serviceHoursEn,
+      active, sort_order AS sortOrder, version, updated_at AS updatedAt
+     FROM merchant_channels ORDER BY sort_order ASC, id ASC`,
+  ).all<ChannelRow>();
+  return (rows.results ?? []).map(channelItem);
+}
+
+async function updateChannel(
+  db: D1Database,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const version = safeInteger(body.version, "version", 1);
+  const label = localizedText(body.label, "label");
+  const serviceHours = localizedText(body.serviceHours, "serviceHours");
+  const publicAccount = requiredString(body.publicAccount, "publicAccount", 1, 240);
+  const directTarget = nullableString(body.directTarget, "directTarget", 512);
+  const active = Boolean(body.active);
+  const sortOrder = safeInteger(body.sortOrder, "sortOrder", 0);
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE merchant_channels SET label_zh = ?, label_en = ?, public_account = ?,
+      direct_target = ?, service_hours_zh = ?, service_hours_en = ?, active = ?,
+      sort_order = ?, version = version + 1, updated_at = ?
+     WHERE id = ? AND version = ?`,
+  ).bind(
+    label.zh,
+    label.en,
+    publicAccount,
+    directTarget,
+    serviceHours.zh,
+    serviceHours.en,
+    active ? 1 : 0,
+    sortOrder,
+    now,
+    id,
+    version,
+  ).run();
+  if (changes(result) !== 1) throw new ApiInputError("VERSION_CONFLICT", "The contact channel changed. Refresh and try again.", 409);
+  await writeAudit(db, {
+    action: "support.channel.updated",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "MERCHANT_CHANNEL",
+    targetId: id,
+  });
+  return (await adminChannels(db)).find((item) => item.id === id);
+}
+
+async function reorderRows(
+  db: D1Database,
+  request: Request,
+  actor: AdminIdentity,
+  table: "heroes" | "merchant_channels",
+  action: string,
+) {
+  const body = await readJson<{ items?: Array<{ id?: unknown; version?: unknown }> }>(request);
+  if (!Array.isArray(body.items) || body.items.length === 0 || body.items.length > 100) {
+    throw new ApiInputError("INVALID_ORDER", "A non-empty ordered item list is required.", 422);
+  }
+  const now = new Date().toISOString();
+  const statements = body.items.map((item, index) => db.prepare(
+    `UPDATE ${table} SET sort_order = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
+  ).bind(
+    index + 1,
+    now,
+    requiredString(item.id, "id", 1, 120),
+    safeInteger(item.version, "version", 1),
+  ));
+  const results = await db.batch(statements);
+  if (results.some((result) => changes(result) !== 1)) {
+    throw new ApiInputError("VERSION_CONFLICT", "The order changed. Refresh and try again.", 409);
+  }
+  await writeAudit(db, {
+    action,
+    result: "SUCCEEDED",
+    actor,
+    targetType: table === "heroes" ? "HERO" : "MERCHANT_CHANNEL",
+    reason: "Administrative reorder",
+  });
+  return table === "heroes" ? adminHeroes(db) : adminChannels(db);
+}
+
+async function adminSettings(db: D1Database) {
+  const row = await db.prepare(
+    "SELECT value_json AS valueJson, version, updated_at AS updatedAt FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
+  ).first<{ valueJson: string; version: number; updatedAt: string }>();
+  if (!row) throw new ApiInputError("SETTINGS_NOT_FOUND", "Storefront settings were not found.", 404);
+  return { ...JSON.parse(row.valueJson) as Record<string, unknown>, version: row.version, updatedAt: row.updatedAt };
+}
+
+async function updateSettings(db: D1Database, request: Request, actor: AdminIdentity) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const version = safeInteger(body.version, "version", 1);
+  const reason = requiredString(body.reason, "reason", 8, 500);
+  const settings = {
+    siteName: localizedText(body.siteName, "siteName"),
+    defaultLocale: body.defaultLocale === "en" ? "en" : "zh",
+    seoDescription: localizedText(body.seoDescription, "seoDescription"),
+    policyVersion: requiredString(body.policyVersion, "policyVersion", 1, 80),
+    acceptOrders: Boolean(body.acceptOrders),
+    supportEnabled: Boolean(body.supportEnabled),
+    transitServiceEnabled: Boolean(body.transitServiceEnabled),
+    transitServiceUrl: nullableHttpsUrl(body.transitServiceUrl, "transitServiceUrl"),
+  };
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE site_settings SET value_json = ?, version = version + 1,
+      updated_at = ?, updated_by_email = ? WHERE key = 'storefront.settings' AND version = ?`,
+  ).bind(JSON.stringify(settings), now, actor.email, version).run();
+  if (changes(result) !== 1) throw new ApiInputError("VERSION_CONFLICT", "Settings changed. Refresh and try again.", 409);
+  await writeAudit(db, {
+    action: "settings.storefront.updated",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "SITE_SETTING",
+    targetId: "storefront.settings",
+    reason,
+  });
+  return adminSettings(db);
+}
+
+async function listOrders(db: D1Database, url: URL): Promise<Response> {
+  const { page, pageSize, offset } = parsePage(url);
+  const conditions: string[] = [];
+  const bindings: unknown[] = [];
+  const search = url.searchParams.get("search")?.trim();
+  const status = url.searchParams.get("status")?.trim();
+  const scope = url.searchParams.get("scope");
+  const assigneeId = url.searchParams.get("assigneeId");
+  const channel = url.searchParams.get("contactChannel");
+  if (scope === "AFTER_SALES") {
+    conditions.push("o.status IN ('REFUND_PENDING','REFUNDED','DISPUTED')");
+  } else if (status) {
+    conditions.push("o.status = ?");
+    bindings.push(status);
+  }
+  if (assigneeId === "UNASSIGNED") conditions.push("o.assigned_to_id IS NULL");
+  else if (assigneeId) {
+    conditions.push("o.assigned_to_id = ?");
+    bindings.push(assigneeId);
+  }
+  if (channel) {
+    conditions.push("o.contact_channel = ?");
+    bindings.push(channel);
+  }
+  if (search) {
+    conditions.push("(o.order_number LIKE ? OR o.product_name_snapshot LIKE ? OR o.masked_contact LIKE ?)");
+    const pattern = `%${search}%`;
+    bindings.push(pattern, pattern, pattern);
+  }
+  const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
+  const total = Number((await db.prepare(`SELECT COUNT(*) AS count FROM orders o${where}`)
+    .bind(...bindings).first<{ count: number }>())?.count ?? 0);
+  const rows = await db.prepare(
+    `${orderListSql()}${where} ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`,
+  ).bind(...bindings, pageSize, offset).all<OrderListRow>();
+  return success((rows.results ?? []).map(orderListItem), {
+    meta: pageMeta(page, pageSize, total),
+  });
+}
+
+async function orderDetail(db: D1Database, id: string) {
+  const row = await db.prepare(`${orderListSql()} WHERE o.id = ? LIMIT 1`)
+    .bind(id).first<OrderListRow>();
+  if (!row) throw new ApiInputError("ORDER_NOT_FOUND", "Order was not found.", 404);
+  const events = await db.prepare(
+    `SELECT h.id, h.from_status AS fromStatus, h.to_status AS toStatus,
+      h.reason, h.actor_email AS actorEmail, h.created_at AS createdAt,
+      m.id AS actorId, m.display_name AS actorDisplayName
+     FROM order_status_history h
+     LEFT JOIN admin_members m ON m.email = h.actor_email
+     WHERE h.order_id = ? ORDER BY h.created_at ASC, h.id ASC`,
+  ).bind(id).all<{
+    id: string;
+    fromStatus: string | null;
+    toStatus: string;
+    reason: string | null;
+    actorEmail: string | null;
+    actorId: string | null;
+    actorDisplayName: string | null;
+    createdAt: string;
+  }>();
+  const base = orderListItem(row);
+  return {
+    ...base,
+    exchangeRateSnapshot: row.exchangeRateSnapshot,
+    productVersion: row.productVersion,
+    acceptedPolicyVersion: row.acceptedPolicyVersion,
+    allowedTransitions: orderTransitions[row.status] ?? [],
+    statusHistory: (events.results ?? []).map((event) => ({
+      id: event.id,
+      fromStatus: event.fromStatus,
+      toStatus: event.toStatus,
+      reason: event.reason,
+      actor: event.actorEmail
+        ? { id: event.actorId ?? event.actorEmail, displayName: event.actorDisplayName ?? event.actorEmail }
+        : null,
+      createdAt: event.createdAt,
+    })),
+  };
+}
+
+async function updateOrderStatus(
+  db: D1Database,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const expectedStatus = requiredString(body.expectedStatus, "expectedStatus", 1, 40);
+  const expectedUpdatedAt = requiredString(body.expectedUpdatedAt, "expectedUpdatedAt", 1, 80);
+  const status = requiredString(body.status, "status", 1, 40);
+  const reason = requiredString(body.reason, "reason", 8, 500);
+  if (!(orderTransitions[expectedStatus] ?? []).includes(status)) {
+    throw new ApiInputError("INVALID_STATUS_TRANSITION", "The requested status transition is not allowed.", 422);
+  }
+  const current = await db.prepare(
+    "SELECT status, updated_at AS updatedAt, inventory_reserved AS inventoryReserved, inventory_released_at AS inventoryReleasedAt, product_id AS productId FROM orders WHERE id = ? LIMIT 1",
+  ).bind(id).first<{
+    status: string;
+    updatedAt: string;
+    inventoryReserved: number;
+    inventoryReleasedAt: string | null;
+    productId: string;
+  }>();
+  if (!current) throw new ApiInputError("ORDER_NOT_FOUND", "Order was not found.", 404);
+  if (current.status !== expectedStatus || current.updatedAt !== expectedUpdatedAt) {
+    throw new ApiInputError("VERSION_CONFLICT", "The order changed. Refresh and try again.", 409);
+  }
+  const now = new Date().toISOString();
+  const releaseInventory = status === "CANCELLED"
+    && Boolean(current.inventoryReserved)
+    && !current.inventoryReleasedAt;
+  const history = db.prepare(
+    `INSERT INTO order_status_history
+      (id, order_id, from_status, to_status, reason, actor_email, created_at)
+     SELECT ?, id, status, ?, ?, ?, ?
+     FROM orders
+     WHERE id = ? AND status = ? AND updated_at = ?`,
+  ).bind(
+    crypto.randomUUID(),
+    status,
+    reason,
+    actor.email,
+    now,
+    id,
+    expectedStatus,
+    expectedUpdatedAt,
+  );
+  const update = db.prepare(
+    `UPDATE orders SET status = ?, updated_at = ?,
+      inventory_released_at = CASE WHEN ? = 1 THEN ? ELSE inventory_released_at END
+     WHERE id = ? AND status = ? AND updated_at = ?`,
+  ).bind(status, now, releaseInventory ? 1 : 0, now, id, expectedStatus, expectedUpdatedAt);
+  const statements = [history, update];
+  if (releaseInventory) {
+    statements.push(db.prepare(
+      `UPDATE products
+       SET stock_quantity = stock_quantity + 1, version = version + 1, updated_at = ?
+       WHERE id = ? AND stock_mode = 'FINITE'
+         AND EXISTS (
+           SELECT 1 FROM orders
+           WHERE id = ? AND status = 'CANCELLED'
+             AND updated_at = ? AND inventory_released_at = ?
+         )`,
+    ).bind(now, current.productId, id, now, now));
+  }
+  const results = await db.batch(statements);
+  if (changes(results[0]) !== 1 || changes(results[1]) !== 1) {
+    throw new ApiInputError("VERSION_CONFLICT", "The order changed. Refresh and try again.", 409);
+  }
+  await writeAudit(db, {
+    action: "order.status.updated",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "ORDER",
+    targetId: id,
+    reason,
+  });
+  return orderDetail(db, id);
+}
+
+async function updateOrderAssignment(
+  db: D1Database,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const assigneeId = nullableString(body.assigneeId, "assigneeId", 120);
+  const expectedAssigneeId = nullableString(body.expectedAssigneeId, "expectedAssigneeId", 120);
+  const expectedUpdatedAt = requiredString(body.expectedUpdatedAt, "expectedUpdatedAt", 1, 80);
+  const reason = requiredString(body.reason, "reason", 8, 500);
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE orders SET assigned_to_id = ?, updated_at = ?
+     WHERE id = ? AND updated_at = ?
+       AND ((assigned_to_id IS NULL AND ? IS NULL) OR assigned_to_id = ?)`,
+  ).bind(assigneeId, now, id, expectedUpdatedAt, expectedAssigneeId, expectedAssigneeId).run();
+  if (changes(result) !== 1) throw new ApiInputError("VERSION_CONFLICT", "The order assignment changed. Refresh and try again.", 409);
+  await writeAudit(db, {
+    action: "order.assignment.updated",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "ORDER",
+    targetId: id,
+    reason,
+  });
+  return orderDetail(db, id);
+}
+
+async function revealOrderContact(
+  env: SitesEnv,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const reason = requiredString(body.reason, "reason", 8, 500);
+  const row = await env.DB.prepare(
+    "SELECT contact_encrypted AS contactEncrypted, contact_channel AS contactChannel FROM orders WHERE id = ? LIMIT 1",
+  ).bind(id).first<{ contactEncrypted: string; contactChannel: string }>();
+  if (!row) throw new ApiInputError("ORDER_NOT_FOUND", "Order was not found.", 404);
+  const contact = await decryptContact(row.contactEncrypted, env.CLOUDBRIDGE_DATA_KEY);
+  await writeAudit(env.DB, {
+    action: "order.contact.revealed",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "ORDER",
+    targetId: id,
+    reason,
+  });
+  return { contact, channel: row.contactChannel };
+}
+
+async function teamOverview(db: D1Database) {
+  const members = await db.prepare(
+    `SELECT id, email, display_name AS displayName, status, last_login_at AS lastLoginAt,
+      created_at AS createdAt, updated_at AS updatedAt FROM admin_members
+     ORDER BY created_at ASC, id ASC`,
+  ).all<{
+    id: string;
+    email: string;
+    displayName: string;
+    status: string;
+    lastLoginAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>();
+  const superRole = {
+    id: "role-super-admin",
+    key: "SUPER_ADMIN",
+    name: { zh: "超级管理员", en: "Super admin" },
+    description: "Sites owner administration",
+  };
+  return {
+    members: (members.results ?? []).map((member) => ({
+      ...member,
+      totpEnabled: false,
+      roles: [superRole],
+    })),
+    availableRoles: [superRole],
+  };
+}
+
+async function rolesOverview(db: D1Database) {
+  const memberCount = await count(db, "SELECT COUNT(*) AS count FROM admin_members WHERE status = 'ACTIVE'");
+  return {
+    roles: [{
+      id: "role-super-admin",
+      key: "SUPER_ADMIN",
+      name: { zh: "超级管理员", en: "Super admin" },
+      description: "Sites owner administration",
+      permissions: [...adminPermissions],
+      memberCount,
+      updatedAt: new Date().toISOString(),
+      systemProtected: true,
+    }],
+    permissions: adminPermissions.map((key) => ({ key, description: null })),
+  };
+}
+
+async function manualPaymentEvents(db: D1Database, url: URL): Promise<Response> {
+  const { page, pageSize, offset } = parsePage(url);
+  const statuses = ["PAID", "REFUND_PENDING", "REFUNDED", "DISPUTED"];
+  const total = Number((await db.prepare(
+    `SELECT COUNT(*) AS count FROM order_status_history WHERE to_status IN ('PAID','REFUND_PENDING','REFUNDED','DISPUTED')`,
+  ).first<{ count: number }>())?.count ?? 0);
+  const rows = await db.prepare(
+    `SELECT h.id AS statusHistoryId, h.from_status AS fromStatus, h.to_status AS toStatus,
+      h.reason, h.created_at AS recordedAt, h.actor_email AS actorEmail,
+      o.id AS orderId, o.order_number AS orderNumber, o.product_name_snapshot AS productNameSnapshot,
+      o.amount, o.currency_code AS currency, o.reference_amount AS referenceAmount,
+      o.reference_currency_code AS referenceCurrency, o.exchange_rate_snapshot AS exchangeRateSnapshot,
+      o.status AS currentStatus, o.assigned_to_id AS assignedToId,
+      assigned.display_name AS assignedDisplayName, actor.id AS actorId,
+      actor.display_name AS actorDisplayName
+     FROM order_status_history h
+     JOIN orders o ON o.id = h.order_id
+     LEFT JOIN admin_members assigned ON assigned.id = o.assigned_to_id
+     LEFT JOIN admin_members actor ON actor.email = h.actor_email
+     WHERE h.to_status IN ('PAID','REFUND_PENDING','REFUNDED','DISPUTED')
+     ORDER BY h.created_at DESC, h.id DESC LIMIT ? OFFSET ?`,
+  ).bind(pageSize, offset).all<Record<string, unknown>>();
+  const items = (rows.results ?? []).map((row) => {
+    const toStatus = String(row.toStatus);
+    const eventType = toStatus === "PAID"
+      ? "MANUALLY_RECORDED_PAID"
+      : toStatus === "REFUND_PENDING"
+        ? "REFUND_REVIEW_STARTED"
+        : toStatus === "REFUNDED"
+          ? "MANUALLY_RECORDED_REFUNDED"
+          : "DISPUTE_REVIEW_STARTED";
+    return {
+      statusHistoryId: row.statusHistoryId,
+      eventType,
+      fromStatus: row.fromStatus,
+      toStatus,
+      orderId: row.orderId,
+      orderNumber: row.orderNumber,
+      productNameSnapshot: row.productNameSnapshot,
+      orderAmount: { amount: row.amount, currency: row.currency },
+      referenceAmount: row.referenceAmount && row.referenceCurrency
+        ? { amount: row.referenceAmount, currency: row.referenceCurrency }
+        : null,
+      exchangeRateSnapshot: row.exchangeRateSnapshot,
+      currentStatus: row.currentStatus,
+      currentAssignee: row.assignedToId
+        ? { id: row.assignedToId, displayName: row.assignedDisplayName }
+        : null,
+      actor: row.actorEmail
+        ? { id: row.actorId ?? row.actorEmail, displayName: row.actorDisplayName ?? row.actorEmail }
+        : null,
+      reason: row.reason,
+      recordedAt: row.recordedAt,
+      externalActionVerified: false,
+    };
+  });
+  return success(items, { meta: pageMeta(page, pageSize, total) });
+}
+
+async function telegramSettings(db: D1Database) {
+  const row = await db.prepare(
+    "SELECT value_json AS valueJson, version, updated_at AS updatedAt FROM site_settings WHERE key = 'notifications.telegram.new-order' LIMIT 1",
+  ).first<{ valueJson: string; version: number; updatedAt: string }>();
+  const parsed = row ? JSON.parse(row.valueJson) as Record<string, unknown> : {};
+  return {
+    requestedEnabled: Boolean(parsed.requestedEnabled),
+    effectiveEnabled: false,
+    recipientGroupLabel: typeof parsed.recipientGroupLabel === "string" ? parsed.recipientGroupLabel : "",
+    eventType: "ORDER_CREATED",
+    includedFields: Array.isArray(parsed.includedFields)
+      ? parsed.includedFields.map((item) => String(item).toUpperCase())
+      : [],
+    connectionState: "NOT_CONNECTED",
+    tokenConfigured: false,
+    externalDeliveryVerified: false,
+    version: row?.version ?? 1,
+    updatedAt: row?.updatedAt ?? new Date(0).toISOString(),
+  };
+}
+
+async function updateTelegramSettings(
+  db: D1Database,
+  request: Request,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const version = safeInteger(body.version, "version", 1);
+  const reason = requiredString(body.reason, "reason", 8, 500);
+  const value = {
+    requestedEnabled: Boolean(body.requestedEnabled),
+    recipientGroupLabel: nullableString(body.recipientGroupLabel, "recipientGroupLabel", 120) ?? "",
+    includedFields: Array.isArray(body.includedFields)
+      ? body.includedFields.map((item) => String(item).toUpperCase()).slice(0, 8)
+      : [],
+  };
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE site_settings SET value_json = ?, version = version + 1,
+      updated_at = ?, updated_by_email = ?
+     WHERE key = 'notifications.telegram.new-order' AND version = ?`,
+  ).bind(JSON.stringify(value), now, actor.email, version).run();
+  if (changes(result) !== 1) throw new ApiInputError("VERSION_CONFLICT", "Notification settings changed. Refresh and try again.", 409);
+  await writeAudit(db, {
+    action: "notifications.telegram.intent.updated",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "SITE_SETTING",
+    targetId: "notifications.telegram.new-order",
+    reason,
+  });
+  return telegramSettings(db);
+}
+
+type AdminProductRow = {
+  id: string;
+  slug: string;
+  imageKey: string;
+  basePrice: string;
+  compareAtPrice: string | null;
+  stockMode: "FINITE" | "UNLIMITED";
+  stockQuantity: number | null;
+  status: string;
+  sortOrder: number;
+  version: number;
+  categoryId: string;
+  categorySlug: string;
+  categoryNameZh: string;
+  categoryNameEn: string;
+  nameZh: string;
+  kickerZh: string;
+  descriptionZh: string;
+  nameEn: string;
+  kickerEn: string;
+  descriptionEn: string;
+  updatedAt: string;
+};
+
+type HeroRow = {
+  id: string;
+  key: string;
+  imageKey: string;
+  targetSlug: string | null;
+  tone: string;
+  status: string;
+  sortOrder: number;
+  version: number;
+  zhEyebrow: string;
+  zhTitle: string;
+  zhBody: string;
+  zhCta: string;
+  enEyebrow: string;
+  enTitle: string;
+  enBody: string;
+  enCta: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ChannelRow = {
+  id: string;
+  type: string;
+  mode: string;
+  labelZh: string;
+  labelEn: string;
+  publicAccount: string;
+  directTarget: string | null;
+  serviceHoursZh: string;
+  serviceHoursEn: string;
+  active: number;
+  sortOrder: number;
+  version: number;
+  updatedAt: string;
+};
+
+type OrderListRow = {
+  id: string;
+  orderNumber: string;
+  productId: string;
+  productNameSnapshot: string;
+  amount: string;
+  currency: string;
+  referenceAmount: string | null;
+  referenceCurrency: string | null;
+  contactChannel: string;
+  maskedContact: string;
+  status: string;
+  reservedUntil: string;
+  assignedToId: string | null;
+  assignedDisplayName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  exchangeRateSnapshot: string;
+  productVersion: number;
+  acceptedPolicyVersion: string;
+};
+
+function adminProductSql(): string {
+  return `SELECT p.id, p.slug, p.image_key AS imageKey, p.base_price AS basePrice,
+    p.compare_at_price AS compareAtPrice, p.stock_mode AS stockMode,
+    p.stock_quantity AS stockQuantity, p.status, p.sort_order AS sortOrder,
+    p.version, c.id AS categoryId, c.slug AS categorySlug,
+    czh.name AS categoryNameZh, cen.name AS categoryNameEn,
+    zh.name AS nameZh, zh.kicker AS kickerZh, zh.description AS descriptionZh,
+    en.name AS nameEn, en.kicker AS kickerEn, en.description AS descriptionEn,
+    p.updated_at AS updatedAt
+   FROM products p
+   JOIN categories c ON c.id = p.category_id
+   JOIN category_translations czh ON czh.category_id = c.id AND czh.locale = 'ZH'
+   JOIN category_translations cen ON cen.category_id = c.id AND cen.locale = 'EN'
+   JOIN product_translations zh ON zh.product_id = p.id AND zh.locale = 'ZH'
+   JOIN product_translations en ON en.product_id = p.id AND en.locale = 'EN'`;
+}
+
+function adminProductItem(row: AdminProductRow) {
+  return {
+    id: row.id,
+    slug: row.slug,
+    imageKey: row.imageKey,
+    basePrice: row.basePrice,
+    compareAtPrice: row.compareAtPrice,
+    stockMode: row.stockMode,
+    stockQuantity: row.stockQuantity,
+    status: row.status,
+    sortOrder: row.sortOrder,
+    version: row.version,
+    category: {
+      id: row.categoryId,
+      slug: row.categorySlug,
+      name: { zh: row.categoryNameZh, en: row.categoryNameEn },
+    },
+    translations: {
+      zh: { name: row.nameZh, kicker: row.kickerZh, description: row.descriptionZh },
+      en: { name: row.nameEn, kicker: row.kickerEn, description: row.descriptionEn },
+    },
+    updatedAt: row.updatedAt,
+  };
+}
+
+function heroItem(row: HeroRow) {
+  return {
+    id: row.id,
+    key: row.key,
+    imageKey: row.imageKey,
+    targetSlug: row.targetSlug,
+    tone: row.tone,
+    status: row.status,
+    sortOrder: row.sortOrder,
+    version: row.version,
+    translations: {
+      zh: {
+        eyebrow: normalizeLegacyLineBreaks(row.zhEyebrow),
+        title: normalizeLegacyLineBreaks(row.zhTitle),
+        body: normalizeLegacyLineBreaks(row.zhBody),
+        cta: normalizeLegacyLineBreaks(row.zhCta),
+      },
+      en: {
+        eyebrow: normalizeLegacyLineBreaks(row.enEyebrow),
+        title: normalizeLegacyLineBreaks(row.enTitle),
+        body: normalizeLegacyLineBreaks(row.enBody),
+        cta: normalizeLegacyLineBreaks(row.enCta),
+      },
+    },
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function channelItem(row: ChannelRow) {
+  return {
+    id: row.id,
+    type: row.type,
+    mode: row.mode,
+    label: { zh: row.labelZh, en: row.labelEn },
+    publicAccount: row.publicAccount,
+    directTarget: row.directTarget,
+    serviceHours: { zh: row.serviceHoursZh, en: row.serviceHoursEn },
+    active: Boolean(row.active),
+    sortOrder: row.sortOrder,
+    version: row.version,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function orderListSql(): string {
+  return `SELECT o.id, o.order_number AS orderNumber, o.product_id AS productId,
+    o.product_name_snapshot AS productNameSnapshot, o.amount,
+    o.currency_code AS currency, o.reference_amount AS referenceAmount,
+    o.reference_currency_code AS referenceCurrency,
+    o.contact_channel AS contactChannel, o.masked_contact AS maskedContact,
+    o.status, o.reserved_until AS reservedUntil, o.assigned_to_id AS assignedToId,
+    m.display_name AS assignedDisplayName, o.created_at AS createdAt,
+    o.updated_at AS updatedAt, o.exchange_rate_snapshot AS exchangeRateSnapshot,
+    o.product_version AS productVersion, o.accepted_policy_version AS acceptedPolicyVersion
+   FROM orders o LEFT JOIN admin_members m ON m.id = o.assigned_to_id`;
+}
+
+function orderListItem(row: OrderListRow) {
+  return {
+    id: row.id,
+    orderNumber: row.orderNumber,
+    productId: row.productId,
+    productNameSnapshot: row.productNameSnapshot,
+    amount: { amount: row.amount, currency: row.currency },
+    referenceAmount: row.referenceAmount && row.referenceCurrency
+      ? { amount: row.referenceAmount, currency: row.referenceCurrency }
+      : null,
+    contactChannel: row.contactChannel,
+    maskedContact: row.maskedContact,
+    status: row.status,
+    paymentMode: "MANUAL",
+    paymentStage: paymentStage(row.status),
+    reservedUntil: row.reservedUntil,
+    assignedTo: row.assignedToId
+      ? { id: row.assignedToId, displayName: row.assignedDisplayName ?? row.assignedToId }
+      : null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function paymentStage(status: string): string {
+  if (status === "PAYMENT_PROCESSING") return "EXTERNAL_PROCESSING_UNVERIFIED";
+  if (["PAID", "FULFILLING", "COMPLETED"].includes(status)) return "MANUALLY_RECORDED_PAID";
+  if (status === "REFUND_PENDING") return "REFUND_REVIEW";
+  if (status === "REFUNDED") return "MANUALLY_RECORDED_REFUNDED";
+  if (status === "DISPUTED") return "DISPUTE_REVIEW";
+  if (status === "CANCELLED") return "CANCELLED";
+  return "NOT_RECORDED";
+}
+
+function categoryInput(body: Record<string, unknown>) {
+  const status = requiredString(body.status, "status", 1, 20);
+  if (!["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"].includes(status)) {
+    throw new ApiInputError("INVALID_STATUS", "Category status is invalid.", 422);
+  }
+  return {
+    nameZh: requiredString(body.nameZh, "nameZh", 1, 160),
+    nameEn: requiredString(body.nameEn, "nameEn", 1, 160),
+    slug: slugString(body.slug),
+    sortOrder: safeInteger(body.sortOrder, "sortOrder", 0),
+    status,
+  };
+}
+
+function productInput(body: Record<string, unknown>) {
+  const stockMode = requiredString(body.stockMode, "stockMode", 1, 20);
+  const status = requiredString(body.status, "status", 1, 20);
+  if (!["FINITE", "UNLIMITED"].includes(stockMode)) {
+    throw new ApiInputError("INVALID_STOCK_MODE", "Stock mode is invalid.", 422);
+  }
+  if (!["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"].includes(status)) {
+    throw new ApiInputError("INVALID_STATUS", "Product status is invalid.", 422);
+  }
+  return {
+    slug: slugString(body.slug),
+    categoryId: requiredString(body.categoryId, "categoryId", 1, 120),
+    imageKey: safeImagePath(body.imageKey),
+    basePrice: decimalString(body.basePrice, "basePrice", 2),
+    compareAtPrice: body.compareAtPrice === null || body.compareAtPrice === ""
+      ? null
+      : decimalString(body.compareAtPrice, "compareAtPrice", 2),
+    stockMode,
+    stockQuantity: stockMode === "UNLIMITED"
+      ? null
+      : safeInteger(body.stockQuantity, "stockQuantity", 0),
+    status,
+    sortOrder: safeInteger(body.sortOrder, "sortOrder", 0),
+    nameZh: requiredString(body.nameZh, "nameZh", 1, 200),
+    nameEn: requiredString(body.nameEn, "nameEn", 1, 200),
+    kickerZh: requiredString(body.kickerZh, "kickerZh", 1, 180),
+    kickerEn: requiredString(body.kickerEn, "kickerEn", 1, 180),
+    descriptionZh: requiredString(body.descriptionZh, "descriptionZh", 1, 10_000),
+    descriptionEn: requiredString(body.descriptionEn, "descriptionEn", 1, 10_000),
+  };
+}
+
+function heroInput(body: Record<string, unknown>) {
+  const translations = body.translations as Record<string, unknown> | undefined;
+  const zh = translations?.zh as Record<string, unknown> | undefined;
+  const en = translations?.en as Record<string, unknown> | undefined;
+  const status = requiredString(body.status, "status", 1, 20);
+  const tone = requiredString(body.tone, "tone", 1, 20);
+  if (!["DRAFT", "ACTIVE", "INACTIVE"].includes(status)) {
+    throw new ApiInputError("INVALID_STATUS", "Hero status is invalid.", 422);
+  }
+  if (!["cyan", "blue", "violet", "green"].includes(tone)) {
+    throw new ApiInputError("INVALID_TONE", "Hero tone is invalid.", 422);
+  }
+  return {
+    key: slugString(body.key),
+    imageKey: safeImagePath(body.imageKey),
+    targetSlug: nullableString(body.targetSlug, "targetSlug", 160),
+    tone,
+    status,
+    sortOrder: safeInteger(body.sortOrder, "sortOrder", 0),
+    translations: {
+      zh: heroTranslation(zh, "translations.zh"),
+      en: heroTranslation(en, "translations.en"),
+    },
+  };
+}
+
+function heroTranslation(value: Record<string, unknown> | undefined, field: string) {
+  return {
+    eyebrow: normalizeLegacyLineBreaks(requiredString(value?.eyebrow, `${field}.eyebrow`, 1, 160)),
+    title: normalizeLegacyLineBreaks(requiredString(value?.title, `${field}.title`, 1, 300)),
+    body: normalizeLegacyLineBreaks(requiredString(value?.body, `${field}.body`, 1, 2_000)),
+    cta: normalizeLegacyLineBreaks(requiredString(value?.cta, `${field}.cta`, 1, 120)),
+  };
+}
+
+function productTranslationInsert(
+  db: D1Database,
+  productId: string,
+  locale: "ZH" | "EN",
+  name: string,
+  kicker: string,
+  description: string,
+) {
+  return db.prepare(
+    "INSERT INTO product_translations (product_id, locale, name, normalized_name, kicker, description, aliases_json) VALUES (?, ?, ?, ?, ?, ?, NULL)",
+  ).bind(productId, locale, name, name.normalize("NFKC").trim().toLocaleLowerCase(), kicker, description);
+}
+
+function productTranslationUpdate(
+  db: D1Database,
+  productId: string,
+  locale: "ZH" | "EN",
+  name: string,
+  kicker: string,
+  description: string,
+) {
+  return db.prepare(
+    "UPDATE product_translations SET name = ?, normalized_name = ?, kicker = ?, description = ? WHERE product_id = ? AND locale = ?",
+  ).bind(name, name.normalize("NFKC").trim().toLocaleLowerCase(), kicker, description, productId, locale);
+}
+
+function heroTranslationInsert(
+  db: D1Database,
+  heroId: string,
+  locale: "ZH" | "EN",
+  value: { eyebrow: string; title: string; body: string; cta: string },
+) {
+  return db.prepare(
+    "INSERT INTO hero_translations (hero_id, locale, eyebrow, title, body, cta) VALUES (?, ?, ?, ?, ?, ?)",
+  ).bind(heroId, locale, value.eyebrow, value.title, value.body, value.cta);
+}
+
+function heroTranslationUpdate(
+  db: D1Database,
+  heroId: string,
+  locale: "ZH" | "EN",
+  value: { eyebrow: string; title: string; body: string; cta: string },
+) {
+  return db.prepare(
+    "UPDATE hero_translations SET eyebrow = ?, title = ?, body = ?, cta = ? WHERE hero_id = ? AND locale = ?",
+  ).bind(value.eyebrow, value.title, value.body, value.cta, heroId, locale);
+}
+
+async function decryptContact(value: string, encodedKey: string | undefined): Promise<string> {
+  if (!encodedKey) throw new ApiInputError("ORDER_ENCRYPTION_NOT_CONFIGURED", "Order encryption is unavailable.", 503);
+  const [version, ivValue, encryptedValue] = value.split(".");
+  if (version !== "v1" || !ivValue || !encryptedValue) {
+    throw new ApiInputError("ORDER_CONTACT_INVALID", "The encrypted contact cannot be read.", 500);
+  }
+  const keyBytes = decodeBase64Url(encodedKey);
+  if (keyBytes.byteLength !== 32) throw new ApiInputError("ORDER_ENCRYPTION_INVALID", "Order encryption is unavailable.", 503);
+  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
+  try {
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: decodeBase64Url(ivValue) },
+      key,
+      decodeBase64Url(encryptedValue),
+    );
+    return new TextDecoder().decode(decrypted);
+  } catch {
+    throw new ApiInputError("ORDER_CONTACT_INVALID", "The encrypted contact cannot be read.", 500);
+  }
+}
+
+function decodeBase64Url(value: string): ArrayBuffer {
+  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+  const decoded = atob(padded);
+  return Uint8Array.from(decoded, (character) => character.charCodeAt(0)).buffer as ArrayBuffer;
+}
+
+function parseJsonRecord(value: string | undefined): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function localizedText(value: unknown, field: string): { zh: string; en: string } {
+  const record = value as Record<string, unknown> | null;
+  return {
+    zh: requiredString(record?.zh, `${field}.zh`, 1, 2_000),
+    en: requiredString(record?.en, `${field}.en`, 1, 2_000),
+  };
+}
+
+function requiredString(
+  value: unknown,
+  field: string,
+  minLength: number,
+  maxLength: number,
+): string {
+  if (typeof value !== "string") throw fieldError(field);
+  const normalized = value.trim();
+  if (normalized.length < minLength || normalized.length > maxLength) throw fieldError(field);
+  return normalized;
+}
+
+function nullableString(value: unknown, field: string, maxLength: number): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  return requiredString(value, field, 1, maxLength);
+}
+
+function nullableHttpsUrl(value: unknown, field: string): string | null {
+  const raw = nullableString(value, field, 512);
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw fieldError(field);
+  }
+  if (url.protocol !== "https:" || url.username || url.password) throw fieldError(field);
+  return url.toString();
+}
+
+function safeInteger(value: unknown, field: string, minimum: number): number {
+  if (!Number.isSafeInteger(value) || Number(value) < minimum) throw fieldError(field);
+  return Number(value);
+}
+
+function decimalString(value: unknown, field: string, maxDigits: number): string {
+  if (typeof value !== "string") throw fieldError(field);
+  const normalized = value.trim();
+  const pattern = new RegExp(`^\\d+(?:\\.\\d{1,${maxDigits}})?$`, "u");
+  if (!pattern.test(normalized) || /^0+(?:\.0+)?$/u.test(normalized)) throw fieldError(field);
+  return normalized;
+}
+
+function slugString(value: unknown): string {
+  const slug = requiredString(value, "slug", 1, 160).toLocaleLowerCase();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(slug)) throw fieldError("slug");
+  return slug;
+}
+
+function safeImagePath(value: unknown): string {
+  const path = requiredString(value, "imageKey", 1, 512);
+  if (!/^\/(?:assets|media)\/[A-Za-z0-9/_\-.]+$/u.test(path) || path.includes("..")) {
+    throw fieldError("imageKey");
+  }
+  return path;
+}
+
+function fieldError(field: string): ApiInputError {
+  return new ApiInputError(
+    "VALIDATION_FAILED",
+    `Field ${field} is invalid.`,
+    422,
+    [{ field, code: "INVALID", message: `${field} is invalid.` }],
+  );
+}
+
+function changes(result: { meta?: { changes?: number; rows_written?: number } }): number {
+  return Number(result.meta?.changes ?? result.meta?.rows_written ?? 0);
+}
+
+async function count(db: D1Database, query: string): Promise<number> {
+  return Number((await db.prepare(query).first<{ count: number }>())?.count ?? 0);
+}

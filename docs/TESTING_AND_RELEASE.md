@@ -67,18 +67,31 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 
 - 文案、本地化、标题和无障碍标签：`test:i18n` 加中英文浏览器检查。
 - 商品、分类和搜索：`test:catalog` 加桌面与移动端商品区检查。
+- 媒体引用清单：验证商品全分页、轮播聚合、相同路径去重但保留全部数据库引用、安全本地栅格路径、类型与双语搜索、局部读取权限、图片加载错误和详情内部表格滚动；断言页面没有上传、替换、删除、文件字节或对象存储操作。
 - 下单、联系渠道和订单凭证：`test:ux` 加成功、失败、取消和恢复流程。
 - 人工售后订单视图：验证 `/admin/disputes` 只展示 `REFUND_PENDING`、`REFUNDED`、`DISPUTED`，读取要求 `orders.read`、写入要求 `orders.write`，合法状态来自服务端，并覆盖 CAS 冲突、事务历史与审计、只读降级、空状态和错误状态。
 - 人工收款记录：验证 `/admin/payments` 只投影 `OrderStatusHistory.toStatus` 为 `PAID`、`REFUND_PENDING`、`REFUNDED`、`DISPUTED` 的稳定事件，读取要求 `orders.read`，所有事件返回 `externalActionVerified: false`，页面和 API 均无事件写入、删除或补写入口。
 - Telegram 新订单通知准备：验证 `notifications.telegram.new-order` 只保存非密钥白名单配置；GET 使用 `settings.read`，PUT 使用 `settings.write`、五分钟最近认证、原因、CAS 与 Serializable 事务审计；服务端始终派生未连接、未有效启用、未配置 Token 和未外部核验。
+- 通知就绪中心：验证 `/admin/notifications` 只有 `settings.read` 才请求现有 Telegram 配置，页面只显示真实未连接状态、未来意向、白名单与上线门禁；断言旧虚构通知、未读数、追踪编号、处理按钮和预览工作流已经删除，未建立投递事件存储时使用 `NOT_COLLECTED` 而不是零。
+- 数据安全就绪中心：验证 `/admin/data-security` 只组合当前会话、已实现代码控制和受 `audit.read` 保护的最近审计 GET；无权限时不得请求或泄露审计记录，旧 30/365/90 天保留值、设备数据、运行日志、不可变结论和策略检查流程必须删除，治理缺口分别使用 `NOT_DEFINED`、`NOT_IMPLEMENTED`、`NOT_CONNECTED`。
+- 审计日志工作台：验证 `GET /v1/admin/audit` 的 Prisma 查询使用显式白名单投影且不选择 `beforeData`、`afterData`、`ipHash` 或 `actorId`；后台准确区分最近 100 条加载窗口和数据库总数，覆盖排序、五类筛选、双语动作标签、空/错状态与详情，并断言旧 `logs` 预览工作流、差异和导出幻象已经删除。
+- 工作台真实性：验证 `/admin/dashboard` 只使用现有 `Overview` 响应，未启用商品不出现负数，最近订单样本与时间来自已加载记录；断言临期订单、低库存、通知失败的演示数量和 `dashboard-insights` / `order-workbench` 旧流程已经删除，缺失证据分别保持 `NOT_COLLECTED` 或 `NOT_IMPLEMENTED`。
+- 分类影响与权限：验证 `/admin/categories` 只从现有分类响应统计关联商品、非启用、空分类、重复顺序和双语缺失；`catalog.write` 缺失时不挂载新增、编辑或保存入口，旧 `categories` 设计流程已删除。非启用/归档分类不能被描述为自动隐藏、移动或删除关联商品。
+- 商品库存与上架影响：验证 `/admin/products` 只统计当前搜索第一页的已加载商品并与可用分类列表交叉检查；覆盖前台既有 0 售罄、1–3 低库存边界、双语缺失、库存数据冲突、分类导航状态和在售顺序重复。`catalog.write` 缺失时不挂载新增、编辑或保存入口，旧 `inventory-center` 设计流程必须删除，页面不得宣称全库库存、告警、库存流水、预留返库或发布历史。
+- 机密配置就绪中心：验证 `/admin/secrets` 只投影 `.env.example`、API 和 CDK 中的六个稳定服务端绑定；断言前端绑定为 0、运行与轮换门禁保持关闭、旧 Stripe/数据库/Telegram 假密钥名、伪造后缀与轮换天数、查看/新增/轮换工作流已删除，并静态核对每个绑定都来自 `ecs.Secret.fromSecretsManager`。
+- 备份就绪中心：验证 `/admin/backups` 只投影 Compose 中两个同机命名卷、Valkey AOF 与 CDK 中 RDS/Valkey 保护定义；断言本地卷为 `NOT_A_BACKUP`、AWS 为 `NOT_DEPLOYED`、恢复为 `NOT_PERFORMED`，旧 `BKP-*`、假容量/时间/健康/恢复结论、创建快照和恢复演练工作流已删除，且 1500px 单行表只在自身容器内横向滚动。
+- 系统集成就绪中心：验证 `/admin/integrations` 只调用健康、币种和 Telegram 三个现有 GET；无 `catalog.read` / `settings.read` 时不发起对应受保护请求，API/MySQL/Valkey 只在本次探测标记 `RUNTIME_VERIFIED`，Telegram 为 `NOT_CONNECTED`、AWS 为 `NOT_DEPLOYED`，外部连接与后台任务均为 0；健康测试覆盖两个依赖并行、复用既有 Valkey 客户端、1500ms 超时和失败关闭；断言旧 99.99%、邮件重试、30 分钟汇率同步、假追踪编号/时间/成功和预览工作流已删除，1420px 单行表只在自身容器内横向滚动。
 - 后台认证、支付、机密和敏感操作设计：`test:security` 加桌面与移动端浏览器检查。
 - 后台数据表、记录列表和列结构：`test:admin-tables` 加桌面与 390px 浏览器检查。
 - Worker、路由或构建：`build` 后运行 `test:sites`。
+- Sites 订单预留：使用真实 SQLite migration 验证到期 `MANUAL_PENDING` 订单只取消一次、有限库存只返还一次、状态历史和审计各写一条，未到期预留不变。
+- Sites 备份：使用真实 SQLite migration 与内存 R2 验证每日唯一快照、AES-GCM 密文、R2 回读、SHA-256、解密、逐表记录数、重新校验和禁止缓存下载。恢复测试必须覆盖主键/关联/JSON/加密联系方式逻辑验证、一次性 RSA-OAEP 转移包、内存 SQLite 全表导入与回读、`foreign_key_check`、限时令牌和 HMAC 完成证明；损坏关联、篡改记录数、错误证明或过期转移必须失败关闭，测试输出不得显示密钥或明文联系方式。五项异常门禁中，外部告警未真实送达时必须保持失败。
 - 管理后台写入、权限或敏感信息：必须检查 API 权限、CSRF、审计、重新认证与失败路径。
 - 金额、汇率、库存和人工订单：必须检查精度、边界、并发、幂等和非法状态转换。
 - 售后页面不得用模拟申请金额、部分退款、证据、双人审批、支付商状态或资金成功补齐现有订单模型；自动检查应断言这些未实现能力没有被包装成真实结果。
-- 人工收款页面必须断言没有实际到账、部分或多次付款退款、手续费税费、支付方式、外部 ID、凭证、结算批次、对账和跨币种总额；订单详情权限保持不变，`/admin/reconciliation` 继续显示设计预览标识。
-- Telegram simulation 必须断言只使用固定虚构订单和脱敏字段、`deliveryAttempted: false`、不接收或返回 Bot Token/Chat ID、不请求外部网络、不排队重试、不写发送记录；`/admin/notifications` 继续显示设计预览标识。
+- 人工收款页面必须断言没有实际到账、部分或多次付款退款、手续费税费、支付方式、外部 ID、凭证、结算批次、外部对账和跨币种总额；订单详情权限保持不变。
+- 对账准备中心必须断言无 `orders.read` 时不发请求、全部分页去重、所有事件外部未核验、只按币种统计记录数、外部证据显示未采集、基础设施显示未开发，且不存在提供商批次、结算金额、差异、导出或任何写 API。
+- Telegram simulation 必须断言只使用固定虚构订单和脱敏字段、`deliveryAttempted: false`、不接收或返回 Bot Token/Chat ID、不请求外部网络、不排队重试、不写发送记录；通知中心不得把 simulation 解释为真实发送证据。
 
 ## 完成定义
 
@@ -92,6 +105,8 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 ## 发布门禁
 
 - 当前已有本地后端和 AWS staging 模板，但尚未创建云资源；本地检查与 `synth` 通过不构成上线批准。
-- 2026-07-28 依赖审计在升级 Nest 配置、Swagger 与 Vite 的可用补丁后，仍有 6 项 high：Next.js 16.2.12 稳定最新版锁定的 `postcss`/`sharp`、Nest Swagger 11.4.6 稳定最新版锁定的 `js-yaml`，以及 AWS CDK 链路锁定的 `brace-expansion`。不得通过降级 Next、使用 canary 或强制跨主版本覆盖来伪造清零；AWS 创建前必须重新审计，并等待稳定上游修复或单独完成兼容性验证与风险批准。
+- Sites 生产 D1/R2 已创建并验证加密恢复点；恢复运行器可把真实生产快照导入一次性内存 SQLite，核对 15 张业务表、逐表记录数和外键，并用服务器验证的签名结果归档演练证据。它仍不等于独立 D1 完整导入、管理员登录、生产流量切换和回滚演练；开放真实订单前至少还要接通外部告警，并在执行覆盖恢复前完成独立 D1 切换演练。
+- 2026-07-29 生产验收使用最新已验证快照完成隔离恢复：15 张表、77 条记录全部回读，`PRAGMA foreign_key_check` 返回 0；管理页恢复演练门禁为通过，外部告警门禁仍为失败，整体保持 `ATTENTION`。验收后必须删除本机临时私钥、请求、转移和完成证明文件。
+- 2026-07-29 已升级 `@cloudflare/vite-plugin` 1.48.0、`wrangler` 4.115.0、`tsx` 4.23.1、根级 `esbuild` 0.28.1、`postcss` 8.5.25 与 `aws-cdk-lib` 2.262.2，消除了 Cloudflare 开发链中的 `ws`、`undici`、旧 `miniflare/sharp` 和错误 esbuild 去重；随后用受支持的 npm override 把 Nest Swagger 的 `js-yaml` 从 5.2.1 提升到 5.2.2。依赖审计现有 4 项 high：Next.js 16.2.12 稳定最新版内部锁定的 `postcss` 8.4.31 / `sharp` 0.34.5，以及 AWS CDK bundle 中的 `brace-expansion` 5.0.7。Next 与 CDK 当前均无可直接升级的稳定补丁，bundled 依赖也不能由 npm override 替换；不得破坏性降级或强制覆盖来伪造清零。Sites 已停用当前 Logo 的 Next 图片优化并只处理仓库自有 CSS，这属于暴露面缓解而不是漏洞修复；继续公开运营期间必须跟踪稳定上游补丁或完成逐项风险批准。
 - AWS staging 创建前必须确认费用、域名、证书、迁移命令、删除保护和回滚；生产前再单独完成恢复、权限、安全、监控和真实集成验收。
 - 提交、推送、创建 PR、部署和生产变更只在用户明确授权后执行。

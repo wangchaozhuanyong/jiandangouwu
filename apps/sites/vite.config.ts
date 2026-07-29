@@ -1,0 +1,51 @@
+import vinext from "vinext";
+import { defineConfig } from "vite";
+import hostingConfig from "../../.openai/hosting.json";
+import { sites } from "./build/sites-vite-plugin";
+
+const placeholderDatabaseId = "00000000-0000-4000-8000-000000000000";
+const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
+const { d1, r2 } = hostingConfig;
+const localVars: Record<string, string> | undefined = process.env.CLOUDBRIDGE_DATA_KEY
+  ? { CLOUDBRIDGE_DATA_KEY: process.env.CLOUDBRIDGE_DATA_KEY }
+  : undefined;
+
+const localBindingConfig = {
+  main: "./worker/index.ts",
+  compatibility_flags: ["nodejs_compat"],
+  d1_databases: d1
+    ? [{
+        binding: d1,
+        database_name: "cloudbridge-sites-d1",
+        database_id: placeholderDatabaseId,
+      }]
+    : [],
+  r2_buckets: r2
+    ? [{
+        binding: r2,
+        bucket_name: "cloudbridge-sites-media",
+      }]
+    : [],
+  vars: localVars,
+};
+
+export default defineConfig(async () => {
+  process.env.WRANGLER_WRITE_LOGS ??= "false";
+  process.env.WRANGLER_LOG_PATH ??= ".wrangler/logs";
+  process.env.MINIFLARE_REGISTRY_PATH ??= ".wrangler/registry";
+  const { cloudflare } = await import("@cloudflare/vite-plugin");
+
+  return {
+    server: isCodexSeatbeltSandbox
+      ? { watch: { useFsEvents: false, usePolling: true } }
+      : undefined,
+    plugins: [
+      vinext(),
+      sites(),
+      cloudflare({
+        viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
+        config: localBindingConfig,
+      }),
+    ],
+  };
+});
