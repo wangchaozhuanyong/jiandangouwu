@@ -6,40 +6,13 @@ import type {
   PageMeta,
   ProductDetail,
   ProductSummary,
+  StorefrontConfig,
 } from "@cloudbridge/contracts";
-
-export type HeroStory = {
-  key: string;
-  imageUrl: string;
-  targetSlug: string | null;
-  tone: string;
-  eyebrow: string;
-  title: string;
-  body: string;
-  cta: string;
-};
-
-export type StorefrontCurrency = {
-  code: string;
-  token: string;
-  name: string;
-  digits: number;
-};
-
-export type StorefrontChannel = {
-  type: "WHATSAPP" | "EMAIL" | "TELEGRAM" | "WECHAT" | "QQ";
-  mode: string;
-  label: string;
-  account: string;
-  directTarget: string | null;
-  serviceHours: string;
-};
-
-export type StorefrontConfig = {
-  heroes: HeroStory[];
-  currencies: StorefrontCurrency[];
-  channels: StorefrontChannel[];
-};
+export type {
+  StorefrontChannel,
+  StorefrontConfig,
+  StorefrontCurrency,
+} from "@cloudbridge/contracts";
 
 const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/v1";
 
