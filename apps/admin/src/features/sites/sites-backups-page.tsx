@@ -4,6 +4,8 @@ import {
   CheckCircle,
   CloudArrowDown,
   Database,
+  Key,
+  Play,
   ShieldCheck,
   WarningCircle,
 } from "@phosphor-icons/react";
@@ -17,11 +19,14 @@ import { ApiError, type Locale } from "../../api";
 import { formatDate, PanelState, RefreshNotice } from "../../admin-ui";
 import {
   backupDownloadUrl,
+  completeSitesBackupRestoreDrill,
   createSitesBackup,
+  createSitesBackupRestoreDrillTransfer,
   getSitesBackups,
   type SitesBackupReadiness,
   type SitesBackupSnapshot,
   type SitesBackupsResponse,
+  type SitesRestoreDrillCompletion,
   validateSitesBackupRestorePackage,
   verifySitesBackup,
 } from "./backups-api";
@@ -42,12 +47,25 @@ export default function SitesBackupsPage({
   const [reason, setReason] = useState("");
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
+  const [drillBackupId, setDrillBackupId] = useState("");
+  const [drillRequestJson, setDrillRequestJson] = useState("");
+  const [drillTransferJson, setDrillTransferJson] = useState("");
+  const [drillCompletionJson, setDrillCompletionJson] = useState("");
   const backups = resource.data?.items ?? [];
   const readiness = resource.data?.readiness ?? null;
   const verified = backups.filter((backup) => backup.status === "VERIFIED");
   const latest = verified[0] ?? null;
   const latestAutomatic = verified.find((backup) => backup.mode === "AUTOMATIC") ?? null;
+  const selectedDrillBackupId = drillBackupId || latest?.id || "";
   const readyReason = reason.trim().length >= 8;
+  const drillPublicKey = useMemo(
+    () => parseDrillPublicKey(drillRequestJson),
+    [drillRequestJson],
+  );
+  const drillCompletion = useMemo(
+    () => parseDrillCompletion(drillCompletionJson),
+    [drillCompletionJson],
+  );
   const totalBytes = useMemo(
     () => verified.reduce((sum, backup) => sum + Number(backup.byteSize ?? 0), 0),
     [verified],
@@ -111,6 +129,73 @@ export default function SitesBackupsPage({
         locale,
         "恢复包的表结构、关联、配置 JSON 与加密联系方式均通过逻辑验证，当前 D1 未被修改。",
         "The restore package passed logical table, relation, JSON, and encrypted-contact validation. The current D1 database was not modified.",
+      ));
+      void resource.reload();
+    } catch (requestError) {
+      const message = errorMessage(requestError, locale);
+      setError(message);
+      notify(message, "error");
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const createDrillTransfer = async () => {
+    if (
+      !canWrite
+      || !readyReason
+      || !selectedDrillBackupId
+      || !drillPublicKey
+      || busyId
+    ) return;
+    setBusyId("drill-transfer");
+    setError("");
+    try {
+      const transfer = await createSitesBackupRestoreDrillTransfer(
+        selectedDrillBackupId,
+        reason.trim(),
+        drillPublicKey,
+      );
+      setDrillTransferJson(JSON.stringify(transfer, null, 2));
+      setDrillCompletionJson("");
+      notify(copy(
+        locale,
+        "加密转移包已生成；它将在 30 分钟后过期，当前 D1 未被修改。",
+        "The encrypted transfer is ready and expires in 30 minutes. The current D1 database was not modified.",
+      ));
+    } catch (requestError) {
+      const message = errorMessage(requestError, locale);
+      setError(message);
+      notify(message, "error");
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const completeDrill = async () => {
+    if (
+      !canWrite
+      || !readyReason
+      || !selectedDrillBackupId
+      || !drillCompletion
+      || busyId
+    ) return;
+    setBusyId("drill-complete");
+    setError("");
+    try {
+      const checked = await completeSitesBackupRestoreDrill(
+        selectedDrillBackupId,
+        reason.trim(),
+        drillCompletion,
+      );
+      commitBackup(checked);
+      setDrillRequestJson("");
+      setDrillTransferJson("");
+      setDrillCompletionJson("");
+      notify(copy(
+        locale,
+        "隔离 SQLite 恢复、全表回读和外键检查均已通过；当前 D1 未被修改。",
+        "The isolated SQLite restore, full-table read-back, and foreign-key check passed. The current D1 database was not modified.",
       ));
       void resource.reload();
     } catch (requestError) {
@@ -224,11 +309,105 @@ export default function SitesBackupsPage({
                 <strong>{copy(locale, "恢复边界", "Restore boundary")}</strong>
                 {copy(
                   locale,
-                  "“验证恢复包”会检查主键、表关联、配置 JSON 与加密联系方式能否读取，但不会写入或覆盖当前 D1。它不是隔离数据库恢复演练；正式恢复仍须先在独立 D1 完整导入，再验证管理员访问和订单数据后安排切换。",
-                  "\"Validate restore package\" checks primary keys, table relations, configuration JSON, and encrypted-contact readability without writing to the current D1 database. It is not an isolated-database restore drill; a real recovery must still import into a separate D1 database and validate administrator access and orders before cutover.",
+                  "“验证恢复包”只执行逻辑检查。隔离恢复运行器会把加密转移包恢复到一次性内存 SQLite，核对全部表、记录数和外键后回传签名证明，全程不会写入当前 D1。该演练仍不等于独立 D1 的切换演练；正式覆盖恢复前还要在另一套 D1 完成导入、管理员访问和订单核验。",
+                  "\"Validate restore package\" performs logical checks only. The isolated recovery runner restores an encrypted transfer into a one-time in-memory SQLite database, verifies every table, record count, and foreign key, then returns signed evidence without writing to the current D1 database. This still does not replace a separate-D1 cutover rehearsal, which remains required before an in-place production recovery.",
                 )}
               </span>
             </div>
+
+            <details className="sites-restore-drill-workbench">
+              <summary>
+                <span><Key size={18} aria-hidden="true" /></span>
+                <span>
+                  <strong>{copy(locale, "隔离恢复演练工作台", "Isolated restore drill workbench")}</strong>
+                  <small>{copy(
+                    locale,
+                    "仅处理公钥、加密转移包和签名证明；私钥与明文数据库不会上传。",
+                    "Only the public key, encrypted transfer, and signed proof are handled here. The private key and plaintext database are never uploaded.",
+                  )}</small>
+                </span>
+              </summary>
+              <div className="sites-restore-drill-steps">
+                <p>{copy(
+                  locale,
+                  "先在项目目录运行 prepare，粘贴 request.json；生成转移包后在本机运行 restore，再粘贴 completion.json。转移包 30 分钟后失效。",
+                  "Run prepare in the project first and paste request.json. After generating the transfer, run restore locally and paste completion.json. Transfers expire after 30 minutes.",
+                )}</p>
+                <label>
+                  <span>{copy(locale, "演练备份", "Backup to drill")}</span>
+                  <select
+                    disabled={!canWrite || Boolean(busyId)}
+                    onChange={(event) => {
+                      setDrillBackupId(event.target.value);
+                      setDrillTransferJson("");
+                      setDrillCompletionJson("");
+                    }}
+                    value={selectedDrillBackupId}
+                  >
+                    {verified.map((backup) => (
+                      <option key={backup.id} value={backup.id}>
+                        {formatDate(backup.createdAt, locale)} · {backup.recordCount} {copy(locale, "条记录", "records")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>{copy(locale, "1. 公钥请求（request.json）", "1. Public-key request (request.json)")}</span>
+                  <textarea
+                    aria-invalid={Boolean(drillRequestJson) && !drillPublicKey}
+                    disabled={!canWrite || Boolean(busyId)}
+                    onChange={(event) => {
+                      setDrillRequestJson(event.target.value);
+                      setDrillTransferJson("");
+                    }}
+                    placeholder={'{\n  "publicKey": { "kty": "RSA", "n": "…", "e": "AQAB" }\n}'}
+                    spellCheck={false}
+                    value={drillRequestJson}
+                  />
+                </label>
+                <button
+                  className="admin-secondary"
+                  disabled={!canWrite || !readyReason || !selectedDrillBackupId || !drillPublicKey || Boolean(busyId)}
+                  onClick={() => void createDrillTransfer()}
+                  type="button"
+                >
+                  <Play size={17} />
+                  {busyId === "drill-transfer"
+                    ? copy(locale, "正在生成…", "Generating…")
+                    : copy(locale, "生成加密转移包", "Generate encrypted transfer")}
+                </button>
+                <label>
+                  <span>{copy(locale, "2. 加密转移包（保存为 transfer.json）", "2. Encrypted transfer (save as transfer.json)")}</span>
+                  <textarea
+                    readOnly
+                    spellCheck={false}
+                    value={drillTransferJson}
+                  />
+                </label>
+                <label>
+                  <span>{copy(locale, "3. 本机签名证明（completion.json）", "3. Local signed proof (completion.json)")}</span>
+                  <textarea
+                    aria-invalid={Boolean(drillCompletionJson) && !drillCompletion}
+                    disabled={!canWrite || Boolean(busyId)}
+                    onChange={(event) => setDrillCompletionJson(event.target.value)}
+                    placeholder={'{\n  "token": "…",\n  "result": { "target": "NODE_SQLITE_MEMORY" },\n  "proof": "…"\n}'}
+                    spellCheck={false}
+                    value={drillCompletionJson}
+                  />
+                </label>
+                <button
+                  className="admin-primary"
+                  disabled={!canWrite || !readyReason || !selectedDrillBackupId || !drillCompletion || Boolean(busyId)}
+                  onClick={() => void completeDrill()}
+                  type="button"
+                >
+                  <ShieldCheck size={17} />
+                  {busyId === "drill-complete"
+                    ? copy(locale, "正在核验…", "Verifying…")
+                    : copy(locale, "核验并记录演练", "Verify and record drill")}
+                </button>
+              </div>
+            </details>
 
             <div className="sites-backups-table-wrap" tabIndex={0}>
               <table className="sites-backups-table">
@@ -315,7 +494,8 @@ function BackupReadiness({
     RECENT_VERIFIED_BACKUP: copy(locale, "26 小时内有已验证备份", "Verified backup within 26 hours"),
     TODAY_AUTOMATIC_BACKUP: copy(locale, "今天的自动备份已完成", "Today's automatic backup completed"),
     NO_RECENT_BACKUP_FAILURE: copy(locale, "七天内无失败或卡住记录", "No failed or stuck backup in seven days"),
-    RECENT_LOGICAL_RESTORE_VALIDATION: copy(locale, "七天内完成恢复包逻辑验证", "Restore package logically validated within seven days"),
+    RECENT_ISOLATED_RESTORE_DRILL: copy(locale, "30 天内完成隔离 SQLite 恢复演练", "Isolated SQLite restore drill completed within 30 days"),
+    EXTERNAL_ALERT_DELIVERY: copy(locale, "外部备份异常告警已验证送达", "External backup alert delivery verified"),
   };
   return (
     <section className={`sites-backup-readiness is-${readiness.state.toLocaleLowerCase()}`}>
@@ -327,8 +507,8 @@ function BackupReadiness({
           <p>
             {copy(
               locale,
-              "每次打开本页都会核对最近备份、今日自动备份、失败/卡住记录与恢复包验证。外部邮件、短信或 Telegram 告警尚未连接。",
-              "Opening this page checks recent backups, today's automatic run, failed or stuck records, and restore-package validation. External email, SMS, or Telegram alerts are not connected.",
+              "每次打开本页都会核对最近备份、今日自动备份、失败/卡住记录、隔离恢复演练与外部告警送达。邮件、短信或 Telegram 告警尚未连接，因此当前不会显示为完全就绪。",
+              "Opening this page checks recent backups, today's automatic run, failed or stuck records, the isolated restore drill, and external alert delivery. Email, SMS, and Telegram alerts are not connected, so readiness remains incomplete.",
             )}
           </p>
         </div>
@@ -380,8 +560,11 @@ function RestoreValidationStatus({
   backup: SitesBackupSnapshot;
   locale: Locale;
 }) {
+  const isolated = backup.restoreValidation?.kind === "ISOLATED_SQLITE";
   const label = backup.restoreValidationStatus === "PASSED"
-    ? copy(locale, "逻辑验证通过", "Logical validation passed")
+    ? isolated
+      ? copy(locale, "隔离演练通过", "Isolated drill passed")
+      : copy(locale, "逻辑验证通过", "Logical validation passed")
     : backup.restoreValidationStatus === "FAILED"
       ? copy(locale, "逻辑验证失败", "Logical validation failed")
       : copy(locale, "尚未运行", "Not run");
@@ -425,4 +608,35 @@ function errorMessage(error: unknown, locale: Locale): string {
     );
   }
   return copy(locale, "服务器没有确认备份操作完成，请刷新清单后重试。", "The server did not confirm the backup operation. Refresh the list and try again.");
+}
+
+function parseDrillPublicKey(value: string): JsonWebKey | null {
+  try {
+    const parsed = JSON.parse(value) as { publicKey?: JsonWebKey };
+    const key = parsed.publicKey;
+    return key?.kty === "RSA"
+      && typeof key.n === "string"
+      && typeof key.e === "string"
+      ? key
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseDrillCompletion(value: string): SitesRestoreDrillCompletion | null {
+  try {
+    const parsed = JSON.parse(value) as SitesRestoreDrillCompletion;
+    const result = parsed?.result;
+    return typeof parsed?.token === "string"
+      && typeof parsed?.proof === "string"
+      && typeof result?.drillId === "string"
+      && typeof result?.payloadSha256 === "string"
+      && result?.target === "NODE_SQLITE_MEMORY"
+      && typeof result?.completedAt === "string"
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
 }
