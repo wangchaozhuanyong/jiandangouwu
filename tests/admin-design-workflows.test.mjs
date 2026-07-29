@@ -37,6 +37,14 @@ test("正式后台的24个页面都使用真实或明确受限的专属页面", 
   assert.doesNotMatch(orders, /DesignWorkflowDialog|order-workbench|design-preview-note/u);
   assert.match(products, /buildProductImpact/u);
   assert.match(products, /canWrite/u);
+  assert.match(products, /getProducts\(query, signal\)/u);
+  assert.match(products, /readAdminProductQuery\(window\.location\.search\)/u);
+  assert.match(products, /adminProductQuerySearch/u);
+  assert.match(products, /productQueryFromFilter/u);
+  assert.match(products, /statusLabels\[status\]/u);
+  assert.match(products, /className="product-admin-pagination"/u);
+  assert.match(products, /window\.addEventListener\("popstate"/u);
+  assert.doesNotMatch(products, /debouncedSearch|setTimeout/u);
   assert.doesNotMatch(products, /DesignWorkflowDialog|inventory-center|Inventory and publishing design|库存与发布设计/u);
   assert.match(app, /<ProductsPage[\s\S]*?permissions\.includes\("catalog\.write"\)/u);
   assert.match(categories, /buildCategoryImpact/u);

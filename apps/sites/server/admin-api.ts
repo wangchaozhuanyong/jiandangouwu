@@ -140,10 +140,11 @@ export async function handleAdminApi(
   if (pathname === "/v1/admin/products") {
     if (request.method === "GET") {
       await requireAdmin(env.DB, request, "catalog.read");
-      const { page, pageSize, offset } = parsePage(url, { page: 1, pageSize: 100 });
-      const search = (url.searchParams.get("search") ?? "").normalize("NFKC").trim().toLocaleLowerCase();
-      const result = await adminProducts(env.DB, search, pageSize, offset);
-      return success(result.items, { meta: pageMeta(page, pageSize, result.total) });
+      const query = readProductListQuery(url);
+      const result = await adminProducts(env.DB, query);
+      return success(result.items, {
+        meta: pageMeta(query.page, query.pageSize, result.total),
+      });
     }
     if (request.method === "POST") {
       const actor = await writeIdentity(env.DB, request, "catalog.write");
@@ -686,15 +687,22 @@ async function updateCategory(
 
 async function adminProducts(
   db: D1Database,
-  search: string,
-  pageSize: number,
-  offset: number,
+  query: {
+    pageSize: number;
+    offset: number;
+    search: string | null;
+    status: "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED" | null;
+  },
 ) {
-  const where = search
-    ? "WHERE p.status <> 'ARCHIVED' AND (LOWER(zh.name) LIKE ? OR LOWER(en.name) LIKE ? OR p.slug LIKE ?)"
-    : "WHERE p.status <> 'ARCHIVED'";
-  const pattern = `%${search}%`;
-  const bindings = search ? [pattern, pattern, pattern] : [];
+  const conditions = [query.status ? "p.status = ?" : "p.status <> 'ARCHIVED'"];
+  const bindings: string[] = query.status ? [query.status] : [];
+  if (query.search) {
+    conditions.push(
+      "(instr(zh.normalized_name, ?) > 0 OR instr(en.normalized_name, ?) > 0 OR instr(lower(p.slug), ?) > 0)",
+    );
+    bindings.push(query.search, query.search, query.search);
+  }
+  const where = `WHERE ${conditions.join(" AND ")}`;
   const total = Number((await db.prepare(
     `SELECT COUNT(*) AS count FROM products p
      JOIN product_translations zh ON zh.product_id = p.id AND zh.locale = 'ZH'
@@ -703,8 +711,8 @@ async function adminProducts(
   ).bind(...bindings).first<{ count: number }>())?.count ?? 0);
   const rows = await db.prepare(
     `${adminProductSql()} ${where}
-     ORDER BY p.sort_order ASC, p.id ASC LIMIT ? OFFSET ?`,
-  ).bind(...bindings, pageSize, offset).all<AdminProductRow>();
+     ORDER BY p.sort_order ASC, p.updated_at DESC, p.id ASC LIMIT ? OFFSET ?`,
+  ).bind(...bindings, query.pageSize, query.offset).all<AdminProductRow>();
   return {
     items: (rows.results ?? []).map(adminProductItem),
     total,
@@ -1877,6 +1885,37 @@ function heroTranslationUpdate(
   return db.prepare(
     "UPDATE hero_translations SET eyebrow = ?, title = ?, body = ?, cta = ? WHERE hero_id = ? AND locale = ?",
   ).bind(value.eyebrow, value.title, value.body, value.cta, heroId, locale);
+}
+
+function readProductListQuery(url: URL): {
+  page: number;
+  pageSize: number;
+  offset: number;
+  search: string | null;
+  status: "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED" | null;
+} {
+  const page = auditQueryInteger(url.searchParams.get("page"), "page", 1, 1000, 1);
+  const pageSize = auditQueryInteger(
+    url.searchParams.get("pageSize"),
+    "pageSize",
+    1,
+    100,
+    30,
+  );
+  const search = auditQueryString(url.searchParams.get("search"), "search", 160)
+    ?.toLocaleLowerCase() ?? null;
+  const status = auditQueryEnum(
+    url.searchParams.get("status"),
+    "status",
+    ["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"] as const,
+  );
+  return {
+    page,
+    pageSize,
+    offset: (page - 1) * pageSize,
+    search,
+    status,
+  };
 }
 
 function readAuditQuery(url: URL): {

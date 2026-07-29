@@ -1,9 +1,63 @@
 import type {
   AdminCategory,
   AdminProduct,
+  AdminProductQuery,
 } from "../../api";
 
 export const STOREFRONT_LOW_STOCK_MAX = 3;
+
+export type ProductQueryFilter = {
+  search: string;
+  status: "all" | AdminProduct["status"];
+};
+
+export const defaultAdminProductQuery: Readonly<AdminProductQuery> = {
+  page: 1,
+  pageSize: 30,
+};
+
+export function readAdminProductQuery(search: string): AdminProductQuery {
+  const params = new URLSearchParams(search);
+  const pageValue = Number(params.get("page") ?? "1");
+  const searchValue = params.get("search")?.normalize("NFKC").trim().slice(0, 160);
+  const statusValue = params.get("status");
+  return {
+    page: Number.isSafeInteger(pageValue) && pageValue >= 1 && pageValue <= 1000
+      ? pageValue
+      : 1,
+    pageSize: 30,
+    ...(searchValue ? { search: searchValue } : {}),
+    ...(statusValue && ["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"].includes(statusValue)
+      ? { status: statusValue as AdminProduct["status"] }
+      : {}),
+  };
+}
+
+export function adminProductQuerySearch(query: AdminProductQuery): string {
+  const params = new URLSearchParams();
+  if (query.page > 1) params.set("page", String(query.page));
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.status) params.set("status", query.status);
+  return params.toString();
+}
+
+export function productFilterFromQuery(query: AdminProductQuery): ProductQueryFilter {
+  return {
+    search: query.search ?? "",
+    status: query.status ?? "all",
+  };
+}
+
+export function productQueryFromFilter(filter: ProductQueryFilter): AdminProductQuery {
+  return {
+    page: 1,
+    pageSize: 30,
+    ...(filter.search.trim()
+      ? { search: filter.search.normalize("NFKC").trim().slice(0, 160) }
+      : {}),
+    ...(filter.status !== "all" ? { status: filter.status } : {}),
+  };
+}
 
 export type ProductImpactSignal =
   | "MISSING_TRANSLATION"
