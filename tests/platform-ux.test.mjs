@@ -67,6 +67,7 @@ test("正式客户端刷新公开配置、恢复订单冲突并保持移动端�
   assert.match(shell, /settings\?\.transitServiceEnabled === true/u);
   assert.match(shell, /initialConfig=\{config\}/u);
   assert.match(shell, /transit-service-notice\$\{isProductDetail \? " is-detail"/u);
+  assert.match(shell, /\{children\}[\s\S]*?transit-service-entry[\s\S]*?\{!isProductDetail && \(/u);
   assert.match(detail, /resolveOrderAvailability\(config\) !== "available"/u);
   assert.match(detail, /error instanceof ApiRequestError && error\.status === 409/u);
   assert.match(detail, /Promise\.all\(\[\s*getConfig\(locale\),\s*getProduct\(slug, locale, currency\)/u);
@@ -76,6 +77,7 @@ test("正式客户端刷新公开配置、恢复订单冲突并保持移动端�
   assert.match(css, /@media \(max-width: 390px\)[\s\S]*?\.product-copy \{ grid-template-rows:\s*40px 68px 72px;/u);
   assert.match(css, /\.product-purchase \{[^}]*height:\s*72px;/u);
   assert.match(css, /\.transit-service-notice\.is-detail/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.transit-service-entry:not\(\.is-detail\) \{ position: relative;[^}]*right: auto;[^}]*bottom: auto;/u);
   assert.match(css, /\.brand \{[^}]*min-width:\s*0;/u);
   assert.match(css, /\.brand strong \{[^}]*text-overflow:\s*ellipsis;/u);
 });
