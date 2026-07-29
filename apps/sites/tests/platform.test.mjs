@@ -164,7 +164,7 @@ test("Sites logo bypasses unavailable image transforms and the worker keeps a sa
   assert.ok(worker.includes("sourceUrl.origin !== url.origin"));
 });
 
-test("Sites backup admin exposes encrypted backup, isolated restore drill evidence, and fail-closed alerting", () => {
+test("Sites backup admin exposes encrypted backup, D1 import candidates, and fail-closed alerting", () => {
   const page = read("../admin/src/features/sites/sites-backups-page.tsx");
   const api = read("../admin/src/features/sites/backups-api.ts");
   const server = read("server/backup-api.ts");
@@ -176,6 +176,7 @@ test("Sites backup admin exposes encrypted backup, isolated restore drill eviden
   assert.match(page, /邮件、短信或 Telegram 告警尚未连接/u);
   assert.match(page, /隔离恢复运行器/u);
   assert.match(page, /不会写入当前 D1/u);
+  assert.match(page, /--d1-candidate-dir/u);
   assert.match(page, /backupDownloadUrl/u);
   assert.match(server, /createBackupRestoreDrillTransfer/u);
   assert.match(server, /completeBackupRestoreDrill/u);
@@ -183,6 +184,12 @@ test("Sites backup admin exposes encrypted backup, isolated restore drill eviden
   assert.match(admin, /\/restore-drill-transfer/u);
   assert.match(admin, /\/restore-drill-complete/u);
   assert.match(runner, /new DatabaseSync\(":memory:"\)/u);
+  assert.match(runner, /cloudbridge-d1-import-candidate/u);
+  assert.match(runner, /CLOUDFLARE_D1_NEW_DATABASE/u);
+  assert.match(runner, /containsPlaintextBusinessData:\s*true/u);
+  assert.match(runner, /mkdirSync\(candidateDirectory,\s*\{\s*mode:\s*0o700/u);
+  assert.match(runner, /writeFileSync\(path, value,\s*\{\s*flag:\s*"wx",\s*mode:\s*0o600/u);
+  assert.match(runner, /PRAGMA defer_foreign_keys = true;/u);
   assert.match(runner, /PRAGMA foreign_key_check/u);
   assert.match(api, /method: "POST"/u);
   assert.match(api, /\/restore-validation/u);

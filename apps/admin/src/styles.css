@@ -1666,6 +1666,7 @@
 .sites-restore-drill-workbench > summary small { margin-top: 3px; color: #7a8f9b; font-size: 8px; line-height: 1.5; }
 .sites-restore-drill-steps { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: start; gap: 12px; padding: 14px; border-top: 1px solid var(--line-soft); }
 .sites-restore-drill-steps > p { grid-column: 1 / -1; margin: 0; color: #6d8592; font-size: 9px; line-height: 1.6; }
+.sites-restore-drill-steps > p code { overflow-wrap: anywhere; }
 .sites-restore-drill-steps label { min-width: 0; display: grid; gap: 6px; color: #758b98; font-size: 9px; }
 .sites-restore-drill-steps label:first-of-type { grid-column: 1 / -1; }
 .sites-restore-drill-steps select, .sites-restore-drill-steps textarea { width: 100%; border: 1px solid var(--line); border-radius: 9px; outline: none; color: var(--ink); background: #fff; font: inherit; }

@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import {
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   completeBackupRestoreDrill,
@@ -136,6 +139,12 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
   );
   assert.equal(drillTransfer.format, "cloudbridge-restore-drill-transfer");
   assert.doesNotMatch(JSON.stringify(drillTransfer), /OpenAI Codex Professional/u);
+  assert.equal(
+    Number(sqlite.prepare(
+      "SELECT COUNT(*) AS count FROM audit_events WHERE action = ? AND result = 'SUCCEEDED'",
+    ).get("backup.restore-drill.transfer-created")?.count ?? 0),
+    1,
+  );
   const isolatedDrill = runIsolatedRestoreDrill({
     transfer: drillTransfer,
     privateKey: privateKey.export({ format: "pem", type: "pkcs8" }),
@@ -147,6 +156,108 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
     foreignKeyViolationCount: 0,
     completedAt: isolatedDrill.summary.completedAt,
   });
+  const candidateRoot = mkdtempSync(join(tmpdir(), "cloudbridge-d1-candidate-test-"));
+  const candidateDirectory = join(candidateRoot, "candidate");
+  try {
+    const candidateDrill = runIsolatedRestoreDrill({
+      transfer: drillTransfer,
+      privateKey: privateKey.export({ format: "pem", type: "pkcs8" }),
+      d1CandidateDirectory: candidateDirectory,
+    });
+    const candidate = candidateDrill.summary.d1Candidate;
+    assert.equal(candidate.productionD1Modified, false);
+    assert.equal(candidate.cutoverCompleted, false);
+    assert.equal(candidate.recordCount, restoreValidated.restoreValidation.recordCount);
+    assert.equal(statSync(candidateDirectory).mode & 0o777, 0o700);
+    for (const path of [
+      candidate.manifestPath,
+      candidate.restoreSqlPath,
+      candidate.verifySqlPath,
+      join(candidateDirectory, "RUNBOOK.md"),
+    ]) {
+      assert.equal(statSync(path).mode & 0o777, 0o600);
+    }
+    const manifest = JSON.parse(readFileSync(candidate.manifestPath, "utf8"));
+    const restoreSql = readFileSync(candidate.restoreSqlPath, "utf8");
+    assert.equal(manifest.format, "cloudbridge-d1-import-candidate");
+    assert.equal(manifest.target, "CLOUDFLARE_D1_NEW_DATABASE");
+    assert.equal(manifest.boundaries.productionD1Modified, false);
+    assert.equal(manifest.boundaries.containsPlaintextBusinessData, true);
+    assert.equal(manifest.boundaries.r2ObjectsIncluded, false);
+    assert.equal(manifest.boundaries.backupHistoryIncluded, false);
+    assert.equal(
+      manifest.files.restoreSqlSha256,
+      createHash("sha256").update(restoreSql).digest("hex"),
+    );
+    assert.match(restoreSql, /PRAGMA defer_foreign_keys = true;/u);
+    assert.doesNotMatch(restoreSql, /^(?:BEGIN|COMMIT)\b/gmu);
+    assert.match(restoreSql, /Owner''s review;\nnext/u);
+    assert.doesNotMatch(restoreSql, /customer-contact@example\.test/u);
+    const restoredCandidate = new DatabaseSync(":memory:");
+    try {
+      restoredCandidate.exec(restoreSql);
+      assert.equal(
+        restoredCandidate.prepare("PRAGMA foreign_key_check").all().length,
+        0,
+      );
+      assert.equal(
+        Number(restoredCandidate.prepare("SELECT COUNT(*) AS count FROM orders").get()?.count),
+        1,
+      );
+      assert.equal(
+        Number(restoredCandidate.prepare("SELECT COUNT(*) AS count FROM products").get()?.count),
+        manifest.validation.recordCounts.products,
+      );
+    } finally {
+      restoredCandidate.close();
+    }
+    const wranglerConfigPath = join(candidateRoot, "wrangler.jsonc");
+    const wranglerStatePath = join(candidateRoot, "wrangler-state");
+    writeFileSync(wranglerConfigPath, JSON.stringify({
+      name: "cloudbridge-d1-candidate-test",
+      compatibility_date: "2026-07-29",
+      d1_databases: [{
+        binding: "DB",
+        database_name: "cloudbridge-d1-candidate-test",
+        database_id: "00000000-0000-0000-0000-000000000001",
+      }],
+    }), { flag: "wx", mode: 0o600 });
+    const wranglerOutput = execFileSync(
+      process.execPath,
+      [
+        fileURLToPath(new URL("../../../node_modules/wrangler/bin/wrangler.js", import.meta.url)),
+        "d1",
+        "execute",
+        "DB",
+        "--local",
+        "--config",
+        wranglerConfigPath,
+        "--persist-to",
+        wranglerStatePath,
+        "--file",
+        candidate.restoreSqlPath,
+        "--yes",
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, WRANGLER_SEND_METRICS: "false" },
+      },
+    );
+    assert.match(wranglerOutput, /executed successfully/u);
+    const runbook = readFileSync(join(candidateDirectory, "RUNBOOK.md"), "utf8");
+    assert.match(runbook, /Never run `restore\.sql` against the current production D1 binding/u);
+    assert.match(runbook, /Rollback means restoring the previous D1 binding/u);
+    assert.throws(
+      () => runIsolatedRestoreDrill({
+        transfer: drillTransfer,
+        privateKey: privateKey.export({ format: "pem", type: "pkcs8" }),
+        d1CandidateDirectory: candidateDirectory,
+      }),
+      (error) => error?.code === "EEXIST",
+    );
+  } finally {
+    rmSync(candidateRoot, { recursive: true, force: true });
+  }
   const tamperedCompletion = structuredClone(isolatedDrill.completion);
   tamperedCompletion.result.readbackRecordCount += 1;
   await assert.rejects(
@@ -192,6 +303,12 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
   assert.equal(
     drillCompleted.restoreValidation.readbackRecordCount,
     drillCompleted.restoreValidation.recordCount,
+  );
+  assert.equal(
+    Number(sqlite.prepare(
+      "SELECT COUNT(*) AS count FROM audit_events WHERE action = ? AND result = 'SUCCEEDED'",
+    ).get("backup.restore-drill.completed")?.count ?? 0),
+    1,
   );
 
   const readinessAfterDrill = await getBackupReadiness(env.DB);
@@ -299,7 +416,22 @@ async function seedRecoverableOrder(sqlite, dataKey) {
     now,
     now,
   );
-  const encryptedContact = await encryptContact("owner@example.test", dataKey);
+  sqlite.prepare(
+    `INSERT INTO audit_events
+      (id, trace_id, action, result, actor_email, actor_display_name,
+       target_type, target_id, reason, created_at)
+     VALUES (?, ?, ?, 'SUCCEEDED', ?, ?, 'BACKUP', ?, ?, ?)`,
+  ).run(
+    "audit-test",
+    "trace-test",
+    "backup.restore.candidate",
+    "owner@example.test",
+    "Owner",
+    "backup-test",
+    "Owner's review;\nnext",
+    now,
+  );
+  const encryptedContact = await encryptContact("customer-contact@example.test", dataKey);
   sqlite.prepare(
     `INSERT INTO orders
       (id, order_number, idempotency_key, product_id, product_name_snapshot,

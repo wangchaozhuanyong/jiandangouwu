@@ -309,8 +309,8 @@ export default function SitesBackupsPage({
                 <strong>{copy(locale, "恢复边界", "Restore boundary")}</strong>
                 {copy(
                   locale,
-                  "“验证恢复包”只执行逻辑检查。隔离恢复运行器会把加密转移包恢复到一次性内存 SQLite，核对全部表、记录数和外键后回传签名证明，全程不会写入当前 D1。该演练仍不等于独立 D1 的切换演练；正式覆盖恢复前还要在另一套 D1 完成导入、管理员访问和订单核验。",
-                  "\"Validate restore package\" performs logical checks only. The isolated recovery runner restores an encrypted transfer into a one-time in-memory SQLite database, verifies every table, record count, and foreign key, then returns signed evidence without writing to the current D1 database. This still does not replace a separate-D1 cutover rehearsal, which remains required before an in-place production recovery.",
+                  "“验证恢复包”只执行逻辑检查。隔离恢复运行器会把加密转移包恢复到一次性内存 SQLite，核对全部表、记录数和外键后回传签名证明；也可以额外生成只允许导入新 D1 的候选 SQL、校验清单与回滚说明。两种操作都不会写入当前 D1，也不等于已经完成切换。",
+                  "\"Validate restore package\" performs logical checks only. The isolated runner restores the encrypted transfer into one-time in-memory SQLite, verifies every table, record count, and foreign key, and can additionally create candidate SQL, a verification manifest, and rollback guidance for a new D1 database only. Neither action writes the current D1 database or proves that cutover has occurred.",
                 )}
               </span>
             </div>
@@ -328,11 +328,19 @@ export default function SitesBackupsPage({
                 </span>
               </summary>
               <div className="sites-restore-drill-steps">
-                <p>{copy(
-                  locale,
-                  "先在项目目录运行 prepare，粘贴 request.json；生成转移包后在本机运行 restore，再粘贴 completion.json。转移包 30 分钟后失效。",
-                  "Run prepare in the project first and paste request.json. After generating the transfer, run restore locally and paste completion.json. Transfers expire after 30 minutes.",
-                )}</p>
+                <p>
+                  {copy(
+                    locale,
+                    "先在项目目录运行 prepare，粘贴 request.json；生成转移包后在本机运行 restore，再粘贴 completion.json。需要准备新 D1 导入候选时，可在 restore 命令追加 ",
+                    "Run prepare in the project and paste request.json. After generating the transfer, run restore locally and paste completion.json. To prepare a new-D1 import candidate, append ",
+                  )}
+                  <code>--d1-candidate-dir &lt;new-directory&gt;</code>
+                  {copy(
+                    locale,
+                    "。候选 SQL 含明文业务元数据，目录权限固定为 0700、文件为 0600，转移包 30 分钟后失效。",
+                    ". Candidate SQL contains plaintext business metadata; the directory is fixed to mode 0700 and files to 0600. Transfers expire after 30 minutes.",
+                  )}
+                </p>
                 <label>
                   <span>{copy(locale, "演练备份", "Backup to drill")}</span>
                   <select
