@@ -81,7 +81,7 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
 .hero-footer p { max-width: 520px; margin: 0; color: #9ab0c1; font-size: 14px; line-height: 1.75; }
 .hero-footer a { display: inline-flex; align-items: center; gap: 10px; padding: 14px 19px; border: 1px solid rgba(93,229,238,.55); border-radius: 999px; color: #dffcff; background: rgba(4,41,57,.52); font-size: 12px; font-weight: 700; backdrop-filter: blur(12px); }
 .hero-dots { position: absolute; z-index: 4; right: 24px; bottom: 24px; display: flex; align-items: center; gap: 2px; }
-.hero-dots button { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border-radius: 50%; background: transparent; }
+.hero-dots button { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border-radius: 50%; background: transparent; }
 .hero-dots button::before { width: 5px; height: 5px; content: ""; border-radius: 50%; background: rgba(221,244,248,.32); box-shadow: 0 0 0 1px rgba(194,230,237,.04); transition: opacity .24s ease, transform .24s ease, background .24s ease, box-shadow .24s ease; }
 .hero-dots button:hover::before, .hero-dots button:focus-visible::before { background: rgba(225,249,251,.62); transform: scale(1.16); }
 .hero-dots button.is-active::before { background: rgba(225,249,251,.9); box-shadow: 0 0 10px rgba(101,211,222,.34); transform: scale(1.28); }
@@ -300,7 +300,7 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
   .support-trigger { width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; }
   .support-trigger span { display: none; }
   .language-switch { padding: 0 7px; gap: 4px; }
-  .language-switch button { min-width: 36px; }
+  .language-switch button { min-width: 44px; }
   .language-switch > svg { display: none; }
   .hero-stage { margin-top: 18px; }
   .hero-card, .hero-skeleton { min-height: 570px; border-radius: 21px; }
@@ -313,7 +313,7 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
   .hero-footer p { font-size: 12px; line-height: 1.65; }
   .hero-footer a { margin-top: 18px; padding: 12px 16px; }
   .hero-dots { right: 14px; bottom: 14px; gap: 0; }
-  .hero-dots button { width: 24px; height: 24px; }
+  .hero-dots button { width: 44px; height: 44px; }
   .capability-section { margin-top: 22px; }
   .capability-rail { grid-template-columns: 1fr 1fr; }
   .capability-rail > div { min-height: 70px; justify-content: flex-start; }
@@ -367,7 +367,7 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
   .brand { gap: 8px; }
   .header-utilities { gap: 4px; }
   .language-switch { padding-inline: 4px; }
-  .language-switch button { min-width: 31px; padding-inline: 1px; }
+  .language-switch button { min-width: 44px; padding-inline: 1px; }
   .language-switch button { font-size: 10px; }
   .hero-card, .hero-skeleton { min-height: 545px; }
   .hero-copy { padding-left: 18px; padding-right: 18px; }

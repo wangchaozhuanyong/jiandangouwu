@@ -14,7 +14,8 @@ import {
 const migrations = [
   "0000_salty_fat_cobra.sql",
   "0001_robust_mole_man.sql",
-  "0002_adorable_lethal_legion.sql",
+  "0002_fix_storefront_design_data.sql",
+  "0003_chunky_tattoo.sql",
 ].map((name) => readFileSync(
   new URL(`../drizzle/${name}`, import.meta.url),
   "utf8",

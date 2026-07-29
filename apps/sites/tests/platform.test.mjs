@@ -25,6 +25,29 @@ test("D1 migration creates the production catalog with safe launch defaults", ()
   assert.equal(result.stdout.trim(), "8|4|9|0|0");
 });
 
+test("D1 data migration restores line breaks and the default transit entry", () => {
+  const schemaMigration = read("drizzle/0000_salty_fat_cobra.sql");
+  const backupMigration = read("drizzle/0001_robust_mole_man.sql");
+  const designDataMigration = read("drizzle/0002_fix_storefront_design_data.sql");
+  const query = [
+    schemaMigration.replaceAll("--> statement-breakpoint", ""),
+    backupMigration.replaceAll("--> statement-breakpoint", ""),
+    designDataMigration.replaceAll("--> statement-breakpoint", ""),
+    "SELECT",
+    "  SUM(instr(title, char(10)) > 0),",
+    "  SUM(instr(title, '\\n') > 0),",
+    "  json_extract((SELECT value_json FROM site_settings WHERE key='storefront.settings'),'$.transitServiceEnabled'),",
+    "  (SELECT version FROM site_settings WHERE key='storefront.settings')",
+    "FROM hero_translations;",
+  ].join("\n");
+  const result = spawnSync("sqlite3", [":memory:"], {
+    encoding: "utf8",
+    input: query,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "8|0|1|2");
+});
+
 test("Sites build declares D1 and R2 and ships the migration", () => {
   const sourceHosting = JSON.parse(read("../../.openai/hosting.json"));
   const builtHosting = JSON.parse(read("dist/.openai/hosting.json"));
@@ -36,10 +59,33 @@ test("Sites build declares D1 and R2 and ships the migration", () => {
     read("dist/.openai/drizzle/0001_robust_mole_man.sql"),
     /CREATE TABLE `backup_snapshots`/u,
   );
+  assert.match(read("dist/.openai/drizzle/0002_fix_storefront_design_data.sql"), /char\(10\)/u);
+  assert.match(read("dist/.openai/drizzle/0002_fix_storefront_design_data.sql"), /transitServiceEnabled/u);
   assert.match(
-    read("dist/.openai/drizzle/0002_adorable_lethal_legion.sql"),
+    read("dist/.openai/drizzle/0003_chunky_tattoo.sql"),
     /restore_validation_status/u,
   );
+});
+
+test("Sites scopes admin design tokens and document styles away from the storefront", () => {
+  const adminStyles = read("../admin/src/styles.css");
+  const adminLayout = read("app/admin/layout.tsx");
+  const adminMain = read("../admin/src/main.tsx");
+  assert.match(adminStyles, /^\.admin-surface \{/u);
+  assert.doesNotMatch(adminStyles, /^:root \{/mu);
+  assert.doesNotMatch(adminStyles, /^body \{/mu);
+  assert.match(adminStyles, /\.admin-surface \.form-error/u);
+  assert.match(adminLayout, /className="admin-surface"/u);
+  assert.match(adminMain, /document\.body\.classList\.add\("cloudbridge-admin-document"\)/u);
+  assert.match(adminMain, /className="admin-surface"/u);
+
+  const cssDirectory = new URL("../dist/client/assets/", import.meta.url);
+  const builtCss = readdirSync(cssDirectory)
+    .filter((name) => name.endsWith(".css"))
+    .map((name) => readFileSync(new URL(name, cssDirectory), "utf8"))
+    .join("\n");
+  assert.doesNotMatch(builtCss, /:root\{color:#1c3547;background:#eef4f7/u);
+  assert.match(builtCss, /\.admin-surface\{[^}]*--ink:#1c3547[^}]*background:#eef4f7/u);
 });
 
 test("Sites admin uses ChatGPT authentication and never enables customer login", () => {
