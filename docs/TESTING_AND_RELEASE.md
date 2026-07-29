@@ -56,6 +56,7 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 - `test:storefront`：检查联系渠道动作、接单可用性、订单输入边界及客户端纯逻辑。
 - `prepare:platform`：先构建共享契约并生成 Prisma Client，保证新克隆仓库没有依赖本机遗留构建产物。
 - `build`：生成遗留 Vite 与 Sites 兼容产物。
+- `build:sites`：构建 `apps/sites` 的完整 Vinext/D1/R2 平台，并把该产物同步到根级 `dist/` 作为唯一正式 Sites 发布包；发布前必须确认其中包含后台客户端和全部 D1 migration，禁止直接打包遗留 Vite 产物。
 - `test:sites`：检查静态 Worker 路由以及构建产物完整性；应在构建后运行。
 - `typecheck:platform`：检查共享契约、API、Next.js 客户端、Vite 后台和 CDK。
 - `build:platform`：构建全部主平台工作区。

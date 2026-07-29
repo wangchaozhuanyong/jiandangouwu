@@ -22,7 +22,7 @@
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "prepare:platform": "npm run build --workspace @cloudbridge/contracts && npm run db:generate --workspace @cloudbridge/api",
     "build:platform": "npm run prepare:platform && npm run build --workspace @cloudbridge/api && npm run build --workspace @cloudbridge/storefront && npm run build --workspace @cloudbridge/admin && npm run build --workspace @cloudbridge/infra",
-    "build:sites": "npm run build --workspace @cloudbridge/sites",
+    "build:sites": "npm run build --workspace @cloudbridge/sites && node scripts/prepare-sites-platform-release.mjs",
     "preview": "vite preview",
     "typecheck:platform": "npm run prepare:platform && npm run typecheck --workspace @cloudbridge/contracts && npm run typecheck --workspace @cloudbridge/api && npm run typecheck --workspace @cloudbridge/storefront && npm run typecheck --workspace @cloudbridge/admin && npm run typecheck --workspace @cloudbridge/infra",
     "db:up": "docker compose -p cloudbridge up -d mysql redis",

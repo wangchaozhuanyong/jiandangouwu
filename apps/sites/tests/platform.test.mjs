@@ -67,6 +67,21 @@ test("Sites build declares D1 and R2 and ships the migration", () => {
   );
 });
 
+test("root Sites release stages the complete platform instead of the legacy prototype", () => {
+  const rootPackage = read("../../package.json");
+  const releaseScript = read("../../scripts/prepare-sites-platform-release.mjs");
+
+  assert.match(
+    rootPackage,
+    /"build:sites": "npm run build --workspace @cloudbridge\/sites && node scripts\/prepare-sites-platform-release\.mjs"/u,
+  );
+  assert.match(releaseScript, /apps", "sites", "dist"/u);
+  assert.match(releaseScript, /sites-admin-client-/u);
+  assert.match(releaseScript, /0003_chunky_tattoo\.sql/u);
+  assert.match(releaseScript, /rmSync\(target,\s*\{\s*force:\s*true,\s*recursive:\s*true\s*\}\)/u);
+  assert.match(releaseScript, /cpSync\(source,\s*target,\s*\{\s*recursive:\s*true\s*\}\)/u);
+});
+
 test("Sites scopes admin design tokens and document styles away from the storefront", () => {
   const adminStyles = read("../admin/src/styles.css");
   const adminLayout = read("app/admin/layout.tsx");
