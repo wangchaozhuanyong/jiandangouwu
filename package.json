@@ -36,9 +36,11 @@
     "test:admin-navigation": "node --test tests/admin-navigation.test.mjs",
     "test:brand": "node --test tests/brand-lockup-design.test.mjs",
     "test:transit-service": "node --test tests/transit-service.test.mjs",
-    "test:platform": "node --test tests/platform-architecture.test.mjs tests/platform-ux.test.mjs tests/admin-design-workflows.test.mjs",
+    "test:platform": "node --test tests/platform-architecture.test.mjs tests/platform-ux.test.mjs tests/admin-design-workflows.test.mjs tests/platform-content-management.test.mjs",
+    "test:api": "npm run test --workspace @cloudbridge/api",
+    "test:storefront": "npm run test --workspace @cloudbridge/storefront",
     "check:legacy": "npm run check:rules && npm run test:catalog && npm run test:i18n && npm run test:ux && npm run test:security && npm run test:admin-tables && npm run test:admin-navigation && npm run test:brand && npm run test:transit-service && npm run build && npm run test:sites",
-    "check": "npm run check:legacy && npm run test:platform && npm run typecheck:platform && npm run build:platform"
+    "check": "npm run check:legacy && npm run test:platform && npm run test:api && npm run test:storefront && npm run typecheck:platform && npm run build:platform"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
