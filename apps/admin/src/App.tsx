@@ -91,6 +91,7 @@ const BackupReadinessPage = lazy(() => import("./features/backups/backup-readine
 const IntegrationReadinessPage = lazy(() => import("./features/integrations/integration-readiness-page"));
 const MediaPage = lazy(() => import("./features/media/media-page"));
 const SitesPlatformPage = lazy(() => import("./features/sites/sites-platform-page"));
+const SitesBackupsPage = lazy(() => import("./features/sites/sites-backups-page"));
 const pageNavigationIcons: Record<Page, typeof CirclesFour> = {
   dashboard: CirclesFour,
   orders: Receipt,
@@ -543,7 +544,14 @@ function PageOutlet({
     );
   }
   if (page === "backups") {
-    if (user.authProvider === "SITES") return <SitesPlatformPage kind="backups" locale={locale} />;
+    if (user.authProvider === "SITES") {
+      return (
+        <SitesBackupsPage
+          canWrite={user.permissions.includes("settings.write")}
+          locale={locale}
+        />
+      );
+    }
     return (
       <BackupReadinessPage
         locale={locale}

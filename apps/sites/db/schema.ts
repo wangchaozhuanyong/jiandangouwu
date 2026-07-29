@@ -236,3 +236,24 @@ export const mediaObjects = sqliteTable("media_objects", {
 }, (table) => [
   index("media_objects_created_idx").on(table.createdAt),
 ]);
+
+export const backupSnapshots = sqliteTable("backup_snapshots", {
+  id: text("id").primaryKey(),
+  scheduleKey: text("schedule_key").notNull(),
+  mode: text("mode").notNull(),
+  status: text("status").notNull(),
+  objectKey: text("object_key").notNull(),
+  schemaVersion: integer("schema_version").notNull(),
+  recordCountsJson: text("record_counts_json").notNull(),
+  byteSize: integer("byte_size"),
+  checksumSha256: text("checksum_sha256"),
+  createdByEmail: text("created_by_email"),
+  reason: text("reason").notNull(),
+  errorCode: text("error_code"),
+  createdAt: text("created_at").notNull(),
+  verifiedAt: text("verified_at"),
+}, (table) => [
+  uniqueIndex("backup_snapshots_schedule_key_unique").on(table.scheduleKey),
+  index("backup_snapshots_created_idx").on(table.createdAt),
+  index("backup_snapshots_status_created_idx").on(table.status, table.createdAt),
+]);

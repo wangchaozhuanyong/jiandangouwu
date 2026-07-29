@@ -32,6 +32,10 @@ test("Sites build declares D1 and R2 and ships the migration", () => {
   assert.equal(sourceHosting.r2, "MEDIA");
   assert.deepEqual(builtHosting, sourceHosting);
   assert.match(read("dist/.openai/drizzle/0000_salty_fat_cobra.sql"), /CREATE TABLE `orders`/u);
+  assert.match(
+    read("dist/.openai/drizzle/0001_robust_mole_man.sql"),
+    /CREATE TABLE `backup_snapshots`/u,
+  );
 });
 
 test("Sites admin uses ChatGPT authentication and never enables customer login", () => {
@@ -50,6 +54,7 @@ test("Sites runtime contains public, admin, health, D1, and R2 routes", () => {
   assert.match(router, /handleAdminApi/u);
   assert.match(router, /\/media\//u);
   assert.match(admin, /\/v1\/admin\/sites-readiness/u);
+  assert.match(admin, /\/v1\/admin\/backups/u);
   assert.match(admin, /valkey: "not_required"/u);
 });
 
@@ -61,6 +66,27 @@ test("Sites worker avoids createRequire with an undefined module URL", () => {
   for (const file of collectJavaScriptFiles(new URL("../dist/server/", import.meta.url))) {
     assert.doesNotMatch(readFileSync(file, "utf8"), /createRequire\(import\.meta\.url\)/u);
   }
+});
+
+test("Sites logo bypasses unavailable image transforms and the worker keeps a safe fallback", () => {
+  const shell = read("../storefront/components/site-shell.tsx");
+  const worker = read("worker/index.ts");
+  assert.equal((shell.match(/unoptimized/gu) ?? []).length, 2);
+  assert.ok(worker.includes("if (!images)"));
+  assert.ok(worker.includes('source.startsWith("/")'));
+  assert.ok(worker.includes("sourceUrl.origin !== url.origin"));
+});
+
+test("Sites backup admin exposes real create, verify, and encrypted download actions", () => {
+  const page = read("../admin/src/features/sites/sites-backups-page.tsx");
+  const api = read("../admin/src/features/sites/backups-api.ts");
+  assert.match(page, /createSitesBackup/u);
+  assert.match(page, /verifySitesBackup/u);
+  assert.match(page, /backupDownloadUrl/u);
+  assert.match(page, /不会覆盖当前 D1/u);
+  assert.match(api, /method: "POST"/u);
+  assert.match(api, /\/download/u);
+  assert.doesNotMatch(page, /restoreSitesBackup|恢复成功/u);
 });
 
 function collectJavaScriptFiles(directory) {

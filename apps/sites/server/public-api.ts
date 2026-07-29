@@ -6,6 +6,7 @@ import {
   success,
 } from "./http";
 import { multiplyDecimal, normalizeMoney } from "./money";
+import { reconcileExpiredOrders } from "./order-expiry";
 import type { D1Database, SitesEnv } from "./types";
 
 type Locale = "zh" | "en";
@@ -43,6 +44,7 @@ export async function handlePublicApi(
     return success(await storefrontCategories(env.DB, localeFrom(url)));
   }
   if (request.method === "GET" && pathname === "/v1/products") {
+    await reconcileExpiredOrders(env.DB);
     const locale = localeFrom(url);
     const { page, pageSize, offset } = parsePage(url, { page: 1, pageSize: 48 });
     const currency = currencyFrom(url);
@@ -60,6 +62,7 @@ export async function handlePublicApi(
   }
   const productMatch = pathname.match(/^\/v1\/products\/([^/]+)$/u);
   if (request.method === "GET" && productMatch) {
+    await reconcileExpiredOrders(env.DB);
     const product = await storefrontProduct(
       env.DB,
       decodeURIComponent(productMatch[1]),
@@ -70,6 +73,7 @@ export async function handlePublicApi(
     return success(product);
   }
   if (request.method === "POST" && pathname === "/v1/orders") {
+    await reconcileExpiredOrders(env.DB);
     return createOrder(request, env);
   }
   return null;

@@ -4,6 +4,7 @@ import {
   handleImageOptimization,
 } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { ensureDailyBackup } from "../server/backup-api";
 import { handleCloudBridgeRequest } from "../server/router";
 import type { SitesEnv, SitesExecutionContext } from "../server/types";
 
@@ -14,15 +15,35 @@ const worker = {
     context: SitesExecutionContext,
   ): Promise<Response> {
     const url = new URL(request.url);
+    if (
+      request.method === "GET"
+      && ["/v1/storefront/config", "/v1/admin/sites-readiness"].includes(url.pathname)
+    ) {
+      context.waitUntil(ensureDailyBackup(env).catch((error: unknown) => {
+        console.error("[cloudbridge] Automatic daily backup failed", error);
+      }));
+    }
     const cloudBridgeResponse = await handleCloudBridgeRequest(request, env);
     if (cloudBridgeResponse) return cloudBridgeResponse;
 
     if (url.pathname === "/_vinext/image") {
+      const images = env.IMAGES;
+      if (!images) {
+        const source = url.searchParams.get("url");
+        if (!source || !source.startsWith("/") || source.startsWith("//")) {
+          return new Response("Invalid image source", { status: 400 });
+        }
+        const sourceUrl = new URL(source, request.url);
+        if (sourceUrl.origin !== url.origin) {
+          return new Response("Invalid image source", { status: 400 });
+        }
+        return env.ASSETS.fetch(new Request(sourceUrl));
+      }
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
       return handleImageOptimization(request, {
         fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
         transformImage: async (body, { width, format, quality }) => {
-          const result = await env.IMAGES
+          const result = await images
             .input(body)
             .transform(width > 0 ? { width } : {})
             .output({ format, quality });

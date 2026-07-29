@@ -93,7 +93,16 @@ export function SiteShell({
       <div className={`route-progress ${showProgress ? "is-visible" : ""}`} aria-hidden="true" />
       <header className="site-header">
         <Link className="brand" href={`/${locale}`} onClick={() => setNavigating(true)} aria-label={locale === "zh" ? "云桥首页" : "CloudBridge home"}>
-          <span className="brand-mark"><Image src="/assets/cloudbridge-logo.png" width={349} height={176} priority alt="" /></span>
+          <span className="brand-mark">
+            <Image
+              src="/assets/cloudbridge-logo.png"
+              width={349}
+              height={176}
+              priority
+              unoptimized
+              alt=""
+            />
+          </span>
           <span>
             <strong>{siteName}</strong>
             {t.brandSecondary && <small>{t.brandSecondary}</small>}
@@ -127,7 +136,13 @@ export function SiteShell({
         <footer id="support" className="site-footer">
           <div className="footer-brand">
             <span className="footer-brand__mark" aria-hidden="true">
-              <Image src="/assets/cloudbridge-logo.png" width={349} height={176} alt="" />
+              <Image
+                src="/assets/cloudbridge-logo.png"
+                width={349}
+                height={176}
+                unoptimized
+                alt=""
+              />
             </span>
             <strong>{siteName}</strong>
           </div>

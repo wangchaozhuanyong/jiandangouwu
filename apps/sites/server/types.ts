@@ -55,7 +55,7 @@ export interface SitesEnv {
   ASSETS: AssetsBinding;
   DB: D1Database;
   MEDIA: R2Bucket;
-  IMAGES: ImagesBinding;
+  IMAGES?: ImagesBinding;
   CLOUDBRIDGE_DATA_KEY?: string;
 }
 

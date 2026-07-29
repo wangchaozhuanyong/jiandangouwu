@@ -12,6 +12,13 @@ import {
   writeAudit,
   type AdminIdentity,
 } from "./http";
+import {
+  createManualBackup,
+  downloadBackupSnapshot,
+  listBackupSnapshots,
+  verifyBackupSnapshot,
+} from "./backup-api";
+import { reconcileExpiredOrders } from "./order-expiry";
 import type { D1Database, SitesEnv } from "./types";
 
 const orderTransitions: Readonly<Record<string, readonly string[]>> = {
@@ -86,6 +93,7 @@ export async function handleAdminApi(
 
   if (request.method === "GET" && pathname === "/v1/admin/overview") {
     await requireAdmin(env.DB, request);
+    await reconcileExpiredOrders(env.DB);
     return success(await overview(env.DB));
   }
   if (pathname === "/v1/admin/categories") {
@@ -235,8 +243,35 @@ export async function handleAdminApi(
     })), { meta: pageMeta(page, pageSize, total) });
   }
 
+  if (pathname === "/v1/admin/backups") {
+    if (request.method === "GET") {
+      await requireAdmin(env.DB, request, "settings.read");
+      return success(await listBackupSnapshots(env.DB));
+    }
+    if (request.method === "POST") {
+      const actor = await writeIdentity(env.DB, request, "settings.write");
+      return success(await createManualBackup(env, request, actor), { status: 201 });
+    }
+  }
+  const backupVerifyMatch = pathname.match(/^\/v1\/admin\/backups\/([^/]+)\/verify$/u);
+  if (backupVerifyMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    return success(await verifyBackupSnapshot(
+      env,
+      request,
+      decodeURIComponent(backupVerifyMatch[1]),
+      actor,
+    ));
+  }
+  const backupDownloadMatch = pathname.match(/^\/v1\/admin\/backups\/([^/]+)\/download$/u);
+  if (backupDownloadMatch && request.method === "GET") {
+    await requireAdmin(env.DB, request, "settings.read");
+    return downloadBackupSnapshot(env, decodeURIComponent(backupDownloadMatch[1]));
+  }
+
   if (pathname === "/v1/admin/orders" && request.method === "GET") {
     await requireAdmin(env.DB, request, "orders.read");
+    await reconcileExpiredOrders(env.DB);
     return listOrders(env.DB, url);
   }
   if (pathname === "/v1/admin/orders/assignees" && request.method === "GET") {
@@ -249,6 +284,7 @@ export async function handleAdminApi(
   const orderStatusMatch = pathname.match(/^\/v1\/admin\/orders\/([^/]+)\/status$/u);
   if (orderStatusMatch && request.method === "PATCH") {
     const actor = await writeIdentity(env.DB, request, "orders.write");
+    await reconcileExpiredOrders(env.DB);
     return success(await updateOrderStatus(
       env.DB,
       request,
@@ -279,6 +315,7 @@ export async function handleAdminApi(
   const orderMatch = pathname.match(/^\/v1\/admin\/orders\/([^/]+)$/u);
   if (orderMatch && request.method === "GET") {
     await requireAdmin(env.DB, request, "orders.read");
+    await reconcileExpiredOrders(env.DB);
     return success(await orderDetail(env.DB, decodeURIComponent(orderMatch[1])));
   }
 
