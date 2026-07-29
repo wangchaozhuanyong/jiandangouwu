@@ -104,7 +104,12 @@ export function SiteShell({
         </nav>
         <div className="header-utilities">
           {supportEnabled && (
-            <button className="support-trigger" onClick={() => setSupportOpen(true)} type="button">
+            <button
+              aria-label={t.navSupport}
+              className="support-trigger"
+              onClick={() => setSupportOpen(true)}
+              type="button"
+            >
               <Headset aria-hidden="true" size={18} />
               <span>{t.navSupport}</span>
             </button>

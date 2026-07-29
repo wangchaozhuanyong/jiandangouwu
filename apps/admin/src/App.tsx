@@ -540,6 +540,10 @@ function AuthScreen({
         <button className={locale === "en" ? "is-active" : ""} onClick={() => setLocale("en")}>{t.languageEn as string}</button>
       </div>
       <section className="auth-card">
+        <div className="auth-brand">
+          <span><img src="/assets/cloudbridge-logo.png" alt="" width={349} height={176} /></span>
+          <strong>{t.brandName as string}</strong>
+        </div>
         <div className="auth-mark">
           {mode === "totp" ? <ShieldCheck size={30} weight="duotone" /> : <LockKey size={30} weight="duotone" />}
         </div>

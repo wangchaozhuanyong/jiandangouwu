@@ -119,7 +119,7 @@ test("正式客户端恢复可访问币种菜单、客服抽屉、旧版编辑�
   assert.match(controls, /aria-modal="true"/u);
   assert.match(controls, /document\.body\.style\.overflow = "hidden"/u);
   assert.match(controls, /returnFocusRef\.current\?\.focus\(\)/u);
-  assert.match(shell, /className="support-trigger"/u);
+  assert.match(shell, /aria-label=\{t\.navSupport\}[\s\S]*?className="support-trigger"/u);
   assert.match(shell, /<SupportDrawer[\s\S]*?initialConfig=\{config\}[\s\S]*?locale=\{locale\}/u);
   assert.match(shell, /const isProductDetail = pathname\.startsWith\(`\/\$\{locale\}\/products\/`\)/u);
   assert.match(shell, /\{!isProductDetail && \(/u);
@@ -146,6 +146,7 @@ test("正式后台页面按路由懒加载并使用三十秒会话缓存", () =>
   assert.match(app, /lazy\(\(\) => import\("\.\/pages\/design-preview-page"\)\)/u);
   assert.match(app, /window\.history\[[^\]]+\]\(\{ page: next \}, "", pagePath\(next\)\)/u);
   assert.match(app, /popstate/u);
+  assert.match(read("apps/admin/src/styles.css"), /@media \(max-width: 440px\)[\s\S]*?\.design-dashboard-queue \.panel-heading \{ align-items: stretch; flex-direction: column; \}/u);
   assert.match(model, /if \(candidate === "audit"\) return "logs"/u);
   assert.match(model, /cacheTtlMs:\s*30_000/u);
   assert.match(experience, /resourceCache/u);
@@ -172,6 +173,7 @@ test("正式后台只保留密码登录和可开关的 TOTP 双重验证", () =>
   assert.match(app, /loginWithPassword\(email, password\)/u);
   assert.match(app, /completeTotpLogin\(flowId, token\)/u);
   assert.match(app, /"current-password"/u);
+  assert.match(app, /className="auth-brand"[\s\S]*?src="\/assets\/cloudbridge-logo\.png"/u);
   assert.match(api, /\/admin\/auth\/totp\/disable/u);
   assert.match(security, /user\.totpEnabled/u);
   assert.match(security, /disableTotp\(password\)/u);
