@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --port 5176",
     "build": "tsc -b && vite build",
+    "pretest": "npm run build --workspace @cloudbridge/contracts",
     "test": "node --import tsx --test \"test/**/*.test.ts\"",
     "typecheck": "tsc -b"
   },
