@@ -1,4 +1,11 @@
-import type { AdminOrderListItem, OrderStatus } from "@cloudbridge/contracts";
+import {
+  STOREFRONT_LOW_STOCK_MAX,
+  type AdminInventoryRiskItem,
+  type AdminInventoryRiskLevel,
+  type AdminInventoryRiskSummary,
+  type AdminOrderListItem,
+  type OrderStatus,
+} from "@cloudbridge/contracts";
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service.js";
 import type { AdminActor } from "../common/admin-actor.js";
@@ -22,6 +29,35 @@ const auditTimeRangeMs = {
   "7d": 7 * 24 * 60 * 60 * 1000,
   "30d": 30 * 24 * 60 * 60 * 1000,
 } as const;
+const inventoryRiskSampleLimit = 6;
+const inventoryRiskProductSelect = {
+  id: true,
+  slug: true,
+  stockQuantity: true,
+  updatedAt: true,
+  translations: {
+    where: { locale: { in: ["ZH", "EN"] } },
+    select: { locale: true, name: true },
+  },
+} satisfies Prisma.ProductSelect;
+type InventoryRiskProductRecord = Prisma.ProductGetPayload<{
+  select: typeof inventoryRiskProductSelect;
+}>;
+
+const inventoryRiskItem = (
+  product: InventoryRiskProductRecord,
+  risk: AdminInventoryRiskLevel,
+): AdminInventoryRiskItem => ({
+  id: product.id,
+  slug: product.slug,
+  name: {
+    zh: product.translations.find((translation) => translation.locale === "ZH")?.name ?? "",
+    en: product.translations.find((translation) => translation.locale === "EN")?.name ?? "",
+  },
+  stockQuantity: product.stockQuantity,
+  risk,
+  updatedAt: product.updatedAt.toISOString(),
+});
 
 @Injectable()
 export class AdminService {
@@ -38,6 +74,7 @@ export class AdminService {
       activeProducts,
       openOrders,
       categoryCount,
+      inventoryRisk,
       latestOrders,
       currencies,
     ] = await Promise.all([
@@ -45,6 +82,7 @@ export class AdminService {
       this.prisma.product.count({ where: { status: "ACTIVE" } }),
       this.prisma.order.count({ where: { status: { notIn: ["COMPLETED", "CANCELLED", "REFUNDED"] } } }),
       this.prisma.category.count({ where: { status: { not: "ARCHIVED" } } }),
+      this.inventoryRisk(),
       this.prisma.order.findMany({
         take: 6,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -82,6 +120,7 @@ export class AdminService {
     const currencyDigits = new Map(currencies.map((currency) => [currency.code, currency.digits]));
     return {
       metrics: { productCount, activeProducts, openOrders, categoryCount },
+      inventoryRisk,
       latestOrders: latestOrders.map((order): AdminOrderListItem => ({
         id: order.id,
         orderNumber: order.orderNumber,
@@ -109,6 +148,77 @@ export class AdminService {
         createdAt: order.createdAt.toISOString(),
         updatedAt: order.updatedAt.toISOString(),
       })),
+    };
+  }
+
+  private async inventoryRisk(): Promise<AdminInventoryRiskSummary> {
+    const invalidStockWhere = {
+      status: "ACTIVE",
+      OR: [
+        { stockMode: "FINITE", stockQuantity: null },
+        { stockMode: "FINITE", stockQuantity: { lt: 0 } },
+        { stockMode: "UNLIMITED", stockQuantity: { not: null } },
+      ],
+    } satisfies Prisma.ProductWhereInput;
+    const soldOutWhere = {
+      status: "ACTIVE",
+      stockMode: "FINITE",
+      stockQuantity: 0,
+    } satisfies Prisma.ProductWhereInput;
+    const lowStockWhere = {
+      status: "ACTIVE",
+      stockMode: "FINITE",
+      stockQuantity: { gt: 0, lte: STOREFRONT_LOW_STOCK_MAX },
+    } satisfies Prisma.ProductWhereInput;
+    const [
+      evaluatedProductCount,
+      soldOutCount,
+      lowStockCount,
+      invalidStockCount,
+      invalidProducts,
+      soldOutProducts,
+      lowStockProducts,
+    ] = await this.prisma.$transaction([
+      this.prisma.product.count({ where: { status: "ACTIVE" } }),
+      this.prisma.product.count({ where: soldOutWhere }),
+      this.prisma.product.count({ where: lowStockWhere }),
+      this.prisma.product.count({ where: invalidStockWhere }),
+      this.prisma.product.findMany({
+        where: invalidStockWhere,
+        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        take: inventoryRiskSampleLimit,
+        select: inventoryRiskProductSelect,
+      }),
+      this.prisma.product.findMany({
+        where: soldOutWhere,
+        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        take: inventoryRiskSampleLimit,
+        select: inventoryRiskProductSelect,
+      }),
+      this.prisma.product.findMany({
+        where: lowStockWhere,
+        orderBy: [{ stockQuantity: "asc" }, { updatedAt: "desc" }, { id: "asc" }],
+        take: inventoryRiskSampleLimit,
+        select: inventoryRiskProductSelect,
+      }),
+    ]);
+    const affectedProductCount = soldOutCount + lowStockCount + invalidStockCount;
+    const items = [
+      ...invalidProducts.map((product) => inventoryRiskItem(product, "INVALID_STOCK")),
+      ...soldOutProducts.map((product) => inventoryRiskItem(product, "SOLD_OUT")),
+      ...lowStockProducts.map((product) => inventoryRiskItem(product, "LOW_STOCK")),
+    ].slice(0, inventoryRiskSampleLimit);
+
+    return {
+      source: "LIVE_DATABASE_QUERY",
+      threshold: STOREFRONT_LOW_STOCK_MAX,
+      evaluatedProductCount,
+      affectedProductCount,
+      soldOutCount,
+      lowStockCount,
+      invalidStockCount,
+      sampleLimit: inventoryRiskSampleLimit,
+      items,
     };
   }
 

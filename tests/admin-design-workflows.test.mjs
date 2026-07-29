@@ -31,6 +31,9 @@ test("正式后台的24个页面都使用真实或明确受限的专属页面", 
   assert.match(app, /<AccountCenterDialog/u);
   assert.match(app, /ChatGPT 管理登录/u);
   assert.match(dashboard, /buildDashboardSnapshot/u);
+  assert.match(dashboard, /snapshot\.inventoryRisk\.affectedProductCount/u);
+  assert.match(dashboard, /className="dashboard-inventory-table"/u);
+  assert.match(dashboard, /IMPLEMENTED_LIVE_QUERY/u);
   assert.match(dashboard, /NOT_COLLECTED/u);
   assert.doesNotMatch(dashboard, /DesignWorkflowDialog|dashboard-insights|Operations alert design|运营提醒设计/u);
   assert.match(orders, /<OrderDetailDialog/u);

@@ -1,5 +1,8 @@
 import {
   isConfiguredContactChannel,
+  STOREFRONT_LOW_STOCK_MAX,
+  type AdminInventoryRiskLevel,
+  type AdminInventoryRiskSummary,
   type ContactChannelMode,
   type ContactChannelType,
 } from "@cloudbridge/contracts";
@@ -576,18 +579,132 @@ function adminUser(identity: AdminIdentity) {
 }
 
 async function overview(db: D1Database) {
-  const [productCount, activeProducts, openOrders, categoryCount] = await Promise.all([
+  const [
+    productCount,
+    activeProducts,
+    openOrders,
+    categoryCount,
+    inventoryRisk,
+  ] = await Promise.all([
     count(db, "SELECT COUNT(*) AS count FROM products WHERE status <> 'ARCHIVED'"),
     count(db, "SELECT COUNT(*) AS count FROM products WHERE status = 'ACTIVE'"),
     count(db, "SELECT COUNT(*) AS count FROM orders WHERE status NOT IN ('COMPLETED','CANCELLED','REFUNDED')"),
     count(db, "SELECT COUNT(*) AS count FROM categories WHERE status = 'ACTIVE'"),
+    inventoryRiskSummary(db),
   ]);
   const latest = (await db.prepare(
     `${orderListSql()} ORDER BY o.created_at DESC, o.id DESC LIMIT 6`,
   ).all<OrderListRow>()).results ?? [];
   return {
     metrics: { productCount, activeProducts, openOrders, categoryCount },
+    inventoryRisk,
     latestOrders: latest.map(orderListItem),
+  };
+}
+
+async function inventoryRiskSummary(db: D1Database): Promise<AdminInventoryRiskSummary> {
+  const counts = await db.prepare(
+    `SELECT
+      COUNT(*) AS evaluatedProductCount,
+      SUM(CASE WHEN stock_mode = 'FINITE' AND stock_quantity = 0 THEN 1 ELSE 0 END)
+        AS soldOutCount,
+      SUM(CASE
+        WHEN stock_mode = 'FINITE' AND stock_quantity BETWEEN 1 AND ? THEN 1
+        ELSE 0
+      END) AS lowStockCount,
+      SUM(CASE
+        WHEN stock_mode NOT IN ('FINITE', 'UNLIMITED')
+          OR (stock_mode = 'FINITE' AND (stock_quantity IS NULL OR stock_quantity < 0))
+          OR (stock_mode = 'UNLIMITED' AND stock_quantity IS NOT NULL)
+        THEN 1
+        ELSE 0
+      END) AS invalidStockCount
+     FROM products
+     WHERE status = 'ACTIVE'`,
+  ).bind(STOREFRONT_LOW_STOCK_MAX).first<{
+    evaluatedProductCount: number | null;
+    soldOutCount: number | null;
+    lowStockCount: number | null;
+    invalidStockCount: number | null;
+  }>();
+  const rows = (await db.prepare(
+    `SELECT
+      p.id,
+      p.slug,
+      p.stock_quantity AS stockQuantity,
+      p.updated_at AS updatedAt,
+      zh.name AS nameZh,
+      en.name AS nameEn,
+      CASE
+        WHEN p.stock_mode NOT IN ('FINITE', 'UNLIMITED')
+          OR (p.stock_mode = 'FINITE' AND (p.stock_quantity IS NULL OR p.stock_quantity < 0))
+          OR (p.stock_mode = 'UNLIMITED' AND p.stock_quantity IS NOT NULL)
+        THEN 'INVALID_STOCK'
+        WHEN p.stock_mode = 'FINITE' AND p.stock_quantity = 0 THEN 'SOLD_OUT'
+        ELSE 'LOW_STOCK'
+      END AS risk
+     FROM products p
+     LEFT JOIN product_translations zh
+       ON zh.product_id = p.id AND zh.locale = 'ZH'
+     LEFT JOIN product_translations en
+       ON en.product_id = p.id AND en.locale = 'EN'
+     WHERE p.status = 'ACTIVE'
+       AND (
+         p.stock_mode NOT IN ('FINITE', 'UNLIMITED')
+         OR (p.stock_mode = 'FINITE' AND (
+           p.stock_quantity IS NULL
+           OR p.stock_quantity < 0
+           OR p.stock_quantity BETWEEN 0 AND ?
+         ))
+         OR (p.stock_mode = 'UNLIMITED' AND p.stock_quantity IS NOT NULL)
+       )
+     ORDER BY
+       CASE
+         WHEN p.stock_mode NOT IN ('FINITE', 'UNLIMITED')
+           OR (p.stock_mode = 'FINITE' AND (p.stock_quantity IS NULL OR p.stock_quantity < 0))
+           OR (p.stock_mode = 'UNLIMITED' AND p.stock_quantity IS NOT NULL)
+         THEN 0
+         WHEN p.stock_mode = 'FINITE' AND p.stock_quantity = 0 THEN 1
+         ELSE 2
+       END ASC,
+       CASE WHEN p.stock_quantity IS NULL THEN 2147483647 ELSE p.stock_quantity END ASC,
+       p.updated_at DESC,
+       p.id ASC
+     LIMIT 6`,
+  ).bind(STOREFRONT_LOW_STOCK_MAX).all<{
+    id: string;
+    slug: string;
+    stockQuantity: number | null;
+    updatedAt: string;
+    nameZh: string | null;
+    nameEn: string | null;
+    risk: string;
+  }>()).results ?? [];
+  const soldOutCount = Number(counts?.soldOutCount ?? 0);
+  const lowStockCount = Number(counts?.lowStockCount ?? 0);
+  const invalidStockCount = Number(counts?.invalidStockCount ?? 0);
+
+  return {
+    source: "LIVE_DATABASE_QUERY",
+    threshold: STOREFRONT_LOW_STOCK_MAX,
+    evaluatedProductCount: Number(counts?.evaluatedProductCount ?? 0),
+    affectedProductCount: soldOutCount + lowStockCount + invalidStockCount,
+    soldOutCount,
+    lowStockCount,
+    invalidStockCount,
+    sampleLimit: 6,
+    items: rows.map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      name: { zh: row.nameZh ?? "", en: row.nameEn ?? "" },
+      stockQuantity: row.stockQuantity === null ? null : Number(row.stockQuantity),
+      risk: (
+        ["INVALID_STOCK", "SOLD_OUT", "LOW_STOCK"].includes(row.risk)
+          ? row.risk
+          : "INVALID_STOCK"
+      ) as AdminInventoryRiskLevel,
+      updatedAt: row.updatedAt,
+    })),
   };
 }
 

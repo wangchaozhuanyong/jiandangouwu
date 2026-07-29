@@ -9,7 +9,12 @@ import {
   MagnifyingGlass,
   WarningCircle,
 } from "@phosphor-icons/react";
-import type { CategorySummary, Locale, ProductSummary } from "@cloudbridge/contracts";
+import {
+  STOREFRONT_LOW_STOCK_MAX,
+  type CategorySummary,
+  type Locale,
+  type ProductSummary,
+} from "@cloudbridge/contracts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -216,7 +221,11 @@ export function StorefrontHome({
   };
   const stockLabel = useCallback((product: ProductSummary) => {
     if (product.stockMode === "FINITE" && product.stockQuantity === 0) return t.soldOut;
-    if (product.stockMode === "FINITE" && product.stockQuantity !== null && product.stockQuantity <= 3) {
+    if (
+      product.stockMode === "FINITE"
+      && product.stockQuantity !== null
+      && product.stockQuantity <= STOREFRONT_LOW_STOCK_MAX
+    ) {
       return t.lowStock(product.stockQuantity);
     }
     return t.available;
@@ -406,7 +415,7 @@ export function StorefrontHome({
                     </div>
                     <div className="product-purchase">
                       <div className="product-meta">
-                        <span className={product.stockQuantity === 0 ? "is-sold" : product.stockQuantity !== null && product.stockQuantity <= 3 ? "is-low" : ""}>{stockLabel(product)}</span>
+                        <span className={product.stockQuantity === 0 ? "is-sold" : product.stockQuantity !== null && product.stockQuantity <= STOREFRONT_LOW_STOCK_MAX ? "is-low" : ""}>{stockLabel(product)}</span>
                       </div>
                       <span className="product-action">{t.viewProduct}<ArrowRight size={17} /></span>
                     </div>

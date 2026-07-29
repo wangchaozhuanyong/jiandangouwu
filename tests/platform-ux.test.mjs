@@ -57,6 +57,13 @@ test("正式客户端商品卡片与详情标题不显示分类或 kicker 微标
   assert.match(copy, /available: "现货"/u);
   assert.match(copy, /available: "Available"/u);
   assert.doesNotMatch(copy, /available: "可下单"/u);
+  assert.match(home, /STOREFRONT_LOW_STOCK_MAX/u);
+  assert.equal(
+    home.match(/stockQuantity <= STOREFRONT_LOW_STOCK_MAX/gu)?.length,
+    2,
+    "商品库存文案与风险样式必须复用共享低库存阈值",
+  );
+  assert.doesNotMatch(home, /stockQuantity <= 3/u);
 });
 
 test("正式客户端刷新公开配置、恢复订单冲突并保持移动端卡片节奏", () => {
@@ -169,7 +176,7 @@ test("正式后台页面按路由懒加载并使用三十秒会话缓存", () =>
   assert.doesNotMatch(app, /design-preview-page|DesignPreviewPage/u);
   assert.match(app, /window\.history\[[^\]]+\]\(\{ page: next \}, "", pagePath\(next\)\)/u);
   assert.match(app, /popstate/u);
-  assert.match(read("apps/admin/src/styles.css"), /@media \(max-width: 440px\)[\s\S]*?\.dashboard-boundary-panel \.panel-heading \{ align-items: stretch; flex-direction: column; \}/u);
+  assert.match(read("apps/admin/src/styles.css"), /@media \(max-width: 440px\)[\s\S]*?\.dashboard-boundary-panel \.panel-heading,[^}]*\.dashboard-inventory-panel \.panel-heading \{ align-items: stretch; flex-direction: column; \}/u);
   assert.match(model, /if \(candidate === "audit"\) return "logs"/u);
   assert.match(model, /cacheTtlMs:\s*30_000/u);
   assert.match(experience, /resourceCache/u);
