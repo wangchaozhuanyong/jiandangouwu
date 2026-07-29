@@ -99,7 +99,9 @@ test("遗留后台登录入口首屏直接挂载且关键控制具备 44px 点�
   assert.doesNotMatch(home, /className="hero-controls"/u);
   assert.match(home, /onTouchStart=/u);
   assert.match(home, /onPointerDown=/u);
+  assert.match(storefrontCss, /\.hero-dots button \{ width: 44px; height: 44px;/u);
   assert.match(storefrontCss, /\.hero-dots button::before/u);
+  assert.match(storefrontCss, /@media \(max-width: 390px\)[\s\S]*?\.language-switch button \{ min-width: 44px;/u);
   assert.doesNotMatch(storefrontCss, /\.hero-controls/u);
   assert.match(storefrontCss, /\.footer-links > a,\s*\.footer-links > button \{[^}]*min-height:\s*44px;/u);
   assert.match(adminCss, /\.auth-links button \{ min-height: 44px;/u);

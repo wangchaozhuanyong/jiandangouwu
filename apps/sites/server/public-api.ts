@@ -7,6 +7,7 @@ import {
 } from "./http";
 import { multiplyDecimal, normalizeMoney } from "./money";
 import { reconcileExpiredOrders } from "./order-expiry";
+import { normalizeLegacyLineBreaks } from "./text";
 import type { D1Database, SitesEnv } from "./types";
 
 type Locale = "zh" | "en";
@@ -86,7 +87,7 @@ async function storefrontConfig(db: D1Database, locale: Locale) {
   ).first<{ valueJson: string }>();
   const settings = parseSettings(settingsRow?.valueJson);
 
-  const heroes = (await db.prepare(
+  const heroRows = (await db.prepare(
     `SELECT h.key, h.image_key AS imageUrl, h.target_slug AS targetSlug, h.tone,
       t.eyebrow, t.title, t.body, t.cta
      FROM heroes h
@@ -103,6 +104,13 @@ async function storefrontConfig(db: D1Database, locale: Locale) {
     body: string;
     cta: string;
   }>()).results ?? [];
+  const heroes = heroRows.map((hero) => ({
+    ...hero,
+    eyebrow: normalizeLegacyLineBreaks(hero.eyebrow),
+    title: normalizeLegacyLineBreaks(hero.title),
+    body: normalizeLegacyLineBreaks(hero.body),
+    cta: normalizeLegacyLineBreaks(hero.cta),
+  }));
 
   const currencies = (await db.prepare(
     `SELECT code, token, CASE WHEN ? = 'ZH' THEN name_zh ELSE name_en END AS name, digits
@@ -521,7 +529,7 @@ function parseSettings(value: string | undefined) {
     policyVersion: "2026-07-29",
     acceptOrders: false,
     supportEnabled: false,
-    transitServiceEnabled: false,
+    transitServiceEnabled: true,
     transitServiceUrl: null,
   };
   if (!value) return fallback;

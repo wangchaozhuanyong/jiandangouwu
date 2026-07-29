@@ -19,6 +19,7 @@ import {
   verifyBackupSnapshot,
 } from "./backup-api";
 import { reconcileExpiredOrders } from "./order-expiry";
+import { normalizeLegacyLineBreaks } from "./text";
 import type { D1Database, SitesEnv } from "./types";
 
 const orderTransitions: Readonly<Record<string, readonly string[]>> = {
@@ -1424,8 +1425,18 @@ function heroItem(row: HeroRow) {
     sortOrder: row.sortOrder,
     version: row.version,
     translations: {
-      zh: { eyebrow: row.zhEyebrow, title: row.zhTitle, body: row.zhBody, cta: row.zhCta },
-      en: { eyebrow: row.enEyebrow, title: row.enTitle, body: row.enBody, cta: row.enCta },
+      zh: {
+        eyebrow: normalizeLegacyLineBreaks(row.zhEyebrow),
+        title: normalizeLegacyLineBreaks(row.zhTitle),
+        body: normalizeLegacyLineBreaks(row.zhBody),
+        cta: normalizeLegacyLineBreaks(row.zhCta),
+      },
+      en: {
+        eyebrow: normalizeLegacyLineBreaks(row.enEyebrow),
+        title: normalizeLegacyLineBreaks(row.enTitle),
+        body: normalizeLegacyLineBreaks(row.enBody),
+        cta: normalizeLegacyLineBreaks(row.enCta),
+      },
     },
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -1569,10 +1580,10 @@ function heroInput(body: Record<string, unknown>) {
 
 function heroTranslation(value: Record<string, unknown> | undefined, field: string) {
   return {
-    eyebrow: requiredString(value?.eyebrow, `${field}.eyebrow`, 1, 160),
-    title: requiredString(value?.title, `${field}.title`, 1, 300),
-    body: requiredString(value?.body, `${field}.body`, 1, 2_000),
-    cta: requiredString(value?.cta, `${field}.cta`, 1, 120),
+    eyebrow: normalizeLegacyLineBreaks(requiredString(value?.eyebrow, `${field}.eyebrow`, 1, 160)),
+    title: normalizeLegacyLineBreaks(requiredString(value?.title, `${field}.title`, 1, 300)),
+    body: normalizeLegacyLineBreaks(requiredString(value?.body, `${field}.body`, 1, 2_000)),
+    cta: normalizeLegacyLineBreaks(requiredString(value?.cta, `${field}.cta`, 1, 120)),
   };
 }
 
