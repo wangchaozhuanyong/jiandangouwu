@@ -14,6 +14,10 @@ export type StorefrontSettings = {
 export type AdminStorefrontSettings = StorefrontSettings & {
   version: number;
   updatedAt: string;
+  orderReadiness: {
+    activeContactChannels: number;
+    configuredActiveContactChannels: number;
+  };
 };
 
 export type UpdateStorefrontSettingsInput = StorefrontSettings & {

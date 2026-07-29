@@ -120,6 +120,21 @@ test("Sites runtime contains public, admin, health, D1, and R2 routes", () => {
   assert.match(admin, /valkey: "not_required"/u);
 });
 
+test("Sites launch gates fail closed until a configured contact channel exists", () => {
+  const admin = read("server/admin-api.ts");
+  const storefront = read("server/public-api.ts");
+  const contract = read("../../packages/contracts/src/support.ts");
+
+  assert.match(contract, /isConfiguredContactChannel/u);
+  assert.match(contract, /"未配置"/u);
+  assert.match(admin, /ORDER_SUPPORT_REQUIRED/u);
+  assert.match(admin, /CONTACT_CHANNEL_NOT_CONFIGURED/u);
+  assert.match(admin, /configuredActiveContactChannels/u);
+  assert.match(storefront, /storedSettings\.acceptOrders && supportEnabled/u);
+  assert.match(storefront, /CONTACT_CHANNEL_UNAVAILABLE/u);
+  assert.match(storefront, /isConfiguredContactChannel\(channel\)/u);
+});
+
 test("Sites worker avoids createRequire with an undefined module URL", () => {
   const workerEntry = read("dist/server/index.js");
   assert.doesNotMatch(workerEntry, /createRequire\(import\.meta\.url\)/u);

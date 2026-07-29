@@ -415,10 +415,12 @@
 .design-setting-row strong, .design-setting-row small { display: block; }
 .design-setting-row strong { color: #2f4d60; font-size: 10px; }
 .design-setting-row small { margin-top: 5px; color: #90a2ac; font-size: 8px; }
-.design-switch { width: 48px; height: 28px; position: relative; flex: none; border-radius: 999px; background: #dce5e9; transition: 180ms ease; }
-.design-switch i { width: 20px; height: 20px; position: absolute; left: 4px; top: 4px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(19,48,63,.2); transition: transform 180ms ease; }
-.design-switch.is-on { background: #3b9fb2; }
+.design-switch { width: 52px; height: 44px; position: relative; flex: none; border-radius: 999px; background: transparent; transition: 180ms ease; }
+.design-switch::before { content: ""; position: absolute; inset: 8px 2px; border-radius: inherit; background: #dce5e9; transition: 180ms ease; }
+.design-switch i { width: 20px; height: 20px; position: absolute; left: 6px; top: 12px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(19,48,63,.2); transition: transform 180ms ease; }
+.design-switch.is-on::before { background: #3b9fb2; }
 .design-switch.is-on i { transform: translateX(20px); }
+.design-switch:disabled { cursor: not-allowed; opacity: .48; }
 .design-event-stream { overflow: hidden; }
 .design-event-stream .panel-heading button { border: 0; background: #eef4f6; }
 .design-event-stream > div:not(.panel-heading) { min-height: 65px; display: grid; grid-template-columns: 34px minmax(0,1fr) 45px auto; align-items: center; gap: 10px; padding: 9px 16px; border-top: 1px solid var(--line-soft); }
@@ -570,7 +572,7 @@
 .design-settings-form h2 { margin: 6px 0; font-family: var(--serif); font-size: 20px; font-weight: 500; }
 .design-settings-form > div:first-child p { margin: 0; color: #8296a2; font-size: 9px; }
 .design-settings-form label { display: grid; gap: 6px; color: #778c99; font-size: 8px; }
-.design-settings-form input, .design-settings-form select { min-height: 43px; padding: 0 11px; border: 1px solid var(--line); border-radius: 9px; outline: none; color: var(--ink); background: #f9fbfc; font-size: 9px; }
+.design-settings-form input, .design-settings-form select { min-height: 44px; padding: 0 11px; border: 1px solid var(--line); border-radius: 9px; outline: none; color: var(--ink); background: #f9fbfc; font-size: 9px; }
 .design-settings-form input:focus, .design-settings-form select:focus { border-color: #58b3c4; box-shadow: 0 0 0 3px rgba(52,167,190,.08); }
 .design-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .design-settings-preview { display: flex; flex-direction: column; align-items: flex-start; padding: 22px; }
@@ -703,6 +705,14 @@
 .real-settings-layout .design-settings-preview dl { margin-bottom: 20px; }
 .real-settings-layout .design-settings-warning { margin-top: auto; }
 .settings-editable-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 15px; }
+.order-readiness-note { min-height: 62px; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid #ead7a9; border-radius: 11px; color: #7f662d; background: #fff9ec; }
+.order-readiness-note > svg { flex: none; margin-top: 1px; }
+.order-readiness-note > div { min-width: 0; }
+.order-readiness-note strong, .order-readiness-note small { display: block; }
+.order-readiness-note strong { color: inherit; font-size: 9px; }
+.order-readiness-note small { margin-top: 5px; color: inherit; font-size: 8px; line-height: 1.55; }
+.order-readiness-note a { min-height: 44px; display: inline-flex; align-items: center; color: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+.order-readiness-note.is-ready { border-color: #cde3d8; color: #39725e; background: #edf8f3; }
 .settings-reason { margin-top: auto; padding-top: 15px; border-top: 1px solid var(--line-soft); }
 .order-center { min-width: 0; overflow: hidden; }
 .after-sales-truth-note { min-height: 58px; display: flex; align-items: center; gap: 12px; margin-bottom: 13px; padding: 12px 16px; border: 1px solid #ead7a9; border-radius: 13px; color: #7f662d; background: #fff9ec; font-size: 9px; line-height: 1.6; }

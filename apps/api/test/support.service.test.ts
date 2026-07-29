@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
 } from "@nestjs/common";
+import { isConfiguredContactChannel } from "@cloudbridge/contracts";
 import {
   SupportService,
   validateContactChannelTarget,
@@ -78,17 +79,40 @@ test("contact channel targets reject unsafe or misleading jumps", () => {
   }
 });
 
-test("the final active contact channel cannot be disabled", async () => {
+test("contact channel configuration rejects launch placeholders", () => {
+  assert.equal(isConfiguredContactChannel({
+    type: "WECHAT",
+    mode: "QR_COPY",
+    publicAccount: "未配置",
+    directTarget: null,
+  }), false);
+  assert.equal(isConfiguredContactChannel({
+    type: "WECHAT",
+    mode: "QR_COPY",
+    publicAccount: "CloudBridge_AI",
+    directTarget: null,
+  }), true);
+});
+
+test("the final configured channel cannot be disabled while support is live", async () => {
   const current = channel();
   let updateCalled = false;
   const transaction = {
     merchantChannel: {
       findUnique: async () => current,
-      count: async () => 0,
+      findMany: async () => [],
       updateMany: async () => {
         updateCalled = true;
         return { count: 1 };
       },
+    },
+    siteSetting: {
+      findUnique: async () => ({
+        value: {
+          acceptOrders: false,
+          supportEnabled: true,
+        },
+      }),
     },
   };
   const prisma = {
@@ -108,6 +132,47 @@ test("the final active contact channel cannot be disabled", async () => {
     ConflictException,
   );
   assert.equal(updateCalled, false);
+});
+
+test("the final configured channel can be disabled after support and ordering are closed", async () => {
+  const current = channel();
+  const saved = { ...current, active: false, version: 2 };
+  let updateCalled = false;
+  const transaction = {
+    merchantChannel: {
+      findUnique: async () => current,
+      findMany: async () => [],
+      updateMany: async () => {
+        updateCalled = true;
+        return { count: 1 };
+      },
+      findUniqueOrThrow: async () => saved,
+    },
+    siteSetting: {
+      findUnique: async () => ({
+        value: {
+          acceptOrders: false,
+          supportEnabled: false,
+        },
+      }),
+    },
+  };
+  const prisma = {
+    $transaction: async (callback: (client: typeof transaction) => unknown) => callback(transaction),
+  };
+  const service = new SupportService(
+    prisma as never,
+    { record: async () => undefined } as never,
+  );
+
+  const updated = await service.updateChannel(
+    current.id,
+    { ...updateInput(), active: false },
+    { userId: "admin", requestId: "request" },
+  );
+
+  assert.equal(updateCalled, true);
+  assert.equal(updated.active, false);
 });
 
 test("contact channel update preserves order and audits complete channel maps", async () => {

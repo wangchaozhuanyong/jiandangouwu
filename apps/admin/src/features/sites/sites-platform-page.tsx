@@ -128,7 +128,11 @@ export default function SitesPlatformPage({
                 <div>
                   <small>{copy(locale, "前台状态", "STOREFRONT STATE")}</small>
                   <strong>{resource.data.storefront.acceptOrders ? copy(locale, "允许下单", "Orders enabled") : copy(locale, "下单保持关闭", "Orders remain disabled")}</strong>
-                  <p>{copy(locale, `已启用 ${resource.data.storefront.activeContactChannels} 个客服渠道`, `${resource.data.storefront.activeContactChannels} support channels enabled`)}</p>
+                  <p>{copy(
+                    locale,
+                    `${resource.data.storefront.configuredActiveContactChannels} 个渠道可用 · ${resource.data.storefront.activeContactChannels} 个已启用`,
+                    `${resource.data.storefront.configuredActiveContactChannels} ready · ${resource.data.storefront.activeContactChannels} active`,
+                  )}</p>
                 </div>
               </article>
             </div>

@@ -2,6 +2,7 @@ import type {
   AdminStorefrontSettings,
   StorefrontSettings,
 } from "@cloudbridge/contracts";
+import { isConfiguredContactChannel } from "@cloudbridge/contracts";
 import {
   BadRequestException,
   ConflictException,
@@ -30,20 +31,29 @@ export class SettingsService {
   ) {}
 
   async publicSettings(): Promise<StorefrontSettings> {
-    const [settings, policy] = await Promise.all([
+    const [settings, policy, activeChannels] = await Promise.all([
       this.prisma.siteSetting.findUnique({ where: { key: STOREFRONT_SETTINGS_KEY } }),
       this.prisma.siteSetting.findUnique({ where: { key: POLICY_VERSION_KEY } }),
+      this.prisma.merchantChannel.findMany({ where: { active: true } }),
     ]);
     const legacyPolicy = typeof policy?.value === "string"
       ? policy.value
       : DEFAULT_STOREFRONT_SETTINGS.policyVersion;
-    return parseStorefrontSettings(settings?.value, legacyPolicy);
+    const parsed = parseStorefrontSettings(settings?.value, legacyPolicy);
+    const hasConfiguredChannel = activeChannels.some(isConfiguredContactChannel);
+    const supportEnabled = parsed.supportEnabled && hasConfiguredChannel;
+    return {
+      ...parsed,
+      supportEnabled,
+      acceptOrders: parsed.acceptOrders && supportEnabled,
+    };
   }
 
   async adminSettings(): Promise<AdminStorefrontSettings> {
-    const [row, policy] = await Promise.all([
+    const [row, policy, activeChannels] = await Promise.all([
       this.prisma.siteSetting.findUnique({ where: { key: STOREFRONT_SETTINGS_KEY } }),
       this.prisma.siteSetting.findUnique({ where: { key: POLICY_VERSION_KEY } }),
+      this.prisma.merchantChannel.findMany({ where: { active: true } }),
     ]);
     const legacyPolicy = typeof policy?.value === "string"
       ? policy.value
@@ -53,6 +63,10 @@ export class SettingsService {
       ...settings,
       version: row?.version ?? 0,
       updatedAt: (row?.updatedAt ?? new Date(0)).toISOString(),
+      orderReadiness: {
+        activeContactChannels: activeChannels.length,
+        configuredActiveContactChannels: activeChannels.filter(isConfiguredContactChannel).length,
+      },
     };
   }
 
@@ -84,6 +98,25 @@ export class SettingsService {
           transaction.siteSetting.findUnique({ where: { key: STOREFRONT_SETTINGS_KEY } }),
           transaction.siteSetting.findUnique({ where: { key: POLICY_VERSION_KEY } }),
         ]);
+        const activeChannels = await transaction.merchantChannel.findMany({
+          where: { active: true },
+        });
+        const configuredActiveChannels = activeChannels.filter(isConfiguredContactChannel);
+        if (next.acceptOrders && !next.supportEnabled) {
+          throw new BadRequestException({
+            code: "ORDER_SUPPORT_REQUIRED",
+            message: "Support access must be enabled before new orders can be accepted.",
+          });
+        }
+        if (
+          (next.acceptOrders || next.supportEnabled)
+          && configuredActiveChannels.length === 0
+        ) {
+          throw new BadRequestException({
+            code: "CONTACT_CHANNEL_REQUIRED",
+            message: "At least one configured active contact channel is required before support or ordering can be enabled.",
+          });
+        }
         const legacyPolicy = typeof policy?.value === "string"
           ? policy.value
           : DEFAULT_STOREFRONT_SETTINGS.policyVersion;
@@ -139,14 +172,21 @@ export class SettingsService {
           afterData: next,
           ip: actor.ip,
         }, transaction);
-        return committed;
+        return {
+          committed,
+          orderReadiness: {
+            activeContactChannels: activeChannels.length,
+            configuredActiveContactChannels: configuredActiveChannels.length,
+          },
+        };
       }, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       });
       return {
         ...next,
-        version: saved.version,
-        updatedAt: saved.updatedAt.toISOString(),
+        version: saved.committed.version,
+        updatedAt: saved.committed.updatedAt.toISOString(),
+        orderReadiness: saved.orderReadiness,
       };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

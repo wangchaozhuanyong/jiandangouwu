@@ -42,13 +42,38 @@ test("订单服务在扣库存前执行接单、政策与渠道门禁", () => {
   const orders = read("apps/api/src/orders/orders.service.ts");
   const gateIndex = orders.indexOf("if (!settings.acceptOrders)");
   const policyIndex = orders.indexOf("input.acceptedPolicyVersion !== settings.policyVersion");
-  const channelIndex = orders.indexOf("if (!activeChannel)");
+  const channelIndex = orders.indexOf("if (!activeChannel || !isConfiguredContactChannel(activeChannel))");
   const stockIndex = orders.indexOf("stockQuantity: { gte: 1 }");
 
   assert.ok(gateIndex >= 0);
   assert.ok(policyIndex > gateIndex);
   assert.ok(channelIndex > policyIndex);
   assert.ok(stockIndex > channelIndex);
+});
+
+test("接单和客服入口只允许在真实联系方式准备完成后开启", () => {
+  const supportContract = read("packages/contracts/src/support.ts");
+  const settingsService = read("apps/api/src/settings/settings.service.ts");
+  const supportService = read("apps/api/src/support/support.service.ts");
+  const sitesAdmin = read("apps/sites/server/admin-api.ts");
+  const sitesPublic = read("apps/sites/server/public-api.ts");
+  const settingsPage = read("apps/admin/src/features/settings/settings-page.tsx");
+  const contactsPage = read("apps/admin/src/features/support/contacts-page.tsx");
+
+  assert.match(supportContract, /isConfiguredContactChannel/u);
+  assert.match(supportContract, /unconfiguredContactValues/u);
+  assert.match(settingsService, /next\.acceptOrders && !next\.supportEnabled/u);
+  assert.match(settingsService, /configuredActiveChannels\.length === 0/u);
+  assert.match(settingsService, /parsed\.acceptOrders && supportEnabled/u);
+  assert.match(supportService, /CONTACT_CHANNEL_NOT_CONFIGURED/u);
+  assert.match(supportService, /CONTACT_CHANNEL_REQUIRED/u);
+  assert.match(sitesAdmin, /ORDER_SUPPORT_REQUIRED/u);
+  assert.match(sitesAdmin, /CONTACT_CHANNEL_REQUIRED/u);
+  assert.match(sitesPublic, /storedSettings\.acceptOrders && supportEnabled/u);
+  assert.match(sitesPublic, /!channel \|\| !isConfiguredContactChannel\(channel\)/u);
+  assert.match(settingsPage, /orderReadiness\?\.configuredActiveContactChannels/u);
+  assert.match(settingsPage, /管理联系方式|Manage contacts/u);
+  assert.match(contactsPage, /isConfiguredContactChannel/u);
 });
 
 test("三个正式后台页面不再经过设计预览并调用真实接口", () => {

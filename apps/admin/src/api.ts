@@ -50,6 +50,7 @@ export type SitesReadiness = {
     acceptOrders: boolean;
     supportEnabled: boolean;
     activeContactChannels: number;
+    configuredActiveContactChannels: number;
   };
   checkedAt: string;
 };

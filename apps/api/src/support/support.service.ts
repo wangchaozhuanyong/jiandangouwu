@@ -1,7 +1,9 @@
-import type {
-  AdminContactChannel,
-  ContactChannelMode,
-  ContactChannelType,
+import {
+  isApprovedContactChannelTarget,
+  isConfiguredContactChannel,
+  type AdminContactChannel,
+  type ContactChannelMode,
+  type ContactChannelType,
 } from "@cloudbridge/contracts";
 import {
   BadRequestException,
@@ -13,6 +15,11 @@ import { AuditService } from "../audit/audit.service.js";
 import type { AdminActor } from "../common/admin-actor.js";
 import { Prisma } from "../generated/prisma/client.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import {
+  DEFAULT_STOREFRONT_SETTINGS,
+  parseStorefrontSettings,
+  STOREFRONT_SETTINGS_KEY,
+} from "../settings/settings.model.js";
 import type {
   ReorderContactChannelsDto,
   UpdateContactChannelDto,
@@ -59,27 +66,7 @@ export function validateContactChannelTarget(
   mode: ContactChannelMode,
   directTarget: string | null,
 ): void {
-  const target = directTarget?.trim() || null;
-  const valid = (() => {
-    if (type === "WHATSAPP") {
-      return mode === "DIRECT_LINK"
-        && Boolean(target && /^https:\/\/wa\.me\/[1-9]\d{5,15}(?:\?.*)?$/u.test(target));
-    }
-    if (type === "EMAIL") {
-      return mode === "DIRECT_LINK"
-        && Boolean(target && /^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(target));
-    }
-    if (type === "TELEGRAM") {
-      return mode === "DIRECT_LINK"
-        && Boolean(target && /^https:\/\/t\.me\/[A-Za-z0-9_]{5,}$/u.test(target));
-    }
-    if (type === "WECHAT") {
-      return mode === "QR_COPY" && target === null;
-    }
-    return mode === "DIRECT_WITH_FALLBACK"
-      && Boolean(target && /^mqqwpa:\/\/im\/chat\?chat_type=wpa&uin=\d{5,15}$/u.test(target));
-  })();
-  if (!valid) {
+  if (!isApprovedContactChannelTarget(type, mode, directTarget)) {
     throw new BadRequestException("The contact channel target does not match its channel mode.");
   }
 }
@@ -108,15 +95,40 @@ export class SupportService {
       if (!current) throw new NotFoundException("Contact channel not found.");
       const directTarget = input.directTarget?.trim() || null;
       validateContactChannelTarget(current.type, current.mode, directTarget);
-      if (current.active && !input.active) {
-        const otherActiveChannels = await transaction.merchantChannel.count({
-          where: {
-            active: true,
-            id: { not: id },
-          },
+      if (input.active && !isConfiguredContactChannel({
+        type: current.type,
+        mode: current.mode,
+        publicAccount: input.publicAccount,
+        directTarget,
+      })) {
+        throw new BadRequestException({
+          code: "CONTACT_CHANNEL_NOT_CONFIGURED",
+          message: "A real public account and approved channel target are required before activation.",
         });
-        if (otherActiveChannels === 0) {
-          throw new ConflictException("At least one contact channel must remain active.");
+      }
+      if (current.active && !input.active) {
+        const [otherActiveChannels, settingsRow] = await Promise.all([
+          transaction.merchantChannel.findMany({
+            where: {
+              active: true,
+              id: { not: id },
+            },
+          }),
+          transaction.siteSetting.findUnique({ where: { key: STOREFRONT_SETTINGS_KEY } }),
+        ]);
+        const settings = parseStorefrontSettings(
+          settingsRow?.value,
+          DEFAULT_STOREFRONT_SETTINGS.policyVersion,
+        );
+        const otherConfiguredChannels = otherActiveChannels.filter(isConfiguredContactChannel);
+        if (
+          otherConfiguredChannels.length === 0
+          && (settings.acceptOrders || settings.supportEnabled)
+        ) {
+          throw new ConflictException({
+            code: "CONTACT_CHANNEL_REQUIRED",
+            message: "Disable new orders and support access before removing the final configured contact channel.",
+          });
         }
       }
 

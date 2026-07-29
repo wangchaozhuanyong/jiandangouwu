@@ -1,4 +1,9 @@
 import {
+  isConfiguredContactChannel,
+  type ContactChannelMode,
+  type ContactChannelType,
+} from "@cloudbridge/contracts";
+import {
   ApiInputError,
   pageMeta,
   parsePage,
@@ -30,6 +35,15 @@ type ProductRow = {
   stockQuantity: number | null;
   status: "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED";
   version: number;
+};
+
+type PublicChannelRow = {
+  type: ContactChannelType;
+  mode: ContactChannelMode;
+  label: string;
+  account: string;
+  directTarget: string | null;
+  serviceHours: string;
 };
 
 export async function handlePublicApi(
@@ -85,7 +99,7 @@ async function storefrontConfig(db: D1Database, locale: Locale) {
   const settingsRow = await db.prepare(
     "SELECT value_json AS valueJson FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
   ).first<{ valueJson: string }>();
-  const settings = parseSettings(settingsRow?.valueJson);
+  const storedSettings = parseSettings(settingsRow?.valueJson);
 
   const heroRows = (await db.prepare(
     `SELECT h.key, h.image_key AS imageUrl, h.target_slug AS targetSlug, h.tone,
@@ -122,22 +136,26 @@ async function storefrontConfig(db: D1Database, locale: Locale) {
     digits: number;
   }>()).results ?? [];
 
-  const channels = settings.supportEnabled
-    ? (await db.prepare(
-        `SELECT type, mode,
-          CASE WHEN ? = 'ZH' THEN label_zh ELSE label_en END AS label,
-          public_account AS account, direct_target AS directTarget,
-          CASE WHEN ? = 'ZH' THEN service_hours_zh ELSE service_hours_en END AS serviceHours
-         FROM merchant_channels WHERE active = 1 ORDER BY sort_order ASC, id ASC`,
-      ).bind(localeCode, localeCode).all<{
-        type: string;
-        mode: string;
-        label: string;
-        account: string;
-        directTarget: string | null;
-        serviceHours: string;
-      }>()).results ?? []
-    : [];
+  const activeChannels = (await db.prepare(
+    `SELECT type, mode,
+      CASE WHEN ? = 'ZH' THEN label_zh ELSE label_en END AS label,
+      public_account AS account, direct_target AS directTarget,
+      CASE WHEN ? = 'ZH' THEN service_hours_zh ELSE service_hours_en END AS serviceHours
+     FROM merchant_channels WHERE active = 1 ORDER BY sort_order ASC, id ASC`,
+  ).bind(localeCode, localeCode).all<PublicChannelRow>()).results ?? [];
+  const configuredChannels = activeChannels.filter((channel) => isConfiguredContactChannel({
+    type: channel.type,
+    mode: channel.mode,
+    publicAccount: channel.account,
+    directTarget: channel.directTarget,
+  }));
+  const supportEnabled = storedSettings.supportEnabled && configuredChannels.length > 0;
+  const settings = {
+    ...storedSettings,
+    supportEnabled,
+    acceptOrders: storedSettings.acceptOrders && supportEnabled,
+  };
+  const channels = supportEnabled ? configuredChannels : [];
 
   return { heroes, currencies, channels, settings };
 }
@@ -283,7 +301,7 @@ async function createOrder(request: Request, env: SitesEnv): Promise<Response> {
     "SELECT value_json AS valueJson FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
   ).first<{ valueJson: string }>();
   const settings = parseSettings(settingsRow?.valueJson);
-  if (!settings.acceptOrders) {
+  if (!settings.acceptOrders || !settings.supportEnabled) {
     throw new ApiInputError("ORDERS_PAUSED", "Orders are currently paused.", 409);
   }
   if (policyVersion !== settings.policyVersion) {
@@ -291,9 +309,15 @@ async function createOrder(request: Request, env: SitesEnv): Promise<Response> {
   }
 
   const channel = await env.DB.prepare(
-    "SELECT type FROM merchant_channels WHERE type = ? AND active = 1 LIMIT 1",
-  ).bind(contactChannel).first<{ type: string }>();
-  if (!channel) {
+    `SELECT type, mode, public_account AS publicAccount, direct_target AS directTarget
+     FROM merchant_channels WHERE type = ? AND active = 1 LIMIT 1`,
+  ).bind(contactChannel).first<{
+    type: ContactChannelType;
+    mode: ContactChannelMode;
+    publicAccount: string;
+    directTarget: string | null;
+  }>();
+  if (!channel || !isConfiguredContactChannel(channel)) {
     throw new ApiInputError("CONTACT_CHANNEL_UNAVAILABLE", "The selected contact channel is unavailable.", 422);
   }
 
@@ -534,12 +558,23 @@ function parseSettings(value: string | undefined) {
   };
   if (!value) return fallback;
   try {
-    const parsed = JSON.parse(value) as typeof fallback;
+    const parsed = JSON.parse(value) as Partial<typeof fallback>;
+    const policyVersion = typeof parsed.policyVersion === "string"
+      && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/u.test(parsed.policyVersion.trim())
+      ? parsed.policyVersion.trim()
+      : fallback.policyVersion;
     return {
       ...fallback,
       ...parsed,
       siteName: { ...fallback.siteName, ...parsed.siteName },
       seoDescription: { ...fallback.seoDescription, ...parsed.seoDescription },
+      policyVersion,
+      acceptOrders: parsed.acceptOrders === true,
+      supportEnabled: parsed.supportEnabled === true,
+      transitServiceEnabled: parsed.transitServiceEnabled !== false,
+      transitServiceUrl: typeof parsed.transitServiceUrl === "string"
+        ? parsed.transitServiceUrl
+        : null,
     };
   } catch {
     return fallback;
