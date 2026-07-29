@@ -395,19 +395,21 @@ export function StorefrontHome({
                 >
                   <div className="product-image">
                     <ResilientImage src={product.imageUrl} alt="" width={720} height={610} fallbackLabel={t.imageUnavailable} />
-                    <span>{t.serviceLabel}</span>
                   </div>
                   <div className="product-copy">
-                    <p>{product.kicker}</p>
-                    <h3>{product.name}</h3>
+                    <div className="product-identity">
+                      <h3>{product.name}</h3>
+                    </div>
                     <div className="product-price">
                       <div><small>{t.from}</small><strong>{product.price.amount} <em>{product.price.currency}</em></strong></div>
                       {product.referencePrice && <div><small>{t.dualPrice}</small><span>{product.referencePrice.amount} {product.referencePrice.currency}</span></div>}
                     </div>
-                    <div className="product-meta">
-                      <span className={product.stockQuantity === 0 ? "is-sold" : product.stockQuantity !== null && product.stockQuantity <= 3 ? "is-low" : ""}>{stockLabel(product)}</span>
+                    <div className="product-purchase">
+                      <div className="product-meta">
+                        <span className={product.stockQuantity === 0 ? "is-sold" : product.stockQuantity !== null && product.stockQuantity <= 3 ? "is-low" : ""}>{stockLabel(product)}</span>
+                      </div>
+                      <span className="product-action">{t.viewProduct}<ArrowRight size={17} /></span>
                     </div>
-                    <span className="product-action">{t.viewProduct}<ArrowRight size={17} /></span>
                   </div>
                 </Link>
               );

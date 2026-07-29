@@ -27,6 +27,7 @@ import {
   type StorefrontConfig,
   type StorefrontCurrency,
 } from "../lib/api";
+import { resolveContactTarget } from "../lib/contact-actions";
 
 type CurrencyPickerProps = {
   ariaLabel: string;
@@ -175,6 +176,7 @@ export function CurrencyPicker({
 }
 
 type SupportDrawerProps = {
+  initialConfig: StorefrontConfig | null;
   locale: Locale;
   onClose: () => void;
   open: boolean;
@@ -188,13 +190,13 @@ const channelIcons = {
   QQ: ChatsCircle,
 } satisfies Record<StorefrontChannel["type"], typeof ChatsCircle>;
 
-export function SupportDrawer({ locale, onClose, open }: SupportDrawerProps) {
+export function SupportDrawer({ initialConfig, locale, onClose, open }: SupportDrawerProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
-  const [config, setConfig] = useState<StorefrontConfig | null>(null);
-  const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [config, setConfig] = useState<StorefrontConfig | null>(initialConfig);
+  const [state, setState] = useState<"idle" | "loading" | "ready" | "error">(initialConfig ? "ready" : "idle");
   const [copied, setCopied] = useState("");
   const [copyError, setCopyError] = useState(false);
   const zh = locale === "zh";
@@ -211,9 +213,9 @@ export function SupportDrawer({ locale, onClose, open }: SupportDrawerProps) {
   };
 
   useEffect(() => {
-    setConfig(null);
-    setState("idle");
-  }, [locale]);
+    setConfig(initialConfig);
+    setState(initialConfig ? "ready" : "idle");
+  }, [initialConfig, locale]);
 
   useEffect(() => {
     if (!open || state !== "idle") return;
@@ -326,7 +328,7 @@ export function SupportDrawer({ locale, onClose, open }: SupportDrawerProps) {
           <div className="support-channel-list">
             {config?.channels.map((channel) => {
               const Icon = channelIcons[channel.type];
-              const directTarget = channel.directTarget;
+              const directTarget = resolveContactTarget(channel, locale);
               const external = Boolean(directTarget?.startsWith("http"));
               return (
                 <article key={channel.type}>
@@ -346,7 +348,13 @@ export function SupportDrawer({ locale, onClose, open }: SupportDrawerProps) {
                         target={external ? "_blank" : undefined}
                       >
                         <ArrowSquareOut aria-hidden="true" size={16} />
-                        {zh ? "打开渠道" : "Open channel"}
+                        {channel.type === "WHATSAPP"
+                          ? (zh ? "打开 WhatsApp" : "Open WhatsApp")
+                          : channel.type === "EMAIL"
+                            ? (zh ? "撰写邮件" : "Write email")
+                            : channel.type === "TELEGRAM"
+                              ? (zh ? "打开 Telegram" : "Open Telegram")
+                              : (zh ? "打开 QQ" : "Open QQ")}
                       </a>
                     )}
                     <button onClick={() => void copyAccount(channel)} type="button">

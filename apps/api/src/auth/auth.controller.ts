@@ -67,8 +67,11 @@ export class AuthController {
 
   @Get("me")
   async me(@Req() request: Request) {
+    const user = await this.auth.sessionProfile(request.adminSession!.userId);
+    const token = request.cookies?.[this.cookieName] as string | undefined;
+    if (token) await this.sessions.synchronizePermissions(token, user.permissions);
     return {
-      user: await this.auth.sessionProfile(request.adminSession!.userId),
+      user,
       csrfToken: request.adminSession!.csrfToken,
     };
   }

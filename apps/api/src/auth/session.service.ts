@@ -83,6 +83,20 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     if (/^[A-Za-z0-9_-]{40,80}$/u.test(token)) await this.redis.del(this.sessionKey(token));
   }
 
+  async synchronizePermissions(token: string, permissions: string[]): Promise<void> {
+    if (!/^[A-Za-z0-9_-]{40,80}$/u.test(token)) return;
+    const key = this.sessionKey(token);
+    const serialized = await this.redis.get(key);
+    if (!serialized) return;
+    const ttl = await this.redis.ttl(key);
+    if (ttl <= 0) return;
+    const record = JSON.parse(serialized) as SessionRecord;
+    await this.redis.set(key, JSON.stringify({
+      ...record,
+      permissions: [...new Set(permissions)].sort(),
+    }), "EX", ttl);
+  }
+
   async createChallenge(record: ChallengeRecord): Promise<string> {
     const flowId = randomBytes(24).toString("base64url");
     await this.redis.set(`auth-flow:${flowId}`, JSON.stringify(record), "EX", this.challengeTtlSeconds);

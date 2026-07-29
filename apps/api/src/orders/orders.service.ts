@@ -7,6 +7,12 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "../generated/prisma/client.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import {
+  DEFAULT_STOREFRONT_SETTINGS,
+  parseOrderGateSettings,
+  POLICY_VERSION_KEY,
+  STOREFRONT_SETTINGS_KEY,
+} from "../settings/settings.model.js";
 import { ContactProtectionService } from "./contact-protection.service.js";
 import type { CreateOrderDto } from "./orders.dto.js";
 
@@ -69,12 +75,39 @@ export class OrdersService {
   }
 
   async create(input: CreateOrderDto, idempotencyKey: string): Promise<OrderReceipt> {
-    const existing = await this.prisma.order.findUnique({ where: { idempotencyKey } });
-    if (existing) return this.receipt(existing);
-
     const protectedContact = this.contacts.protect(input.contactValue);
+    const existing = await this.prisma.order.findUnique({ where: { idempotencyKey } });
+    if (existing) {
+      this.assertIdempotentReplay(existing, input, protectedContact.hash);
+      return this.receipt(existing);
+    }
     try {
       const created = await this.prisma.$transaction(async (transaction) => {
+        const [settingsRow, legacyPolicy, activeChannel] = await Promise.all([
+          transaction.siteSetting.findUnique({ where: { key: STOREFRONT_SETTINGS_KEY } }),
+          transaction.siteSetting.findUnique({ where: { key: POLICY_VERSION_KEY } }),
+          transaction.merchantChannel.findFirst({
+            where: {
+              type: input.contactChannel,
+              active: true,
+            },
+            select: { id: true },
+          }),
+        ]);
+        const currentPolicyVersion = typeof legacyPolicy?.value === "string"
+          ? legacyPolicy.value
+          : DEFAULT_STOREFRONT_SETTINGS.policyVersion;
+        const settings = parseOrderGateSettings(settingsRow?.value, currentPolicyVersion);
+        if (!settings.acceptOrders) {
+          throw new ConflictException("New orders are currently paused.");
+        }
+        if (input.acceptedPolicyVersion !== settings.policyVersion) {
+          throw new ConflictException("The policy version changed. Review the latest policy before submitting.");
+        }
+        if (!activeChannel) {
+          throw new ConflictException("The selected contact channel is unavailable.");
+        }
+
         const product = await transaction.product.findFirst({
           where: { id: input.productId, status: "ACTIVE" },
           include: {
@@ -150,9 +183,37 @@ export class OrdersService {
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         const duplicate = await this.prisma.order.findUnique({ where: { idempotencyKey } });
-        if (duplicate) return this.receipt(duplicate);
+        if (duplicate) {
+          this.assertIdempotentReplay(duplicate, input, protectedContact.hash);
+          return this.receipt(duplicate);
+        }
       }
       throw error;
+    }
+  }
+
+  private assertIdempotentReplay(
+    existing: {
+      productId: string;
+      currencyCode: string;
+      amount: Prisma.Decimal;
+      contactChannel: string;
+      contactHash: string;
+      acceptedPolicyVersion: string;
+    },
+    input: CreateOrderDto,
+    contactHash: string,
+  ): void {
+    const matches = existing.productId === input.productId
+      && existing.currencyCode === input.currency
+      && existing.amount.equals(input.expectedPrice.amount)
+      && existing.contactChannel === input.contactChannel
+      && existing.contactHash === contactHash
+      && existing.acceptedPolicyVersion === input.acceptedPolicyVersion;
+    if (!matches) {
+      throw new ConflictException(
+        "This Idempotency-Key was already used for a different order request.",
+      );
     }
   }
 }

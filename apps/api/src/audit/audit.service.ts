@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
+import type { Prisma } from "../generated/prisma/client.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 type AuditInput = {
@@ -19,12 +20,15 @@ type AuditInput = {
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async record(input: AuditInput): Promise<void> {
+  async record(
+    input: AuditInput,
+    client: Pick<Prisma.TransactionClient, "auditEvent"> = this.prisma,
+  ): Promise<void> {
     const toJson = (value: unknown): never | undefined => value === undefined
       ? undefined
       : JSON.parse(JSON.stringify(value, (_, current) =>
           typeof current === "bigint" ? current.toString() : current)) as never;
-    await this.prisma.auditEvent.create({
+    await client.auditEvent.create({
       data: {
         actorId: input.actorId,
         action: input.action,

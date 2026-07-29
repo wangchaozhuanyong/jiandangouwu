@@ -1,5 +1,14 @@
+import type { AdminOrderListItem } from "@cloudbridge/contracts";
+
 type ApiSuccess<T> = { data: T; requestId: string; meta?: PageMeta };
-type ApiFailure = { error: { code: string; message: string }; requestId: string };
+type ApiFailure = {
+  error: {
+    code: string;
+    message: string;
+    details?: ReadonlyArray<{ field?: string; code: string; message: string }>;
+  };
+  requestId: string;
+};
 
 export type PageMeta = { page: number; pageSize: number; total: number; pageCount: number };
 export type Locale = "zh" | "en";
@@ -8,6 +17,7 @@ export type AdminUser = {
   email: string;
   displayName: string;
   roles: Array<{ key: string; name: Record<Locale, string> }>;
+  permissions: string[];
   totpEnabled: boolean;
 };
 export type SessionPayload = { user: AdminUser; csrfToken: string };
@@ -17,7 +27,7 @@ export type PasswordLoginResult =
   | { requiresTotp: false; csrfToken: string };
 export type Overview = {
   metrics: { productCount: number; activeProducts: number; openOrders: number; categoryCount: number };
-  latestOrders: AdminOrder[];
+  latestOrders: AdminOrderListItem[];
 };
 export type AdminCategory = {
   id: string;
@@ -44,17 +54,6 @@ export type AdminProduct = {
   translations: Record<Locale, { name: string; kicker: string; description: string }>;
   updatedAt: string;
 };
-export type AdminOrder = {
-  id: string;
-  orderNumber: string;
-  productNameSnapshot: string;
-  currencyCode: string;
-  amount: string;
-  maskedContact: string;
-  contactChannel: string;
-  status: string;
-  createdAt: string;
-};
 export type AdminCurrency = {
   code: string;
   token: string;
@@ -77,9 +76,16 @@ export type AuditEvent = {
 
 const baseUrl = import.meta.env.VITE_ADMIN_API_BASE_URL ?? "http://localhost:3001/v1";
 let csrfToken = "";
+let unauthorizedHandler: (() => void) | null = null;
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number, readonly code: string) {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string,
+    readonly requestId = "",
+    readonly details: ApiFailure["error"]["details"] = [],
+  ) {
     super(message);
   }
 }
@@ -88,7 +94,11 @@ export const setCsrfToken = (value: string): void => {
   csrfToken = value;
 };
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<{ data: T; meta?: PageMeta }> {
+export const setUnauthorizedHandler = (handler: (() => void) | null): void => {
+  unauthorizedHandler = handler;
+};
+
+export async function request<T>(path: string, init: RequestInit = {}): Promise<{ data: T; meta?: PageMeta }> {
   const method = init.method ?? "GET";
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
@@ -103,7 +113,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<{ data:
   const payload = await response.json() as ApiSuccess<T> | ApiFailure;
   if (!response.ok || "error" in payload) {
     const error = "error" in payload ? payload.error : { code: "REQUEST_FAILED", message: "Request failed." };
-    throw new ApiError(error.message, response.status, error.code);
+    if (response.status === 401) {
+      setCsrfToken("");
+      unauthorizedHandler?.();
+    }
+    throw new ApiError(error.message, response.status, error.code, payload.requestId, error.details);
   }
   return { data: payload.data, meta: payload.meta };
 }
@@ -155,9 +169,6 @@ export const updateCategory = (id: string, body: unknown) => request<AdminCatego
 export const getProducts = async (search = "", signal?: AbortSignal) => (await request<AdminProduct[]>(`/admin/products?page=1&pageSize=100&search=${encodeURIComponent(search)}`, { signal })).data;
 export const createProduct = (body: unknown) => request<AdminProduct>("/admin/products", { method: "POST", body: JSON.stringify(body) });
 export const updateProduct = (id: string, body: unknown) => request<AdminProduct>(`/admin/products/${id}`, { method: "PATCH", body: JSON.stringify(body) });
-export const getOrders = async (signal?: AbortSignal) => (await request<AdminOrder[]>("/admin/orders?page=1&pageSize=100", { signal })).data;
-export const updateOrderStatus = (id: string, status: string, reason: string) => request(`/admin/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ status, reason }) });
-export const revealOrderContact = async (id: string) => (await request<{ contact: string; channel: string }>(`/admin/orders/${id}/reveal-contact`, { method: "POST" })).data;
 export const getCurrencies = async (signal?: AbortSignal) => (await request<AdminCurrency[]>("/admin/currencies", { signal })).data;
 export const updateRate = (code: string, rate: string, reason: string) => request(`/admin/currencies/${code}/rate`, { method: "PATCH", body: JSON.stringify({ rate, reason }) });
 export const getAudit = async (signal?: AbortSignal) => (await request<AuditEvent[]>("/admin/audit?page=1&pageSize=100", { signal })).data;

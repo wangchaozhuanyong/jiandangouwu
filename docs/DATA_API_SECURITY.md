@@ -21,6 +21,7 @@
 - 翻译文本只负责显示，不得决定样式、权限或状态流转。
 - 状态转换必须由服务端校验合法性；客户端不能通过提交任意状态跳过流程。
 - 创建订单、付款确认、通知发送等可重试写入必须设计幂等键，重复请求不能产生重复结果。
+- 同一订单幂等键只允许重放同一业务载荷；使用同一键提交不同商品、金额、币种、渠道、联系方式或政策版本必须返回冲突。
 - 关联数据使用稳定 ID；改名、翻译或排序不得改变关系。
 
 ## API 约定
@@ -30,6 +31,35 @@
 - 列表在确有规模需求时支持分页、关键词搜索和受控排序；排序字段必须白名单校验。
 - 所有输入在服务端验证类型、长度、格式和业务约束；客户端验证只用于体验。
 - 写接口必须返回真实提交结果。排队任务返回任务 ID 和初始状态，不返回虚假的最终成功。
+
+### 订单管理接口
+
+- `GET /v1/admin/orders` 仅接受白名单分页、关键词、状态、负责人和联系渠道筛选；返回显式投影，不返回幂等键、联系方式密文或哈希。
+- `GET /v1/admin/orders/:id` 返回订单快照、脱敏联系方式、负责人、完整状态时间线和服务端允许的下一状态。
+- `GET /v1/admin/orders/assignees` 只返回状态为 `ACTIVE` 且通过角色拥有 `orders.write` 的管理员。
+- `PATCH /v1/admin/orders/:id/status` 使用预期旧状态和预期更新时间做条件更新；订单状态、状态历史和审计必须在同一 Serializable 事务内成功或回滚。
+- `PATCH /v1/admin/orders/:id/assignment` 使用预期旧负责人和预期更新时间防止覆盖，并在同一事务记录审计。
+- `POST /v1/admin/orders/:id/reveal-contact` 要求 `contacts.reveal`、最近认证和业务原因，响应使用 `Cache-Control: no-store`；明文不得进入列表、审计差异、日志或通用前端缓存。
+- 当前取消和预留到期不会自动返还库存；返库时点与付款后取消策略属于未决业务规则，确认前不得由后台状态按钮暗中执行。
+- 当前 `PAID`、`REFUNDED` 与 `DISPUTED` 是人工内部记录，不包含支付商回执、退款流水或独立争议案件。
+
+### 人工售后订单视图
+
+- `/admin/disputes` 只能读取状态为 `REFUND_PENDING`、`REFUNDED`、`DISPUTED` 的现有订单；读取要求 `orders.read`，负责人和状态写入要求 `orders.write`。
+- 售后页面不得创建绕过订单服务的状态写入。合法下一状态来自订单 API，写入继续提交预期旧状态和预期更新时间，使用 CAS 防止覆盖，并让订单状态、状态历史和审计在同一 Serializable 事务中提交。
+- 列表与详情继续使用订单显式字段投影和脱敏规则，不返回联系方式密文、哈希或幂等键；没有 `contacts.reveal` 和最近认证时不得显示完整联系方式。
+- 该页面是人工订单状态视图，不是独立退款或争议案件系统。当前数据不能表示部分退款、申请金额、证据、双人审批、支付提供商回执、结算批次或真实资金动作。
+- 不得把缺失的退款金额、外部流水、付款凭证或审批结果编码进自由文本原因并当作结构化数据；这些能力需要单独的领域模型、权限、迁移和验收。
+
+### 人工收款记录
+
+- `/admin/payments` 只读返回 `OrderStatusHistory.toStatus` 为 `PAID`、`REFUND_PENDING`、`REFUNDED`、`DISPUTED` 的人工事件。状态历史由现有订单服务只追加，收款接口和页面不得提供更新、删除或补写历史能力。
+- 列表读取要求 `orders.read`；打开订单详情继续执行订单详情的权限投影，订单写入与完整联系方式揭示分别保留 `orders.write`、`contacts.reveal` 和最近认证要求。
+- 每条事件使用状态历史 ID 作为稳定事件 ID，并显式返回 `externalActionVerified: false`。这个字段不能由前端覆盖，也不能因为订单当前状态、时间经过或管理员文案变为 `true`。
+- 允许返回的业务字段限于事件类型、事件时间、记录人、原因、订单号、商品快照、订单金额和币种、参考金额和币种、汇率快照；不得返回联系方式密文、哈希、幂等键或其他支付凭据。
+- 人工收款记录只证明内部状态被记录，不是支付流水或会计台账。当前系统没有实际到账金额、部分或多次付款/退款、手续费、税费、支付方式、外部交易 ID、凭证、结算批次、渠道对账或跨币种汇总。
+- 金额统计只能按原始订单币种分组；不得从参考金额或汇率快照生成未经业务确认的跨币种总收入、余额、应收、已结算或利润。
+- `/admin/reconciliation` 继续是设计预览；人工收款事件不得作为支付商账单、银行流水、结算结果或对账差异的外部证据。
 
 ## 认证与权限
 
@@ -76,6 +106,11 @@
 
 ## Telegram 订单通知
 
+- 当前准备阶段使用 `SiteSetting` 键 `notifications.telegram.new-order` 保存非密钥配置：`requestedEnabled`、`recipientGroupLabel`、固定 `ORDER_CREATED`、`includedFields`，并使用 `version` / `updatedAt` 做并发控制；不得借此保存 Bot Token、Chat ID 或发送记录。
+- 配置 GET 要求 `settings.read`；配置 PUT 要求 `settings.write`、五分钟内最近认证和业务原因，并提交预期 `version` 做 CAS。配置写入和审计必须在同一 Serializable 事务内成功或回滚，审计只记录安全的前后差异。
+- 服务端始终派生 `NOT_CONNECTED`、`effectiveEnabled: false`、`tokenConfigured: false`、`externalDeliveryVerified: false`；`requestedEnabled` 不能直接决定连接或实际启用状态。
+- simulation POST 只能使用服务端固定虚构订单和字段白名单生成脱敏预览，必须返回 `deliveryAttempted: false`；不得接受真实订单 ID、真实联系方式、任意消息正文、Token 或 Chat ID，也不得请求 Telegram、排队、重试或写发送记录。
+- `/admin/telegram-bot` 可以显示真实配置已保存，但必须持续显示未连接和未外部核验；`/admin/notifications` 继续标记为设计预览。
 - Telegram Bot Token 只能由未来服务端从 Secrets Manager/KMS 读取，不得放入前端、`VITE_` 环境变量、浏览器存储、日志或消息模板。
 - 订单通知默认发送到内部管理群，机器人只申请发送消息所需的最小权限，不读取群历史，也不处理客户私聊。
 - 推送内容使用字段白名单：订单号、商品、金额、币种、订单状态、创建时间、联系渠道、脱敏联系方式和后台订单链接。

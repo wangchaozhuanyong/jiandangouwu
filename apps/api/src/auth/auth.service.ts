@@ -228,8 +228,18 @@ export class AuthService {
   async sessionProfile(userId: string) {
     const user = await this.prisma.adminUser.findUniqueOrThrow({
       where: { id: userId },
-      include: { roles: { include: { role: true } } },
+      include: {
+        roles: {
+          include: {
+            role: {
+              include: { permissions: { include: { permission: true } } },
+            },
+          },
+        },
+      },
     });
+    const permissions = [...new Set(user.roles.flatMap(({ role }) =>
+      role.permissions.map(({ permission }) => permission.key)))].sort();
     return {
       id: user.id,
       email: user.email,
@@ -238,6 +248,7 @@ export class AuthService {
         key: role.key,
         name: { zh: role.nameZh, en: role.nameEn },
       })),
+      permissions,
       totpEnabled: user.totpEnabled,
     };
   }

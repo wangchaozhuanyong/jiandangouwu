@@ -5,8 +5,10 @@ import type {
   PageMeta,
   ProductDetail,
   ProductSummary,
+  StorefrontConfig,
 } from "@cloudbridge/contracts";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { SettingsService } from "../settings/settings.service.js";
 import type { CatalogQueryDto, LocaleQueryDto } from "./catalog.dto.js";
 
 const localeCode = (locale: Locale): "ZH" | "EN" => locale === "zh" ? "ZH" : "EN";
@@ -14,7 +16,10 @@ const normalizeSearch = (value: string): string => value.normalize("NFKC").trim(
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
+  ) {}
 
   private async getRate(currency: string) {
     const target = await this.prisma.currency.findFirst({
@@ -194,9 +199,9 @@ export class CatalogService {
     };
   }
 
-  async storefrontConfig(locale: Locale) {
+  async storefrontConfig(locale: Locale): Promise<StorefrontConfig> {
     const code = localeCode(locale);
-    const [heroes, currencies, channels] = await Promise.all([
+    const [heroes, currencies, channels, settings, activeProducts] = await Promise.all([
       this.prisma.hero.findMany({
         where: { status: "ACTIVE" },
         orderBy: { sortOrder: "asc" },
@@ -210,15 +215,22 @@ export class CatalogService {
         where: { active: true },
         orderBy: { sortOrder: "asc" },
       }),
+      this.settings.publicSettings(),
+      this.prisma.product.findMany({
+        where: { status: "ACTIVE" },
+        select: { slug: true },
+      }),
     ]);
+    const activeProductSlugs = new Set(activeProducts.map((product) => product.slug));
     return {
       heroes: heroes.flatMap((hero) => {
+        if (hero.targetSlug && !activeProductSlugs.has(hero.targetSlug)) return [];
         const content = hero.translations[0];
         return content ? [{
           key: hero.key,
           imageUrl: hero.imageKey,
           targetSlug: hero.targetSlug,
-          tone: hero.tone,
+          tone: hero.tone as StorefrontConfig["heroes"][number]["tone"],
           eyebrow: content.eyebrow,
           title: content.title,
           body: content.body,
@@ -239,6 +251,7 @@ export class CatalogService {
         directTarget: channel.directTarget,
         serviceHours: locale === "zh" ? channel.serviceHoursZh : channel.serviceHoursEn,
       })),
+      settings,
     };
   }
 }

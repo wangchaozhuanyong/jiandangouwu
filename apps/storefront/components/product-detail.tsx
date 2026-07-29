@@ -14,7 +14,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { createOrder, getConfig, getProduct, type StorefrontConfig } from "../lib/api";
+import {
+  ApiRequestError,
+  createOrder,
+  getConfig,
+  getProduct,
+  type StorefrontConfig,
+} from "../lib/api";
 import { copy } from "../lib/copy";
 import {
   resolveAsyncViewState,
@@ -22,6 +28,14 @@ import {
   type AsyncViewState,
   type MutationState,
 } from "../lib/experience";
+import {
+  resolveAvailableContactChannel,
+  resolveOrderAvailability,
+} from "../lib/order-availability";
+import {
+  isValidOrderContact,
+  MIN_ORDER_CONTACT_LENGTH,
+} from "../lib/order-validation";
 import { useExperience } from "./experience-provider";
 import { ResilientImage } from "./resilient-image";
 import { CurrencyPicker } from "./storefront-controls";
@@ -80,8 +94,9 @@ export function ProductDetailView({
     ]).then(([nextProduct, nextConfig]) => {
       setProduct(nextProduct);
       setConfig(nextConfig);
-      if (!nextConfig.channels.some((item) => item.type === draft.channel)) {
-        updateOrderDraft(slug, { channel: nextConfig.channels[0]?.type ?? "WHATSAPP" });
+      const nextChannel = resolveAvailableContactChannel(nextConfig.channels, draft.channel);
+      if (nextChannel && nextChannel !== draft.channel) {
+        updateOrderDraft(slug, { channel: nextChannel });
       }
       setViewState("ready");
     }).catch((error) => {
@@ -127,10 +142,15 @@ export function ProductDetailView({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!product || mutationState === "submitting") return;
+    if (
+      !product
+      || !config
+      || resolveOrderAvailability(config) !== "available"
+      || mutationState === "submitting"
+    ) return;
     setFieldError("");
     setRequestError("");
-    if (draft.contact.trim().length < 3) {
+    if (!isValidOrderContact(draft.contact)) {
       setFieldError("contact");
       focusField(contactRef.current);
       return;
@@ -150,14 +170,39 @@ export function ProductDetailView({
         currency: product.price.currency,
         contactChannel: draft.channel,
         contactValue: draft.contact.trim(),
-        acceptedPolicyVersion: "2026-07-27",
+        acceptedPolicyVersion: config.settings.policyVersion,
         expectedPrice: product.price,
       }, idempotencyKey);
       setReceipt(nextReceipt);
       setMutationState("success");
       clearOrderDraft(slug);
-    } catch {
-      setRequestError(navigator.onLine ? t.orderFailed : t.offline);
+    } catch (error) {
+      let recoveredConflict = false;
+      if (error instanceof ApiRequestError && error.status === 409) {
+        setViewState("refreshing");
+        try {
+          const [nextConfig, nextProduct] = await Promise.all([
+            getConfig(locale),
+            getProduct(slug, locale, currency),
+          ]);
+          const nextChannel = resolveAvailableContactChannel(nextConfig.channels, draft.channel);
+          const policyChanged = nextConfig.settings.policyVersion !== config.settings.policyVersion;
+          setConfig(nextConfig);
+          setProduct(nextProduct);
+          updateOrderDraft(slug, {
+            ...(nextChannel ? { channel: nextChannel } : {}),
+            ...(policyChanged ? { accepted: false } : {}),
+          });
+          setRequestError(t.orderConfigurationUpdated);
+          setViewState("ready");
+          recoveredConflict = true;
+        } catch {
+          setViewState(navigator.onLine ? "error" : "offline");
+        }
+      }
+      if (!recoveredConflict) {
+        setRequestError(navigator.onLine ? t.orderFailed : t.offline);
+      }
       setMutationState("error");
     }
   };
@@ -178,6 +223,8 @@ export function ProductDetailView({
   const channel = draft.channel;
   const contact = draft.contact;
   const accepted = draft.accepted;
+  const orderAvailability = resolveOrderAvailability(config);
+  const canOrder = orderAvailability === "available";
 
   return (
     <main className="detail-page">
@@ -194,10 +241,8 @@ export function ProductDetailView({
         <div className={`detail-grid ${viewState === "refreshing" ? "is-refreshing" : ""}`} aria-busy={viewState === "refreshing"}>
           <section className="detail-visual">
             <ResilientImage src={product.imageUrl} alt="" width={900} height={1100} loading="eager" fetchPriority="high" fallbackLabel={t.imageUnavailable} />
-            <span>{product.category.name} / {t.serviceLabel}</span>
           </section>
           <section className="detail-copy">
-            <p className="section-index">{product.kicker}</p>
             <h1>{product.name}</h1>
             <div className="detail-pricing">
               <strong>{product.price.amount} <span>{product.price.currency}</span></strong>
@@ -241,9 +286,19 @@ export function ProductDetailView({
                   <span><Headset size={21} aria-hidden="true" /></span>
                   <div><h2>{t.orderTitle}</h2><p>{t.orderBody}</p></div>
                 </div>
+                {orderAvailability === "paused" && (
+                  <p className="orders-paused" role="status">
+                    <WarningCircle size={17} aria-hidden="true" />{t.ordersPausedBody}
+                  </p>
+                )}
+                {orderAvailability === "no-channels" && (
+                  <p className="orders-paused" role="status">
+                    <WarningCircle size={17} aria-hidden="true" />{t.contactChannelsUnavailableBody}
+                  </p>
+                )}
                 <label>
                   <span>{t.contactChannel}</span>
-                  <select value={channel} onChange={(event) => updateDraft({ channel: event.target.value as typeof channel })}>
+                  <select disabled={!canOrder} value={channel} onChange={(event) => updateDraft({ channel: event.target.value as typeof channel })}>
                     {config?.channels.map((item) => <option value={item.type} key={item.type}>{item.label} · {item.serviceHours}</option>)}
                   </select>
                 </label>
@@ -254,10 +309,11 @@ export function ProductDetailView({
                     value={contact}
                     onChange={(event) => updateDraft({ contact: event.target.value })}
                     placeholder={t.contactPlaceholder}
-                    minLength={3}
+                    minLength={MIN_ORDER_CONTACT_LENGTH}
                     maxLength={240}
                     aria-invalid={fieldError === "contact"}
                     aria-describedby={fieldError === "contact" ? "contact-error" : undefined}
+                    disabled={!canOrder}
                     required
                   />
                   {fieldError === "contact" && <small className="field-error" id="contact-error">{t.contactError}</small>}
@@ -270,6 +326,7 @@ export function ProductDetailView({
                     onChange={(event) => updateDraft({ accepted: event.target.checked })}
                     aria-invalid={fieldError === "policy"}
                     aria-describedby={fieldError === "policy" ? "policy-error" : undefined}
+                    disabled={!canOrder}
                     required
                   />
                   <span>{t.policyAccept}</span>
@@ -282,9 +339,19 @@ export function ProductDetailView({
                     <small>{t.from}</small>
                     <strong>{product.price.amount} {product.price.currency}</strong>
                   </span>
-                  <button className="order-submit" type="submit" disabled={mutationState === "submitting" || product.stockQuantity === 0}>
+                  <button className="order-submit" type="submit" disabled={!canOrder || mutationState === "submitting" || product.stockQuantity === 0}>
                     <LockKey size={18} aria-hidden="true" />
-                    {mutationState === "submitting" ? t.submitting : product.stockQuantity === 0 ? t.soldOut : mutationState === "error" ? t.retryOrder : t.submitOrder}
+                    {orderAvailability === "paused"
+                      ? t.ordersPaused
+                      : orderAvailability === "no-channels"
+                        ? t.contactChannelsUnavailable
+                        : mutationState === "submitting"
+                          ? t.submitting
+                          : product.stockQuantity === 0
+                            ? t.soldOut
+                            : mutationState === "error"
+                              ? t.retryOrder
+                              : t.submitOrder}
                   </button>
                 </div>
               </form>

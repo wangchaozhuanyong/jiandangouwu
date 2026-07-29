@@ -65,11 +65,12 @@ export function PanelState({
   }
   if (state === "empty") return <div className="table-empty" role="status">{t.empty as string}</div>;
   const offline = state === "offline";
+  const forbidden = state === "forbidden";
   return (
     <div className={`panel-state is-${state}`} role="alert">
       <WarningCircle aria-hidden="true" />
-      <p>{offline ? t.offline as string : t.loadError as string}</p>
-      <button onClick={retry}>{t.retry as string}</button>
+      <p>{forbidden ? t.forbidden as string : offline ? t.offline as string : t.loadError as string}</p>
+      {!forbidden && <button onClick={retry}>{t.retry as string}</button>}
     </div>
   );
 }
@@ -89,12 +90,12 @@ export function RefreshNotice({
   if (state === "refreshing") {
     return <div className="panel-refresh" role="status"><ArrowsClockwise className="spin" />{slow ? t.slowNetwork as string : t.refreshing as string}</div>;
   }
-  if (state !== "error" && state !== "offline") return null;
+  if (state !== "error" && state !== "offline" && state !== "forbidden") return null;
   return (
     <div className="panel-refresh is-error" role="alert">
       <WarningCircle />
-      {state === "offline" ? t.offline as string : t.refreshFailed as string}
-      <button onClick={retry}>{t.retry as string}</button>
+      {state === "forbidden" ? t.forbidden as string : state === "offline" ? t.offline as string : t.refreshFailed as string}
+      {state !== "forbidden" && <button onClick={retry}>{t.retry as string}</button>}
     </div>
   );
 }
@@ -114,6 +115,8 @@ export function Dialog({
 }) {
   const titleId = useId();
   const dialogRef = useRef<HTMLElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -127,7 +130,7 @@ export function Dialog({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab" || !dialog) return;
@@ -151,7 +154,7 @@ export function Dialog({
       document.body.style.overflow = previousOverflow;
       previousFocus?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
