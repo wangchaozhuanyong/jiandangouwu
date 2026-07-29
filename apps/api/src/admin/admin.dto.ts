@@ -185,25 +185,3 @@ export class UpdateRateDto {
   @MaxLength(500)
   reason!: string;
 }
-
-export class UpdateOrderStatusDto {
-  @IsIn([
-    "MANUAL_PENDING",
-    "CONTACTED",
-    "AWAITING_PAYMENT",
-    "PAYMENT_PROCESSING",
-    "PAID",
-    "FULFILLING",
-    "COMPLETED",
-    "CANCELLED",
-    "REFUND_PENDING",
-    "REFUNDED",
-    "DISPUTED",
-  ])
-  status!: "MANUAL_PENDING" | "CONTACTED" | "AWAITING_PAYMENT" | "PAYMENT_PROCESSING" | "PAID" | "FULFILLING" | "COMPLETED" | "CANCELLED" | "REFUND_PENDING" | "REFUNDED" | "DISPUTED";
-
-  @IsString()
-  @MinLength(4)
-  @MaxLength(500)
-  reason!: string;
-}

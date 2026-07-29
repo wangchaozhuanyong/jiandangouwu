@@ -1,76 +1,103 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import type { AdminOrderListItem, OrderStatus } from "@cloudbridge/contracts";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service.js";
-import { ContactProtectionService } from "../orders/contact-protection.service.js";
+import type { AdminActor } from "../common/admin-actor.js";
+import { deriveManualPaymentStage } from "../orders/orders.admin.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type {
   AdminListQueryDto,
   CreateCategoryDto,
   CreateProductDto,
   UpdateCategoryDto,
-  UpdateOrderStatusDto,
   UpdateProductDto,
   UpdateRateDto,
 } from "./admin.dto.js";
 
-type Actor = {
-  userId: string;
-  requestId: string;
-  ip?: string;
-  reauthenticatedAt?: number | null;
-};
-
 const normalizeName = (value: string): string => value.normalize("NFKC").trim().toLocaleLowerCase();
-
-const transitions: Record<string, ReadonlySet<string>> = {
-  MANUAL_PENDING: new Set(["CONTACTED", "CANCELLED"]),
-  CONTACTED: new Set(["AWAITING_PAYMENT", "CANCELLED"]),
-  AWAITING_PAYMENT: new Set(["PAYMENT_PROCESSING", "PAID", "CANCELLED"]),
-  PAYMENT_PROCESSING: new Set(["PAID", "CANCELLED", "DISPUTED"]),
-  PAID: new Set(["FULFILLING", "REFUND_PENDING", "DISPUTED"]),
-  FULFILLING: new Set(["COMPLETED", "REFUND_PENDING", "DISPUTED"]),
-  COMPLETED: new Set(["REFUND_PENDING", "DISPUTED"]),
-  REFUND_PENDING: new Set(["REFUNDED", "DISPUTED"]),
-  REFUNDED: new Set(),
-  CANCELLED: new Set(),
-  DISPUTED: new Set(["REFUND_PENDING", "REFUNDED"]),
-};
 
 @Injectable()
 export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly contacts: ContactProtectionService,
   ) {}
 
   async overview() {
-    const [productCount, activeProducts, openOrders, categoryCount, latestOrders] = await Promise.all([
+    const [
+      productCount,
+      activeProducts,
+      openOrders,
+      categoryCount,
+      latestOrders,
+      currencies,
+    ] = await Promise.all([
       this.prisma.product.count(),
       this.prisma.product.count({ where: { status: "ACTIVE" } }),
       this.prisma.order.count({ where: { status: { notIn: ["COMPLETED", "CANCELLED", "REFUNDED"] } } }),
       this.prisma.category.count({ where: { status: { not: "ARCHIVED" } } }),
       this.prisma.order.findMany({
         take: 6,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: {
           id: true,
           orderNumber: true,
+          productId: true,
           productNameSnapshot: true,
           currencyCode: true,
           amount: true,
+          referenceCurrencyCode: true,
+          referenceAmount: true,
           maskedContact: true,
           contactChannel: true,
           status: true,
+          paymentMode: true,
+          reservedUntil: true,
+          assignedTo: {
+            select: {
+              id: true,
+              displayName: true,
+            },
+          },
           createdAt: true,
-          currency: { select: { digits: true } },
+          updatedAt: true,
+        },
+      }),
+      this.prisma.currency.findMany({
+        select: {
+          code: true,
+          digits: true,
         },
       }),
     ]);
+    const currencyDigits = new Map(currencies.map((currency) => [currency.code, currency.digits]));
     return {
       metrics: { productCount, activeProducts, openOrders, categoryCount },
-      latestOrders: latestOrders.map(({ currency, ...order }) => ({
-        ...order,
-        amount: order.amount.toFixed(currency.digits),
+      latestOrders: latestOrders.map((order): AdminOrderListItem => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        productId: order.productId,
+        productNameSnapshot: order.productNameSnapshot,
+        amount: {
+          amount: order.amount.toFixed(currencyDigits.get(order.currencyCode) ?? 2),
+          currency: order.currencyCode,
+        },
+        referenceAmount: order.referenceAmount && order.referenceCurrencyCode
+          ? {
+              amount: order.referenceAmount.toFixed(
+                currencyDigits.get(order.referenceCurrencyCode) ?? 2,
+              ),
+              currency: order.referenceCurrencyCode,
+            }
+          : null,
+        contactChannel: order.contactChannel,
+        maskedContact: order.maskedContact,
+        status: order.status as OrderStatus,
+        paymentMode: order.paymentMode,
+        paymentStage: deriveManualPaymentStage(order.status),
+        reservedUntil: order.reservedUntil.toISOString(),
+        assignedTo: order.assignedTo,
+        createdAt: order.createdAt.toISOString(),
+        updatedAt: order.updatedAt.toISOString(),
       })),
     };
   }
@@ -96,7 +123,7 @@ export class AdminService {
     }));
   }
 
-  async createCategory(input: CreateCategoryDto, actor: Actor) {
+  async createCategory(input: CreateCategoryDto, actor: AdminActor) {
     const category = await this.prisma.category.create({
       data: {
         slug: input.slug,
@@ -125,7 +152,7 @@ export class AdminService {
     return category;
   }
 
-  async updateCategory(id: string, input: UpdateCategoryDto, actor: Actor) {
+  async updateCategory(id: string, input: UpdateCategoryDto, actor: AdminActor) {
     const current = await this.prisma.category.findUnique({ where: { id }, include: { translations: true } });
     if (!current) throw new NotFoundException("Category not found.");
     const updated = await this.prisma.$transaction(async (transaction) => {
@@ -231,11 +258,11 @@ export class AdminService {
     };
   }
 
-  createProduct(input: CreateProductDto, actor: Actor) {
+  createProduct(input: CreateProductDto, actor: AdminActor) {
     return this.saveNewProduct(input, actor);
   }
 
-  async updateProduct(id: string, input: UpdateProductDto, actor: Actor) {
+  async updateProduct(id: string, input: UpdateProductDto, actor: AdminActor) {
     const current = await this.prisma.product.findUnique({ where: { id } });
     if (!current) throw new NotFoundException("Product not found.");
     const updated = await this.prisma.$transaction(async (transaction) => {
@@ -290,102 +317,6 @@ export class AdminService {
     return updated;
   }
 
-  async orders(query: AdminListQueryDto) {
-    const where = {
-      ...(query.status ? { status: query.status as never } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              { orderNumber: { contains: query.search } },
-              { productNameSnapshot: { contains: query.search } },
-              { maskedContact: { contains: query.search } },
-            ],
-          }
-        : {}),
-    };
-    const [total, orders, currencies] = await this.prisma.$transaction([
-      this.prisma.order.count({ where }),
-      this.prisma.order.findMany({
-        where,
-        skip: (query.page - 1) * query.pageSize,
-        take: query.pageSize,
-        orderBy: { createdAt: "desc" },
-        include: {
-          currency: { select: { digits: true } },
-          statusHistory: { orderBy: { createdAt: "desc" }, take: 5 },
-        },
-      }),
-      this.prisma.currency.findMany({ select: { code: true, digits: true } }),
-    ]);
-    const currencyDigits = new Map(currencies.map((currency) => [currency.code, currency.digits]));
-    return {
-      data: orders.map(({
-        contactEncrypted: _contactEncrypted,
-        contactHash: _contactHash,
-        currency,
-        ...order
-      }) => ({
-        ...order,
-        amount: order.amount.toFixed(currency.digits),
-        referenceAmount: order.referenceAmount?.toFixed(
-          currencyDigits.get(order.referenceCurrencyCode ?? "") ?? 2,
-        ) ?? null,
-        exchangeRateSnapshot: order.exchangeRateSnapshot.toFixed(10),
-      })),
-      meta: { page: query.page, pageSize: query.pageSize, total, pageCount: Math.ceil(total / query.pageSize) },
-    };
-  }
-
-  async updateOrderStatus(id: string, input: UpdateOrderStatusDto, actor: Actor) {
-    const current = await this.prisma.order.findUnique({ where: { id } });
-    if (!current) throw new NotFoundException("Order not found.");
-    if (!transitions[current.status]?.has(input.status)) {
-      throw new ConflictException(`Order cannot move from ${current.status} to ${input.status}.`);
-    }
-    const updated = await this.prisma.$transaction(async (transaction) => {
-      const order = await transaction.order.update({ where: { id }, data: { status: input.status } });
-      await transaction.orderStatusHistory.create({
-        data: {
-          orderId: id,
-          fromStatus: current.status,
-          toStatus: input.status,
-          reason: input.reason,
-          actorId: actor.userId,
-        },
-      });
-      return order;
-    });
-    await this.audit.record({
-      actorId: actor.userId,
-      action: "order.status.update",
-      targetType: "Order",
-      targetId: id,
-      result: "SUCCEEDED",
-      reason: input.reason,
-      beforeData: { status: current.status },
-      afterData: { status: updated.status },
-      ...actor,
-    });
-    return { id: updated.id, orderNumber: updated.orderNumber, status: updated.status };
-  }
-
-  async revealContact(id: string, actor: Actor) {
-    if (!actor.reauthenticatedAt || Date.now() - actor.reauthenticatedAt > 5 * 60_000) {
-      throw new ForbiddenException("Recent reauthentication is required.");
-    }
-    const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order) throw new NotFoundException("Order not found.");
-    await this.audit.record({
-      actorId: actor.userId,
-      action: "order.contact.reveal",
-      targetType: "Order",
-      targetId: id,
-      result: "SUCCEEDED",
-      ...actor,
-    });
-    return { contact: this.contacts.reveal(order.contactEncrypted), channel: order.contactChannel };
-  }
-
   async currencies() {
     const currencies = await this.prisma.currency.findMany({
       orderBy: { sortOrder: "asc" },
@@ -408,7 +339,7 @@ export class AdminService {
     }));
   }
 
-  async updateRate(code: string, input: UpdateRateDto, actor: Actor) {
+  async updateRate(code: string, input: UpdateRateDto, actor: AdminActor) {
     const currency = await this.prisma.currency.findUnique({ where: { code } });
     if (!currency) throw new NotFoundException("Currency not found.");
     const previous = await this.prisma.exchangeRate.findFirst({
@@ -454,7 +385,7 @@ export class AdminService {
     };
   }
 
-  private async saveNewProduct(input: CreateProductDto, actor: Actor) {
+  private async saveNewProduct(input: CreateProductDto, actor: AdminActor) {
     const product = await this.prisma.product.create({
       data: {
         slug: input.slug,

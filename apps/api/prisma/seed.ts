@@ -7,6 +7,7 @@ import {
   merchantChannelSeeds,
   permissionSeeds,
   productSeeds,
+  storefrontSettingsSeedForPolicy,
 } from "./seed-data.js";
 
 const databaseUrl = new URL(process.env.DATABASE_URL ?? "");
@@ -28,10 +29,7 @@ async function seed(): Promise<void> {
   for (const category of categorySeeds) {
     const saved = await prisma.category.upsert({
       where: { slug: category.slug },
-      update: {
-        sortOrder: category.order,
-        status: "ACTIVE",
-      },
+      update: {},
       create: {
         slug: category.slug,
         sortOrder: category.order,
@@ -47,9 +45,7 @@ async function seed(): Promise<void> {
             locale,
           },
         },
-        update: {
-          name: locale === "ZH" ? category.zh : category.en,
-        },
+        update: {},
         create: {
           categoryId: saved.id,
           locale,
@@ -62,14 +58,7 @@ async function seed(): Promise<void> {
   for (const [index, currency] of currencySeeds.entries()) {
     await prisma.currency.upsert({
       where: { code: currency.code },
-      update: {
-        token: currency.token,
-        nameZh: currency.zh,
-        nameEn: currency.en,
-        digits: currency.digits,
-        active: true,
-        sortOrder: index + 1,
-      },
+      update: {},
       create: {
         code: currency.code,
         token: currency.token,
@@ -92,10 +81,7 @@ async function seed(): Promise<void> {
           effectiveAt,
         },
       },
-      update: {
-        rate: currency.rate,
-        source: "prototype-seed",
-      },
+      update: {},
       create: {
         fromCode: "MYR",
         toCode: currency.code,
@@ -111,16 +97,7 @@ async function seed(): Promise<void> {
     if (!categoryId) throw new Error(`Missing category ${product.category}`);
     const saved = await prisma.product.upsert({
       where: { slug: product.slug },
-      update: {
-        categoryId,
-        imageKey: product.imageKey,
-        basePrice: product.price,
-        compareAtPrice: product.compareAt,
-        stockMode: product.stock === null ? "UNLIMITED" : "FINITE",
-        stockQuantity: product.stock,
-        status: "ACTIVE",
-        sortOrder: index + 1,
-      },
+      update: {},
       create: {
         slug: product.slug,
         categoryId,
@@ -142,12 +119,7 @@ async function seed(): Promise<void> {
             locale,
           },
         },
-        update: {
-          name: content.name,
-          normalizedName: normalizeName(content.name),
-          kicker: content.kicker,
-          description: content.description,
-        },
+        update: {},
         create: {
           productId: saved.id,
           locale,
@@ -163,13 +135,7 @@ async function seed(): Promise<void> {
   for (const [index, hero] of heroSeeds.entries()) {
     const saved = await prisma.hero.upsert({
       where: { key: hero.key },
-      update: {
-        imageKey: hero.imageKey,
-        targetSlug: hero.targetSlug,
-        tone: hero.tone,
-        status: "ACTIVE",
-        sortOrder: index + 1,
-      },
+      update: {},
       create: {
         key: hero.key,
         imageKey: hero.imageKey,
@@ -188,7 +154,7 @@ async function seed(): Promise<void> {
             locale,
           },
         },
-        update: content,
+        update: {},
         create: {
           heroId: saved.id,
           locale,
@@ -201,17 +167,7 @@ async function seed(): Promise<void> {
   for (const [index, channel] of merchantChannelSeeds.entries()) {
     await prisma.merchantChannel.upsert({
       where: { type: channel.type },
-      update: {
-        mode: channel.mode,
-        labelZh: channel.zh,
-        labelEn: channel.en,
-        publicAccount: channel.account,
-        directTarget: channel.directTarget,
-        serviceHoursZh: channel.hoursZh,
-        serviceHoursEn: channel.hoursEn,
-        active: true,
-        sortOrder: index + 1,
-      },
+      update: {},
       create: {
         type: channel.type,
         mode: channel.mode,
@@ -261,12 +217,20 @@ async function seed(): Promise<void> {
     });
   }
 
-  await prisma.siteSetting.upsert({
+  const policySetting = await prisma.siteSetting.upsert({
     where: { key: "policy.currentVersion" },
-    update: { value: "2026-07-27" },
+    update: {},
     create: {
       key: "policy.currentVersion",
       value: "2026-07-27",
+    },
+  });
+  await prisma.siteSetting.upsert({
+    where: { key: "storefront.settings" },
+    update: {},
+    create: {
+      key: "storefront.settings",
+      value: storefrontSettingsSeedForPolicy(policySetting.value),
     },
   });
 }

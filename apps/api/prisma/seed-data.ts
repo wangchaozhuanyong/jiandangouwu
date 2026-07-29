@@ -217,4 +217,38 @@ export const permissionSeeds = [
   "team.manage",
   "roles.manage",
   "audit.read",
+  "content.read",
+  "content.write",
+  "support.read",
+  "support.write",
+  "settings.read",
+  "settings.write",
 ] as const;
+
+export const storefrontSettingsSeed = {
+  siteName: {
+    zh: "云桥",
+    en: "CloudBridge",
+  },
+  defaultLocale: "zh",
+  seoDescription: {
+    zh: "精选全球 AI 工具，以清楚的价格、库存与人工服务连接需求。",
+    en: "Global AI services with clear pricing, availability, and human support.",
+  },
+  policyVersion: "2026-07-27",
+  acceptOrders: true,
+  supportEnabled: true,
+  transitServiceEnabled: true,
+  transitServiceUrl: null,
+} as const;
+
+export const storefrontSettingsSeedForPolicy = (value: unknown) => {
+  const policyVersion = typeof value === "string"
+    && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/u.test(value.trim())
+    ? value.trim()
+    : storefrontSettingsSeed.policyVersion;
+  return {
+    ...storefrontSettingsSeed,
+    policyVersion,
+  };
+};

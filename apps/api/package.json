@@ -12,7 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "node scripts/migrate-deploy.mjs",
     "db:seed": "tsx prisma/seed.ts",
-    "test": "node --import tsx --test \"test/**/*.test.ts\""
+    "test": "npm run build && node --import tsx --test \"test/**/*.test.ts\""
   },
   "dependencies": {
     "@cloudbridge/contracts": "0.1.0",

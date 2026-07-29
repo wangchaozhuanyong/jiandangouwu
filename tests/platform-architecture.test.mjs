@@ -55,7 +55,7 @@ test("后台认证使用密码、可选 TOTP、服务端会话与敏感信息重
   const controller = read("apps/api/src/auth/auth.controller.ts");
   const guard = read("apps/api/src/auth/admin-session.guard.ts");
   const auth = read("apps/api/src/auth/auth.service.ts");
-  const admin = read("apps/api/src/admin/admin.service.ts");
+  const ordersAdmin = read("apps/api/src/orders/orders.admin.service.ts");
 
   assert.match(controller, /httpOnly:\s*true/u);
   assert.match(controller, /sameSite:\s*"strict"/u);
@@ -67,17 +67,17 @@ test("后台认证使用密码、可选 TOTP、服务端会话与敏感信息重
   assert.match(auth, /user\.totpEnabled/u);
   assert.match(auth, /localSetupAllowed/u);
   assert.match(auth, /unlockIfExpired/u);
-  assert.match(admin, /reauthenticatedAt/u);
+  assert.match(ordersAdmin, /reauthenticatedAt/u);
   assert.doesNotMatch(`${controller}\n${auth}`, /Passkey|WebAuthn|recoveryCode|bootstrapToken/iu);
   assert.doesNotMatch(`${controller}\n${guard}`, /localStorage|sessionStorage/u);
 });
 
 test("后台订单金额按币种精度输出，币种表保持严格单行列结构", () => {
-  const service = read("apps/api/src/admin/admin.service.ts");
+  const service = read("apps/api/src/orders/orders.admin.service.ts");
   const admin = read("apps/admin/src/pages/currencies-page.tsx");
   const css = read("apps/admin/src/styles.css");
 
-  assert.match(service, /amount:\s*order\.amount\.toFixed\(currency\.digits\)/u);
+  assert.match(service, /order\.amount\.toFixed\(currencyDigits\.get\(order\.currencyCode\)\s*\?\?\s*2\)/u);
   assert.match(service, /currencyDigits\.get\(order\.referenceCurrencyCode/u);
   assert.match(admin, /className="currency-head"/u);
   assert.match(css, /\.currency-head,\s*\.currency-table article\s*\{[^}]*grid-template-columns:[^}]*white-space:\s*nowrap;/su);
