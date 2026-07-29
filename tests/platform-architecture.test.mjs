@@ -35,6 +35,7 @@ test("主平台技术栈和 MySQL 数据约束保持一致", () => {
   assert.match(apiDockerfile, /ENV DATABASE_URL=mysql:\/\/cloudbridge:build-only@localhost:3306\/cloudbridge/u);
   assert.match(apiDockerfile, /ENV SHADOW_DATABASE_URL=mysql:\/\/cloudbridge:build-only@localhost:3306\/cloudbridge_shadow/u);
   assert.match(apiDockerfile, /--mount=type=cache,target=\/root\/\.npm npm ci --prefer-offline --no-audit --no-fund/u);
+  assert.match(apiDockerfile, /COPY apps\/api\/scripts\/generate\.mjs \.\/apps\/api\/scripts\/generate\.mjs/u);
   assert.match(prismaGenerate, /process\.env\.DATABASE_URL \?\? generateDatabaseUrl/u);
   assert.match(prismaGenerate, /process\.env\.SHADOW_DATABASE_URL \?\? generateShadowDatabaseUrl/u);
   assert.match(prismaGenerate, /spawnSync\("npx", \["prisma", "generate"\]/u);
