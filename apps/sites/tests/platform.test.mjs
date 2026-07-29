@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
@@ -52,3 +52,21 @@ test("Sites runtime contains public, admin, health, D1, and R2 routes", () => {
   assert.match(admin, /\/v1\/admin\/sites-readiness/u);
   assert.match(admin, /valkey: "not_required"/u);
 });
+
+test("Sites worker avoids createRequire with an undefined module URL", () => {
+  const workerEntry = read("dist/server/index.js");
+  assert.doesNotMatch(workerEntry, /createRequire\(import\.meta\.url\)/u);
+  assert.match(workerEntry, /id === "node:async_hooks"/u);
+  assert.match(workerEntry, /AsyncLocalStorage: AsyncLocalStorage\$1/u);
+  for (const file of collectJavaScriptFiles(new URL("../dist/server/", import.meta.url))) {
+    assert.doesNotMatch(readFileSync(file, "utf8"), /createRequire\(import\.meta\.url\)/u);
+  }
+});
+
+function collectJavaScriptFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = new URL(entry.name + (entry.isDirectory() ? "/" : ""), directory);
+    if (entry.isDirectory()) return collectJavaScriptFiles(path);
+    return entry.isFile() && entry.name.endsWith(".js") ? [path] : [];
+  });
+}
