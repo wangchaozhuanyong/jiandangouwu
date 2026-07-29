@@ -41,6 +41,7 @@ import {
   getSession,
   loginWithPassword,
   logout,
+  setUnauthorizedHandler,
   setupFirstAdmin,
   type AdminUser,
   type Locale,
@@ -48,6 +49,7 @@ import {
 import {
   AdminExperienceProvider,
   clearAdminCache,
+  setAdminCacheScope,
   useAdminStatus,
 } from "./admin-experience";
 import {
@@ -66,9 +68,15 @@ const DashboardPage = lazy(() => import("./pages/dashboard-page"));
 const ProductsPage = lazy(() => import("./pages/products-page"));
 const CategoriesPage = lazy(() => import("./pages/categories-page"));
 const OrdersPage = lazy(() => import("./pages/orders-page"));
+const AfterSalesPage = lazy(() => import("./features/orders/after-sales-page"));
+const ManualPaymentsPage = lazy(() => import("./features/finance/manual-payments-page"));
+const TelegramNewOrderPage = lazy(() => import("./features/notifications/telegram-new-order-page"));
 const CurrenciesPage = lazy(() => import("./pages/currencies-page"));
 const AuditPage = lazy(() => import("./pages/audit-page"));
 const SecurityPage = lazy(() => import("./pages/security-page"));
+const BannersPage = lazy(() => import("./features/content/banners-page"));
+const ContactsPage = lazy(() => import("./features/support/contacts-page"));
+const SettingsPage = lazy(() => import("./features/settings/settings-page"));
 const DesignPreviewPage = lazy(() => import("./pages/design-preview-page"));
 const DesignWorkflowDialog = lazy(() => import("./design-workflows").then((module) => ({
   default: module.DesignWorkflowDialog,
@@ -122,14 +130,28 @@ export function App() {
     if (!silent) setSessionLoading(true);
     try {
       const session = await getSession();
+      setAdminCacheScope(`${session.user.id}:${[...session.user.permissions].sort().join("|")}`);
       setUser(session.user);
     } catch {
-      if (!silent) setUser(null);
+      if (!silent) {
+        clearAdminCache();
+        setAdminCacheScope(null);
+        setUser(null);
+      }
     } finally {
       if (!silent) setSessionLoading(false);
     }
   }, []);
 
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      clearAdminCache();
+      setAdminCacheScope(null);
+      setUser(null);
+      setSessionLoading(false);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
   useEffect(() => { void loadSession(); }, [loadSession]);
   useEffect(() => {
     localStorage.setItem("cloudbridge-admin-locale", locale);
@@ -157,6 +179,7 @@ export function App() {
         refreshSession={() => loadSession(true)}
         onSignedOut={() => {
           clearAdminCache();
+          setAdminCacheScope(null);
           setUser(null);
         }}
       />
@@ -182,7 +205,7 @@ function AuthenticatedAdmin({
   onSignedOut: () => void;
 }) {
   const t = adminCopy[locale];
-  const { notify } = useAdminStatus();
+  const { confirmNavigation, notify } = useAdminStatus();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [expandedGroup, setExpandedGroup] = useState<AdminNavigationGroupId | null>(
@@ -193,18 +216,26 @@ function AuthenticatedAdmin({
   const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   const go = useCallback((next: Page, historyMode: "push" | "replace" = "push") => {
+    if (next !== page && !confirmNavigation(locale)) return;
     if (next !== page) {
       window.history[historyMode === "push" ? "pushState" : "replaceState"]({ page: next }, "", pagePath(next));
       setPage(next);
     }
     setMenuOpen(false);
-  }, [page, setPage]);
+  }, [confirmNavigation, locale, page, setPage]);
 
   useEffect(() => {
-    const onPopState = () => setPage(pageFromPath(window.location.pathname));
+    const onPopState = () => {
+      const next = pageFromPath(window.location.pathname);
+      if (next !== page && !confirmNavigation(locale)) {
+        window.history.pushState({ page }, "", pagePath(page));
+        return;
+      }
+      setPage(next);
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [setPage]);
+  }, [confirmNavigation, locale, page, setPage]);
 
   useEffect(() => {
     setExpandedGroup(findAdminNavigationGroup(page)?.id ?? null);
@@ -235,6 +266,7 @@ function AuthenticatedAdmin({
   }, [menuOpen]);
 
   const signOut = async () => {
+    if (!confirmNavigation(locale)) return;
     try {
       await logout();
       onSignedOut();
@@ -247,7 +279,7 @@ function AuthenticatedAdmin({
     <div className="admin-shell">
       <aside className={menuOpen ? "is-open" : ""}>
         <div className="admin-brand">
-          <span><img src="/assets/cloudbridge-logo.png" alt="" width={29} height={29} /></span>
+          <span><img src="/assets/cloudbridge-logo.png" alt="" width={349} height={176} /></span>
           <div><strong>{t.brandName as string}</strong></div>
           <button className="mobile-close" onClick={() => { setMenuOpen(false); menuButtonRef.current?.focus(); }} aria-label={locale === "zh" ? "关闭导航" : "Close navigation"}><X /></button>
         </div>
@@ -371,10 +403,47 @@ function PageOutlet({
   if (page === "dashboard") return <DashboardPage locale={locale} user={user} />;
   if (page === "products") return <ProductsPage locale={locale} />;
   if (page === "categories") return <CategoriesPage locale={locale} />;
-  if (page === "orders") return <OrdersPage locale={locale} />;
+  if (page === "orders") {
+    return (
+      <OrdersPage
+        canRevealContact={user.permissions.includes("contacts.reveal")}
+        canWrite={user.permissions.includes("orders.write")}
+        locale={locale}
+      />
+    );
+  }
+  if (page === "disputes") {
+    return (
+      <AfterSalesPage
+        canRevealContact={user.permissions.includes("contacts.reveal")}
+        canWrite={user.permissions.includes("orders.write")}
+        locale={locale}
+      />
+    );
+  }
+  if (page === "payments") {
+    return (
+      <ManualPaymentsPage
+        canRevealContact={user.permissions.includes("contacts.reveal")}
+        canWrite={user.permissions.includes("orders.write")}
+        locale={locale}
+      />
+    );
+  }
+  if (page === "telegram-bot") {
+    return (
+      <TelegramNewOrderPage
+        canWrite={user.permissions.includes("settings.write")}
+        locale={locale}
+      />
+    );
+  }
   if (page === "currencies") return <CurrenciesPage locale={locale} />;
   if (page === "logs") return <AuditPage locale={locale} />;
   if (page === "security") return <SecurityPage locale={locale} user={user} onChanged={refreshSession} />;
+  if (page === "banners") return <BannersPage canWrite={user.permissions.includes("content.write")} locale={locale} />;
+  if (page === "contacts") return <ContactsPage canWrite={user.permissions.includes("support.write")} locale={locale} />;
+  if (page === "settings") return <SettingsPage canWrite={user.permissions.includes("settings.write")} locale={locale} />;
   return <DesignPreviewPage page={page} locale={locale} />;
 }
 

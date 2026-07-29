@@ -91,6 +91,7 @@ export type AsyncViewState =
   | "refreshing"
   | "ready"
   | "empty"
+  | "forbidden"
   | "offline"
   | "error";
 

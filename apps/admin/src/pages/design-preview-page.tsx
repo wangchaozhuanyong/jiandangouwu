@@ -24,7 +24,6 @@ import {
   ListMagnifyingGlass,
   LockKey,
   MagnifyingGlass,
-  PaperPlaneTilt,
   PencilSimple,
   PlugsConnected,
   Pulse,
@@ -125,12 +124,9 @@ export default function DesignPreviewPage({ page, locale }: { page: Page; locale
 
   let content: React.ReactNode = null;
   if (page === "disputes") content = <DisputesDesign locale={locale} preview={preview} />;
-  else if (page === "banners") content = <BannersDesign locale={locale} preview={preview} />;
   else if (page === "media") content = <MediaDesign locale={locale} preview={preview} />;
   else if (page === "translations") content = <TranslationsDesign locale={locale} preview={preview} />;
-  else if (page === "contacts") content = <ContactsDesign locale={locale} preview={preview} />;
   else if (page === "notifications") content = <NotificationsDesign locale={locale} preview={preview} />;
-  else if (page === "telegram-bot") content = <TelegramDesign locale={locale} preview={preview} />;
   else if (page === "payments") content = <PaymentsDesign locale={locale} preview={preview} />;
   else if (page === "reconciliation") content = <ReconciliationDesign locale={locale} preview={preview} />;
   else if (page === "team") content = <TeamDesign locale={locale} preview={preview} />;
@@ -140,7 +136,6 @@ export default function DesignPreviewPage({ page, locale }: { page: Page; locale
   else if (page === "secrets") content = <SecretsDesign locale={locale} preview={preview} />;
   else if (page === "backups") content = <BackupsDesign locale={locale} preview={preview} />;
   else if (page === "integrations") content = <IntegrationsDesign locale={locale} preview={preview} />;
-  else if (page === "settings") content = <SettingsDesign locale={locale} preview={preview} />;
 
   return (
     <>
@@ -213,33 +208,6 @@ function DisputesDesign({ locale, preview }: { locale: Locale; preview: PreviewA
   );
 }
 
-function BannersDesign({ locale, preview }: { locale: Locale; preview: PreviewAction }) {
-  const banners = [
-    ["/assets/hero-main.webp", text(locale, "AI 服务阵列", "AI services, one bridge"), text(locale, "主视觉 · 双语完整", "Primary hero · bilingual")],
-    ["/assets/hero-codex.webp", "OpenAI Codex", text(locale, "商品故事 · 双语完整", "Product story · bilingual")],
-    ["/assets/hero-gemini.webp", "Gemini Advanced", text(locale, "多模态主题 · 双语完整", "Multimodal story · bilingual")],
-    ["/assets/hero-currency.webp", text(locale, "全球定价", "Global pricing"), text(locale, "价格主题 · 双语完整", "Pricing story · bilingual")],
-  ];
-  return (
-    <>
-      <PreviewToolbar summary={text(locale, "4 个轮播故事 · 全部已发布", "4 hero stories · all published")} action={text(locale, "新增轮播", "New story")} icon={ImageIcon} onAction={() => preview(text(locale, "新增轮播", "New story"))} />
-      <div className="design-banner-board">
-        {banners.map((banner, index) => (
-          <article className="admin-panel" key={banner[0]}>
-            <div className="design-banner-visual"><img src={banner[0]} alt={banner[1]} /><span>0{index + 1}</span></div>
-            <div className="design-banner-copy">
-              <div><StatusTag tone="success">{text(locale, "已发布", "Published")}</StatusTag><small>{banner[2]}</small></div>
-              <h2>{banner[1]}</h2>
-              <p>{text(locale, "桌面端与移动端共享同一视觉焦点，文案位于安全区域内。", "Desktop and mobile share one visual focal point with copy inside the safe area.")}</p>
-              <button onClick={() => preview(text(locale, "编辑轮播", "Edit story"))}><PencilSimple size={16} />{text(locale, "编辑", "Edit")}</button>
-            </div>
-          </article>
-        ))}
-      </div>
-    </>
-  );
-}
-
 function MediaDesign({ locale, preview }: { locale: Locale; preview: PreviewAction }) {
   const [filter, setFilter] = useState<"all" | "hero" | "product">("all");
   const visible = mediaAssets.filter((_, index) => filter === "all" || (filter === "hero" ? index < 4 : index >= 4));
@@ -302,32 +270,6 @@ function TranslationsDesign({ locale, preview }: { locale: Locale; preview: Prev
   );
 }
 
-function ContactsDesign({ locale, preview }: { locale: Locale; preview: PreviewAction }) {
-  const channels: Array<[string, string, string, IconComponent, string]> = [
-    ["WhatsApp", "+60 12 888 6618", "10:00–22:00", ChatsCircle, text(locale, "直接跳转", "Direct link")],
-    [text(locale, "电子邮件", "Email"), "support@cloudbridge.test", text(locale, "24 小时内回复", "Reply within 24h"), EnvelopeSimple, text(locale, "邮件跳转", "Mail link")],
-    ["Telegram", "@CloudBridgeSupport", "10:00–22:00", TelegramLogo, text(locale, "直接跳转", "Direct link")],
-    [text(locale, "微信", "WeChat"), "CloudBridge_AI", "10:00–22:00", QrCode, text(locale, "二维码与复制", "QR & copy")],
-    ["QQ", "288661812", "10:00–22:00", ChatsCircle, text(locale, "跳转与复制", "Link & copy")],
-  ];
-  return (
-    <>
-      <PreviewToolbar summary={text(locale, "5 个启用渠道 · 1 个主要渠道", "5 active channels · 1 primary")} action={text(locale, "新增联系方式", "New channel")} icon={ChatsCircle} onAction={() => preview(text(locale, "新增联系方式", "New channel"))} />
-      <div className="design-channel-grid">
-        {channels.map(([name, account, hours, Icon, mode], index) => (
-          <article className="admin-panel" key={name}>
-            <span className="design-channel-icon"><Icon size={24} /></span>
-            <div><small>{index === 0 ? text(locale, "主要联系方式", "Primary channel") : text(locale, "备用渠道", "Secondary channel")}</small><h2>{name}</h2><p>{account}</p></div>
-            <StatusTag tone="success">{text(locale, "已启用", "Active")}</StatusTag>
-            <dl><div><dt>{text(locale, "服务时间", "Service hours")}</dt><dd>{hours}</dd></div><div><dt>{text(locale, "客户端行为", "Storefront action")}</dt><dd>{mode}</dd></div></dl>
-            <button onClick={() => preview(text(locale, "编辑联系方式", "Edit channel"))}><PencilSimple size={16} />{text(locale, "编辑", "Edit")}</button>
-          </article>
-        ))}
-      </div>
-    </>
-  );
-}
-
 function NotificationsDesign({ locale, preview }: { locale: Locale; preview: PreviewAction }) {
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [selected, setSelected] = useState(0);
@@ -359,41 +301,6 @@ function NotificationsDesign({ locale, preview }: { locale: Locale; preview: Pre
         <div className="design-detail-actions"><button onClick={() => preview(text(locale, "查看相关记录", "Open related record"))}>{text(locale, "相关记录", "Related record")}</button><button className="admin-primary" onClick={() => preview(text(locale, "标记已处理", "Mark resolved"))}><Check size={16} />{text(locale, "标记已处理", "Mark resolved")}</button></div>
       </aside>
     </div>
-  );
-}
-
-function TelegramDesign({ locale, preview }: { locale: Locale; preview: PreviewAction }) {
-  const [enabled, setEnabled] = useState(false);
-  const rules: Array<[string, string]> = [
-    [text(locale, "新订单创建", "New order created"), text(locale, "包含订单号、商品和金额", "Order, product, and amount")],
-    [text(locale, "库存低于阈值", "Low inventory"), text(locale, "达到商品预设库存线", "Product threshold reached")],
-    [text(locale, "支付状态变化", "Payment status changed"), text(locale, "只发送人工确认结果", "Manual confirmations only")],
-    [text(locale, "系统健康异常", "System health degraded"), text(locale, "服务连续异常 3 分钟", "Degraded for 3 minutes")],
-  ];
-  const events: Array<[string, string, string]> = [
-    ["14:32", text(locale, "新订单通知", "New-order alert"), text(locale, "等待连接", "Waiting for connection")],
-    ["13:08", text(locale, "低库存提醒", "Low-stock alert"), text(locale, "设计数据", "Design data")],
-    ["11:46", text(locale, "汇率更新摘要", "Rate update summary"), text(locale, "设计数据", "Design data")],
-  ];
-  return (
-    <>
-      <section className="design-connection-hero admin-panel">
-        <span><TelegramLogo size={29} weight="duotone" /></span>
-        <div><small>TELEGRAM BOT</small><h2>{text(locale, "管理群通知尚未连接", "Admin group alerts are not connected")}</h2><p>{text(locale, "先完成机器人授权，再选择通知事件和接收群组。", "Authorize a bot first, then choose notification events and recipient groups.")}</p></div>
-        <StatusTag tone={enabled ? "success" : "neutral"}>{enabled ? text(locale, "设计预览已开启", "Preview enabled") : text(locale, "未连接", "Not connected")}</StatusTag>
-        <button className="admin-primary" onClick={() => setEnabled((value) => !value)}><TelegramLogo size={17} />{enabled ? text(locale, "断开预览", "Disconnect preview") : text(locale, "连接机器人", "Connect bot")}</button>
-      </section>
-      <div className="design-two-column">
-        <section className="admin-panel design-form-panel">
-          <div className="panel-heading"><h2>{text(locale, "通知规则", "Notification rules")}</h2></div>
-          {rules.map(([title, body], index) => <div className="design-setting-row" key={title}><div><strong>{title}</strong><small>{body}</small></div><button className={`design-switch${enabled && index < 2 ? " is-on" : ""}`} aria-label={title} onClick={() => preview(title)}><i /></button></div>)}
-        </section>
-        <aside className="admin-panel design-event-stream">
-          <div className="panel-heading"><h2>{text(locale, "发送记录", "Delivery log")}</h2><button onClick={() => preview(text(locale, "测试消息", "Test message"))}><PaperPlaneTilt size={16} />{text(locale, "测试消息", "Test message")}</button></div>
-          {events.map(([time, event, status]) => <div key={`${time}-${event}`}><span><Clock size={17} /></span><div><strong>{event}</strong><small>TRACE-CB-TG-{time.replace(":", "")}</small></div><time>{time}</time><StatusTag>{status}</StatusTag></div>)}
-        </aside>
-      </div>
-    </>
   );
 }
 
@@ -632,41 +539,6 @@ function IntegrationsDesign({ locale, preview }: { locale: Locale; preview: Prev
         <div className="panel-heading"><h2>{text(locale, "后台任务", "Background jobs")}</h2></div>
         {jobs.map(([title, time, state], index) => <div key={title}><span className={index === 2 ? "is-warning" : ""}><Pulse size={17} /></span><div><strong>{title}</strong><small>TRACE-CB-JOB-{time.replace(":", "")}</small></div><time>{time}</time><StatusTag tone={index === 2 ? "warning" : "success"}>{state}</StatusTag></div>)}
       </section>
-    </>
-  );
-}
-
-function SettingsDesign({ locale, preview }: { locale: Locale; preview: PreviewAction }) {
-  const [section, setSection] = useState("brand");
-  const [acceptOrders, setAcceptOrders] = useState(true);
-  const [support, setSupport] = useState(true);
-  const sections: Array<[string, string]> = [
-    ["brand", text(locale, "品牌与基础", "Brand & basics")],
-    ["orders", text(locale, "订单设置", "Order settings")],
-    ["notifications", text(locale, "通知设置", "Notifications")],
-    ["policies", text(locale, "政策内容", "Policies")],
-    ["advanced", text(locale, "高级设置", "Advanced")],
-  ];
-  return (
-    <>
-      <PreviewToolbar summary={text(locale, "当前为本地设计配置 · 没有未保存更改", "Local design configuration · no unsaved changes")} action={text(locale, "保存设计设置", "Save design settings")} icon={Check} onAction={() => preview(text(locale, "保存设计设置", "Save design settings"))} />
-      <div className="design-settings-layout">
-        <nav className="admin-panel">{sections.map(([id, label]) => <button className={section === id ? "is-active" : ""} onClick={() => setSection(id)} key={id}>{label}<CaretRight size={15} /></button>)}</nav>
-        <section className="admin-panel design-settings-form">
-          <div><small>{sections.find(([id]) => id === section)?.[1]}</small><h2>{section === "brand" ? text(locale, "品牌与基础信息", "Brand and basics") : text(locale, "模块设置预览", "Module settings preview")}</h2><p>{text(locale, "设置页使用分区导航，重要影响在右侧即时预览。", "Settings use section navigation with an immediate impact preview on the right.")}</p></div>
-          <label><span>{text(locale, "网站名称", "Site name")}</span><input defaultValue={locale === "zh" ? "云桥" : "CloudBridge"} /></label>
-          <label><span>{text(locale, "网站定位", "Tagline")}</span><input defaultValue={text(locale, "连接全球 AI 服务", "Connecting global AI services")} /></label>
-          <div className="design-form-row"><label><span>{text(locale, "默认语言", "Default language")}</span><select defaultValue={locale}><option value="zh">简体中文</option><option value="en">English</option></select></label><label><span>{text(locale, "默认币种", "Default currency")}</span><select defaultValue="MYR"><option>MYR</option><option>CNY</option><option>USD</option></select></label></div>
-          <div className="design-setting-row"><div><strong>{text(locale, "允许接收新订单", "Accept new orders")}</strong><small>{text(locale, "关闭后商品仍可浏览，但不能提交订单。", "Products remain visible, but ordering is disabled.")}</small></div><button className={`design-switch${acceptOrders ? " is-on" : ""}`} role="switch" aria-checked={acceptOrders} onClick={() => setAcceptOrders((value) => !value)}><i /></button></div>
-          <div className="design-setting-row"><div><strong>{text(locale, "悬浮客服入口", "Floating support access")}</strong><small>{text(locale, "在客户端持续显示快速联系入口。", "Keep quick support access visible on the storefront.")}</small></div><button className={`design-switch${support ? " is-on" : ""}`} role="switch" aria-checked={support} onClick={() => setSupport((value) => !value)}><i /></button></div>
-        </section>
-        <aside className="admin-panel design-settings-preview">
-          <span><SlidersHorizontal size={23} /></span><small>{text(locale, "影响预览", "IMPACT PREVIEW")}</small><h2>{text(locale, "客户端基础状态", "Storefront base state")}</h2>
-          <p>{text(locale, "右侧预览帮助管理员在保存前理解设置会影响哪些用户入口。", "The impact preview helps admins understand affected user entry points before saving.")}</p>
-          <dl><div><dt>{text(locale, "网站名称", "Site name")}</dt><dd>{locale === "zh" ? "云桥" : "CloudBridge"}</dd></div><div><dt>{text(locale, "接收订单", "Orders")}</dt><dd>{acceptOrders ? text(locale, "开启", "On") : text(locale, "关闭", "Off")}</dd></div><div><dt>{text(locale, "客服入口", "Support")}</dt><dd>{support ? text(locale, "显示", "Visible") : text(locale, "隐藏", "Hidden")}</dd></div><div><dt>{text(locale, "发布状态", "Publish state")}</dt><dd>{text(locale, "仅设计预览", "Design preview only")}</dd></div></dl>
-          <div className="design-settings-warning"><WarningCircle size={17} />{text(locale, "本页控件只用于检查设计状态，不写入服务器。", "Controls on this page preview design states and do not write to the server.")}</div>
-        </aside>
-      </div>
     </>
   );
 }

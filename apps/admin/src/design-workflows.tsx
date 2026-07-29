@@ -238,24 +238,6 @@ const workflowDefinitions: Record<string, WorkflowDefinition> = {
     commonReview,
     copy("案件预览不会创建退款、扣款或争议结果。", "The case preview never creates a refund, charge, or dispute outcome."),
   ),
-  banners: workflow(
-    copy("轮播内容发布", "Hero content publishing"),
-    copy("编辑双语文案、桌面与移动裁切、顺序和发布时间。", "Edit bilingual copy, desktop/mobile crops, order, and publishing time."),
-    [copy("内容与媒体", "Content and media"), copy("响应式预览", "Responsive preview"), copy("发布计划", "Publishing plan")],
-    [
-      field("中文标题", "Chinese title", "AI 服务阵列"),
-      field("英文标题", "English title", "AI services, one bridge"),
-      field("目标商品", "Target product", "OpenAI Codex", "OpenAI Codex", "select"),
-      field("发布时间", "Publish time", "立即发布", "Publish now", "select"),
-    ],
-    [
-      copy("桌面与移动端分别展示安全裁切区域", "Desktop and mobile expose separate safe crop areas"),
-      copy("排序变化在发布前显示完整轮播顺序", "Reordering previews the complete carousel before publishing"),
-      copy("图片替代说明必须双语完整", "Image alternative text must be complete in both languages"),
-    ],
-    commonReview,
-    copy("预览不会真实发布、下架或重新排序轮播。", "The preview does not publish, unpublish, or reorder live hero content."),
-  ),
   media: workflow(
     copy("媒体资源管理", "Media asset management"),
     copy("上传、检查、替换并追踪图片在客户端的使用位置。", "Upload, inspect, replace, and trace storefront asset usage."),
@@ -289,24 +271,6 @@ const workflowDefinitions: Record<string, WorkflowDefinition> = {
     ],
     commonReview,
     copy("完成度变化仅用于设计演示，不修改真实内容。", "Completeness changes are design-only and do not modify live copy."),
-  ),
-  contacts: workflow(
-    copy("客服渠道配置", "Support channel configuration"),
-    copy("配置联系方式、服务时间、客户端行为和降级方式。", "Configure contact details, service hours, storefront behavior, and fallbacks."),
-    [copy("渠道资料", "Channel details"), copy("行为测试", "Behavior test"), copy("影响预览", "Impact preview")],
-    [
-      field("渠道", "Channel", "WhatsApp", "WhatsApp", "select"),
-      field("公开账号", "Public account", "+60 12 888 6618"),
-      field("服务时间", "Service hours", "10:00–22:00"),
-      field("降级说明", "Fallback message", "无法跳转时复制账号", "Copy the account if launch fails", "textarea"),
-    ],
-    [
-      copy("微信只设计二维码与复制，不承诺网页直达", "WeChat uses QR and copy only without promising a web deep link"),
-      copy("每种渠道都有明确的打开、复制和失败状态", "Every channel defines open, copy, and failure states"),
-      copy("客户端只展示启用且配置完整的渠道", "The storefront shows enabled and fully configured channels only"),
-    ],
-    commonReview,
-    copy("测试按钮不会打开真实聊天或发送消息。", "Test controls do not open real chats or send messages."),
   ),
   notifications: workflow(
     copy("通知投递工作流", "Notification delivery workflow"),
@@ -495,24 +459,6 @@ const workflowDefinitions: Record<string, WorkflowDefinition> = {
     ],
     commonReview,
     copy("连接测试和任务重试不会调用真实外部服务。", "Connection checks and job retries do not call live external services."),
-  ),
-  settings: workflow(
-    copy("网站设置发布", "Website settings publishing"),
-    copy("集中预览品牌、订单、客服、政策、SEO 和高级开关的影响。", "Preview the impact of brand, order, support, policy, SEO, and advanced settings."),
-    [copy("编辑设置", "Edit settings"), copy("影响预览", "Impact preview"), copy("发布检查", "Publish review")],
-    [
-      field("网站名称", "Site name", "云桥", "CloudBridge"),
-      field("默认语言", "Default language", "简体中文", "Chinese", "select"),
-      field("政策版本", "Policy version", "2026-07"),
-      field("SEO 描述", "SEO description", "连接全球 AI 服务的人工下单平台", "A manually assisted ordering platform for global AI services", "textarea"),
-    ],
-    [
-      copy("品牌、订单、客服、政策和高级设置独立分区", "Brand, order, support, policy, and advanced settings use separate sections"),
-      copy("关闭接单和客服入口前展示客户端影响", "Disabling orders or support previews storefront impact"),
-      copy("发布前检查中英文、政策版本和未保存更改", "Publishing checks locales, policy version, and unsaved changes"),
-    ],
-    commonReview,
-    copy("发布预览不会修改网站开关、政策或客户端内容。", "Publish preview does not change site toggles, policies, or storefront content."),
   ),
 };
 
