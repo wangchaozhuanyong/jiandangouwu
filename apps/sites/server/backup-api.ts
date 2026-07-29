@@ -8,6 +8,7 @@ import type { D1Database, D1Result, SitesEnv } from "./types";
 
 type BackupMode = "AUTOMATIC" | "MANUAL";
 type BackupStatus = "CREATING" | "VERIFIED" | "FAILED";
+type RestoreValidationStatus = "NOT_RUN" | "PASSED" | "FAILED";
 
 type BackupRow = {
   id: string;
@@ -24,6 +25,12 @@ type BackupRow = {
   errorCode: string | null;
   createdAt: string;
   verifiedAt: string | null;
+  restoreValidationStatus: RestoreValidationStatus;
+  restoreValidationJson: string;
+  restoreValidatedAt: string | null;
+  restoreValidatedByEmail: string | null;
+  restoreValidationReason: string | null;
+  restoreValidationErrorCode: string | null;
 };
 
 type SnapshotPayload = {
@@ -42,8 +49,22 @@ type BackupEnvelope = {
   ciphertext: string;
 };
 
+type RestoreValidationDetails = {
+  kind: "LOGICAL_PACKAGE";
+  tableCount: number;
+  recordCount: number;
+  relationshipChecks: number;
+  encryptedContactChecks: number;
+  jsonDocumentChecks: number;
+  activeAdministratorCount: number;
+};
+
 const schemaVersion = 2;
 const maximumBackupBytes = 20 * 1024 * 1024;
+const recentBackupWindowMs = 26 * 60 * 60_000;
+const recentRestoreValidationWindowMs = 7 * 24 * 60 * 60_000;
+const recentFailureWindowMs = 7 * 24 * 60 * 60_000;
+const staleCreatingWindowMs = 15 * 60_000;
 const snapshotTables = [
   "admin_members",
   "audit_events",
@@ -69,7 +90,13 @@ export async function listBackupSnapshots(db: D1Database) {
       record_counts_json AS recordCountsJson, byte_size AS byteSize,
       checksum_sha256 AS checksumSha256, created_by_email AS createdByEmail,
       reason, error_code AS errorCode, created_at AS createdAt,
-      verified_at AS verifiedAt
+      verified_at AS verifiedAt,
+      restore_validation_status AS restoreValidationStatus,
+      restore_validation_json AS restoreValidationJson,
+      restore_validated_at AS restoreValidatedAt,
+      restore_validated_by_email AS restoreValidatedByEmail,
+      restore_validation_reason AS restoreValidationReason,
+      restore_validation_error_code AS restoreValidationErrorCode
      FROM backup_snapshots
      ORDER BY created_at DESC, id DESC
      LIMIT 100`,
@@ -111,6 +138,82 @@ export async function ensureDailyBackup(env: SitesEnv): Promise<void> {
   });
 }
 
+export async function getBackupReadiness(
+  db: D1Database,
+  now = new Date(),
+) {
+  const backups = await listBackupSnapshots(db);
+  const checkedAt = now.toISOString();
+  const latestVerified = backups.find((backup) => backup.status === "VERIFIED") ?? null;
+  const latestAutomatic = backups.find(
+    (backup) => backup.status === "VERIFIED" && backup.mode === "AUTOMATIC",
+  ) ?? null;
+  const latestRestoreValidation = backups.find(
+    (backup) => backup.restoreValidationStatus === "PASSED",
+  ) ?? null;
+  const recentFailureBoundary = new Date(now.getTime() - recentFailureWindowMs).toISOString();
+  const staleCreatingBoundary = new Date(now.getTime() - staleCreatingWindowMs).toISOString();
+  const [failedRecentRow, staleCreatingRow] = await Promise.all([
+    db.prepare(
+      "SELECT COUNT(*) AS count FROM backup_snapshots WHERE status = 'FAILED' AND created_at >= ?",
+    ).bind(recentFailureBoundary).first<{ count: number }>(),
+    db.prepare(
+      "SELECT COUNT(*) AS count FROM backup_snapshots WHERE status = 'CREATING' AND created_at <= ?",
+    ).bind(staleCreatingBoundary).first<{ count: number }>(),
+  ]);
+  const failedRecentCount = Number(failedRecentRow?.count ?? 0);
+  const staleCreatingCount = Number(staleCreatingRow?.count ?? 0);
+  const recentVerified = isRecent(
+    latestVerified?.verifiedAt,
+    now,
+    recentBackupWindowMs,
+  );
+  const automaticToday = latestAutomatic?.createdAt.slice(0, 10) === checkedAt.slice(0, 10);
+  const restoreValidationRecent = isRecent(
+    latestRestoreValidation?.restoreValidatedAt,
+    now,
+    recentRestoreValidationWindowMs,
+  );
+  const noRecentFailures = failedRecentCount === 0 && staleCreatingCount === 0;
+  const gates = [
+    {
+      code: "RECENT_VERIFIED_BACKUP",
+      state: recentVerified ? "PASS" : "FAIL",
+      checkedAt: latestVerified?.verifiedAt ?? null,
+    },
+    {
+      code: "TODAY_AUTOMATIC_BACKUP",
+      state: automaticToday ? "PASS" : "FAIL",
+      checkedAt: latestAutomatic?.createdAt ?? null,
+    },
+    {
+      code: "NO_RECENT_BACKUP_FAILURE",
+      state: noRecentFailures ? "PASS" : "FAIL",
+      checkedAt,
+    },
+    {
+      code: "RECENT_LOGICAL_RESTORE_VALIDATION",
+      state: restoreValidationRecent ? "PASS" : "FAIL",
+      checkedAt: latestRestoreValidation?.restoreValidatedAt ?? null,
+    },
+  ] as const;
+  return {
+    state: !recentVerified
+      ? "BLOCKED"
+      : gates.every((gate) => gate.state === "PASS")
+        ? "READY"
+        : "ATTENTION",
+    checkedAt,
+    latestVerifiedAt: latestVerified?.verifiedAt ?? null,
+    latestAutomaticAt: latestAutomatic?.createdAt ?? null,
+    latestRestoreValidatedAt: latestRestoreValidation?.restoreValidatedAt ?? null,
+    failedRecentCount,
+    staleCreatingCount,
+    gates,
+    externalAlerting: "NOT_CONNECTED",
+  };
+}
+
 export async function verifyBackupSnapshot(
   env: SitesEnv,
   request: Request,
@@ -123,17 +226,7 @@ export async function verifyBackupSnapshot(
   if (!row || row.status !== "VERIFIED" || !row.checksumSha256) {
     throw new ApiInputError("BACKUP_NOT_VERIFIABLE", "The backup is not available for verification.", 409);
   }
-  const object = await env.MEDIA.get(row.objectKey);
-  if (!object) {
-    throw new ApiInputError("BACKUP_OBJECT_MISSING", "The backup object is missing.", 409);
-  }
-  const envelopeText = await new Response(object.body).text();
-  const checksum = await sha256Hex(envelopeText);
-  if (checksum !== row.checksumSha256) {
-    throw new ApiInputError("BACKUP_CHECKSUM_MISMATCH", "The backup checksum does not match.", 409);
-  }
-  const payload = await decryptSnapshot(envelopeText, env.CLOUDBRIDGE_DATA_KEY);
-  validateSnapshot(payload, safeRecordCounts(row.recordCountsJson));
+  await readVerifiedSnapshot(env, row);
   const verifiedAt = new Date().toISOString();
   await env.DB.prepare(
     "UPDATE backup_snapshots SET verified_at = ?, error_code = NULL WHERE id = ?",
@@ -149,6 +242,84 @@ export async function verifyBackupSnapshot(
   const updated = await backupById(env.DB, id);
   if (!updated) throw new ApiInputError("BACKUP_NOT_FOUND", "The backup was not found.", 404);
   return backupItem(updated);
+}
+
+export async function validateBackupRestorePackage(
+  env: SitesEnv,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const reason = backupReason(body.reason);
+  const row = await backupById(env.DB, id);
+  if (!row || row.status !== "VERIFIED" || !row.checksumSha256) {
+    throw new ApiInputError(
+      "BACKUP_NOT_RESTORE_VALIDATABLE",
+      "The backup is not available for restore-package validation.",
+      409,
+    );
+  }
+  try {
+    const payload = await readVerifiedSnapshot(env, row);
+    const details = await validateRestorePayload(payload, env.CLOUDBRIDGE_DATA_KEY);
+    const validatedAt = new Date().toISOString();
+    await env.DB.prepare(
+      `UPDATE backup_snapshots
+       SET restore_validation_status = 'PASSED', restore_validation_json = ?,
+         restore_validated_at = ?, restore_validated_by_email = ?,
+         restore_validation_reason = ?, restore_validation_error_code = NULL
+       WHERE id = ? AND status = 'VERIFIED'`,
+    ).bind(
+      JSON.stringify(details),
+      validatedAt,
+      actor.email,
+      reason,
+      id,
+    ).run();
+    await writeAudit(env.DB, {
+      action: "backup.restore-package.validated",
+      result: "SUCCEEDED",
+      actor,
+      targetType: "BACKUP",
+      targetId: id,
+      reason,
+    });
+    const updated = await backupById(env.DB, id);
+    if (!updated) throw new ApiInputError("BACKUP_NOT_FOUND", "The backup was not found.", 404);
+    return backupItem(updated);
+  } catch (error) {
+    const errorCode = error instanceof ApiInputError
+      ? error.code
+      : "BACKUP_RESTORE_VALIDATION_FAILED";
+    await env.DB.prepare(
+      `UPDATE backup_snapshots
+       SET restore_validation_status = 'FAILED', restore_validation_json = '{}',
+         restore_validated_at = ?, restore_validated_by_email = ?,
+         restore_validation_reason = ?, restore_validation_error_code = ?
+       WHERE id = ?`,
+    ).bind(
+      new Date().toISOString(),
+      actor.email,
+      reason,
+      errorCode,
+      id,
+    ).run();
+    await writeAudit(env.DB, {
+      action: "backup.restore-package.validated",
+      result: "FAILED",
+      actor,
+      targetType: "BACKUP",
+      targetId: id,
+      reason,
+    });
+    if (error instanceof ApiInputError) throw error;
+    throw new ApiInputError(
+      "BACKUP_RESTORE_VALIDATION_FAILED",
+      "The backup restore package could not be validated.",
+      409,
+    );
+  }
 }
 
 export async function downloadBackupSnapshot(
@@ -287,6 +458,24 @@ async function createBackup(
   }
 }
 
+async function readVerifiedSnapshot(
+  env: SitesEnv,
+  row: BackupRow,
+): Promise<SnapshotPayload> {
+  const object = await env.MEDIA.get(row.objectKey);
+  if (!object) {
+    throw new ApiInputError("BACKUP_OBJECT_MISSING", "The backup object is missing.", 409);
+  }
+  const envelopeText = await new Response(object.body).text();
+  const checksum = await sha256Hex(envelopeText);
+  if (!row.checksumSha256 || checksum !== row.checksumSha256) {
+    throw new ApiInputError("BACKUP_CHECKSUM_MISMATCH", "The backup checksum does not match.", 409);
+  }
+  const payload = await decryptSnapshot(envelopeText, env.CLOUDBRIDGE_DATA_KEY);
+  validateSnapshot(payload, safeRecordCounts(row.recordCountsJson));
+  return payload;
+}
+
 async function backupById(db: D1Database, id: string): Promise<BackupRow | null> {
   return db.prepare(
     `SELECT id, schedule_key AS scheduleKey, mode, status,
@@ -294,7 +483,13 @@ async function backupById(db: D1Database, id: string): Promise<BackupRow | null>
       record_counts_json AS recordCountsJson, byte_size AS byteSize,
       checksum_sha256 AS checksumSha256, created_by_email AS createdByEmail,
       reason, error_code AS errorCode, created_at AS createdAt,
-      verified_at AS verifiedAt
+      verified_at AS verifiedAt,
+      restore_validation_status AS restoreValidationStatus,
+      restore_validation_json AS restoreValidationJson,
+      restore_validated_at AS restoreValidatedAt,
+      restore_validated_by_email AS restoreValidatedByEmail,
+      restore_validation_reason AS restoreValidationReason,
+      restore_validation_error_code AS restoreValidationErrorCode
      FROM backup_snapshots WHERE id = ? LIMIT 1`,
   ).bind(id).first<BackupRow>();
 }
@@ -316,6 +511,12 @@ function backupItem(row: BackupRow) {
     createdAt: row.createdAt,
     verifiedAt: row.verifiedAt,
     downloadable: row.status === "VERIFIED",
+    restoreValidationStatus: row.restoreValidationStatus,
+    restoreValidation: safeRestoreValidation(row.restoreValidationJson),
+    restoreValidatedAt: row.restoreValidatedAt,
+    restoreValidatedByEmail: row.restoreValidatedByEmail,
+    restoreValidationReason: row.restoreValidationReason,
+    restoreValidationErrorCode: row.restoreValidationErrorCode,
   };
 }
 
@@ -392,6 +593,217 @@ function validateSnapshot(
   }
 }
 
+async function validateRestorePayload(
+  payload: SnapshotPayload,
+  encodedKey: string | undefined,
+): Promise<RestoreValidationDetails> {
+  const rows = Object.fromEntries(snapshotTables.map((table) => [
+    table,
+    snapshotRows(payload, table),
+  ])) as Record<(typeof snapshotTables)[number], ReadonlyArray<Record<string, unknown>>>;
+
+  const administrators = uniqueIndex(rows.admin_members, ["id"]);
+  uniqueIndex(rows.audit_events, ["id"]);
+  const categories = uniqueIndex(rows.categories, ["id"]);
+  uniqueIndex(rows.category_translations, ["category_id", "locale"]);
+  const currencies = uniqueIndex(rows.currencies, ["code"]);
+  uniqueIndex(rows.exchange_rates, ["id"]);
+  uniqueIndex(rows.hero_translations, ["hero_id", "locale"]);
+  const heroes = uniqueIndex(rows.heroes, ["id"]);
+  uniqueIndex(rows.media_objects, ["key"]);
+  uniqueIndex(rows.merchant_channels, ["id"]);
+  uniqueIndex(rows.order_status_history, ["id"]);
+  const orders = uniqueIndex(rows.orders, ["id"]);
+  uniqueIndex(rows.product_translations, ["product_id", "locale"]);
+  const products = uniqueIndex(rows.products, ["id"]);
+  uniqueIndex(rows.site_settings, ["key"]);
+
+  let relationshipChecks = 0;
+  relationshipChecks += assertReferences(
+    rows.category_translations,
+    "category_id",
+    categories,
+  );
+  relationshipChecks += assertReferences(rows.exchange_rates, "from_code", currencies);
+  relationshipChecks += assertReferences(rows.exchange_rates, "to_code", currencies);
+  relationshipChecks += assertReferences(rows.hero_translations, "hero_id", heroes);
+  relationshipChecks += assertReferences(rows.products, "category_id", categories);
+  relationshipChecks += assertReferences(
+    rows.product_translations,
+    "product_id",
+    products,
+  );
+  relationshipChecks += assertReferences(rows.orders, "product_id", products);
+  relationshipChecks += assertReferences(rows.orders, "currency_code", currencies);
+  relationshipChecks += assertReferences(
+    rows.orders,
+    "reference_currency_code",
+    currencies,
+    true,
+  );
+  relationshipChecks += assertReferences(
+    rows.orders,
+    "assigned_to_id",
+    administrators,
+    true,
+  );
+  relationshipChecks += assertReferences(
+    rows.order_status_history,
+    "order_id",
+    orders,
+  );
+  const orderHistory = new Set(rows.order_status_history.map(
+    (row) => requiredString(row, "order_id"),
+  ));
+  for (const order of rows.orders) {
+    if (!orderHistory.has(requiredString(order, "id"))) {
+      throw restoreValidationError("BACKUP_RESTORE_RELATION_INVALID");
+    }
+    relationshipChecks += 1;
+  }
+
+  let jsonDocumentChecks = 0;
+  for (const administrator of rows.admin_members) {
+    requireJson(administrator, "permissions_json", "array");
+    jsonDocumentChecks += 1;
+  }
+  for (const setting of rows.site_settings) {
+    requireJson(setting, "value_json", "any");
+    jsonDocumentChecks += 1;
+  }
+  for (const translation of rows.product_translations) {
+    if (translation.aliases_json !== null && translation.aliases_json !== undefined) {
+      requireJson(translation, "aliases_json", "array");
+      jsonDocumentChecks += 1;
+    }
+  }
+
+  let encryptedContactChecks = 0;
+  if (rows.orders.length > 0) {
+    const contactKey = await importBackupKey(encodedKey, ["decrypt"]);
+    for (const order of rows.orders) {
+      await validateEncryptedContact(
+        requiredString(order, "contact_encrypted"),
+        contactKey,
+      );
+      encryptedContactChecks += 1;
+    }
+  }
+
+  return {
+    kind: "LOGICAL_PACKAGE",
+    tableCount: snapshotTables.length,
+    recordCount: Object.values(rows).reduce((sum, tableRows) => sum + tableRows.length, 0),
+    relationshipChecks,
+    encryptedContactChecks,
+    jsonDocumentChecks,
+    activeAdministratorCount: rows.admin_members.filter(
+      (administrator) => administrator.status === "ACTIVE",
+    ).length,
+  };
+}
+
+function snapshotRows(
+  payload: SnapshotPayload,
+  table: (typeof snapshotTables)[number],
+): ReadonlyArray<Record<string, unknown>> {
+  const rows = payload.tables[table];
+  if (!Array.isArray(rows)) throw restoreValidationError("BACKUP_RESTORE_STRUCTURE_INVALID");
+  return rows;
+}
+
+function uniqueIndex(
+  rows: ReadonlyArray<Record<string, unknown>>,
+  fields: readonly string[],
+): Set<string> {
+  const values = new Set<string>();
+  for (const row of rows) {
+    const key = JSON.stringify(fields.map((field) => requiredString(row, field)));
+    if (values.has(key)) throw restoreValidationError("BACKUP_RESTORE_DUPLICATE_KEY");
+    values.add(key);
+  }
+  if (fields.length !== 1) return values;
+  return new Set(rows.map((row) => requiredString(row, fields[0])));
+}
+
+function assertReferences(
+  rows: ReadonlyArray<Record<string, unknown>>,
+  field: string,
+  parentValues: ReadonlySet<string>,
+  optional = false,
+): number {
+  let checked = 0;
+  for (const row of rows) {
+    const value = row[field];
+    if (optional && (value === null || value === undefined || value === "")) continue;
+    if (typeof value !== "string" || !value || !parentValues.has(value)) {
+      throw restoreValidationError("BACKUP_RESTORE_RELATION_INVALID");
+    }
+    checked += 1;
+  }
+  return checked;
+}
+
+function requiredString(row: Record<string, unknown>, field: string): string {
+  const value = row[field];
+  if (typeof value !== "string" || value.length === 0) {
+    throw restoreValidationError("BACKUP_RESTORE_STRUCTURE_INVALID");
+  }
+  return value;
+}
+
+function requireJson(
+  row: Record<string, unknown>,
+  field: string,
+  shape: "array" | "object" | "any",
+): void {
+  const value = requiredString(row, field);
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (
+      (shape === "array" && !Array.isArray(parsed))
+      || (
+        shape === "object"
+        && (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+      )
+    ) {
+      throw new Error("invalid JSON shape");
+    }
+  } catch {
+    throw restoreValidationError("BACKUP_RESTORE_JSON_INVALID");
+  }
+}
+
+async function validateEncryptedContact(
+  value: string,
+  key: CryptoKey,
+): Promise<void> {
+  const [version, ivValue, encryptedValue] = value.split(".");
+  if (version !== "v1" || !ivValue || !encryptedValue) {
+    throw restoreValidationError("BACKUP_RESTORE_CONTACT_INVALID");
+  }
+  try {
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: decodeBase64Url(ivValue) },
+      key,
+      decodeBase64Url(encryptedValue),
+    );
+    if (new TextDecoder().decode(decrypted).trim().length === 0) {
+      throw new Error("empty contact");
+    }
+  } catch {
+    throw restoreValidationError("BACKUP_RESTORE_CONTACT_INVALID");
+  }
+}
+
+function restoreValidationError(code: string): ApiInputError {
+  return new ApiInputError(
+    code,
+    "The backup restore package failed structural validation.",
+    409,
+  );
+}
+
 async function importBackupKey(
   encodedKey: string | undefined,
   usages: KeyUsage[],
@@ -439,6 +851,38 @@ function safeRecordCounts(value: string): Record<string, number> {
   } catch {
     return {};
   }
+}
+
+function safeRestoreValidation(value: string): RestoreValidationDetails | null {
+  try {
+    const parsed = JSON.parse(value) as Partial<RestoreValidationDetails>;
+    if (
+      parsed.kind !== "LOGICAL_PACKAGE"
+      || !Number.isSafeInteger(parsed.tableCount)
+      || !Number.isSafeInteger(parsed.recordCount)
+      || !Number.isSafeInteger(parsed.relationshipChecks)
+      || !Number.isSafeInteger(parsed.encryptedContactChecks)
+      || !Number.isSafeInteger(parsed.jsonDocumentChecks)
+      || !Number.isSafeInteger(parsed.activeAdministratorCount)
+    ) {
+      return null;
+    }
+    return parsed as RestoreValidationDetails;
+  } catch {
+    return null;
+  }
+}
+
+function isRecent(
+  value: string | null | undefined,
+  now: Date,
+  windowMs: number,
+): boolean {
+  if (!value) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp)
+    && timestamp <= now.getTime()
+    && timestamp >= now.getTime() - windowMs;
 }
 
 async function sha256Hex(value: string): Promise<string> {

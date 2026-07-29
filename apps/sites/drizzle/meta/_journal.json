@@ -22,6 +22,13 @@
       "when": 1785344186849,
       "tag": "0002_fix_storefront_design_data",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785345326303,
+      "tag": "0003_chunky_tattoo",
+      "breakpoints": true
     }
   ]
 }

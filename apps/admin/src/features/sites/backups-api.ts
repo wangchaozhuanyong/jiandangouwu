@@ -15,12 +15,51 @@ export type SitesBackupSnapshot = {
   createdAt: string;
   verifiedAt: string | null;
   downloadable: boolean;
+  restoreValidationStatus: "NOT_RUN" | "PASSED" | "FAILED";
+  restoreValidation: {
+    kind: "LOGICAL_PACKAGE";
+    tableCount: number;
+    recordCount: number;
+    relationshipChecks: number;
+    encryptedContactChecks: number;
+    jsonDocumentChecks: number;
+    activeAdministratorCount: number;
+  } | null;
+  restoreValidatedAt: string | null;
+  restoreValidatedByEmail: string | null;
+  restoreValidationReason: string | null;
+  restoreValidationErrorCode: string | null;
+};
+
+export type SitesBackupReadiness = {
+  state: "READY" | "ATTENTION" | "BLOCKED";
+  checkedAt: string;
+  latestVerifiedAt: string | null;
+  latestAutomaticAt: string | null;
+  latestRestoreValidatedAt: string | null;
+  failedRecentCount: number;
+  staleCreatingCount: number;
+  gates: Array<{
+    code:
+      | "RECENT_VERIFIED_BACKUP"
+      | "TODAY_AUTOMATIC_BACKUP"
+      | "NO_RECENT_BACKUP_FAILURE"
+      | "RECENT_LOGICAL_RESTORE_VALIDATION";
+    state: "PASS" | "FAIL";
+    checkedAt: string | null;
+  }>;
+  externalAlerting: "NOT_CONNECTED";
+};
+
+export type SitesBackupsResponse = {
+  items: SitesBackupSnapshot[];
+  readiness: SitesBackupReadiness;
 };
 
 export const getSitesBackups = async (
   signal?: AbortSignal,
-): Promise<SitesBackupSnapshot[]> => (
-  await request<SitesBackupSnapshot[]>("/admin/backups", { signal })
+): Promise<SitesBackupsResponse> => (
+  await request<SitesBackupsResponse>("/admin/backups", { signal })
 ).data;
 
 export const createSitesBackup = async (
@@ -40,6 +79,19 @@ export const verifySitesBackup = async (
     method: "POST",
     body: JSON.stringify({ reason }),
   })
+).data;
+
+export const validateSitesBackupRestorePackage = async (
+  id: string,
+  reason: string,
+): Promise<SitesBackupSnapshot> => (
+  await request<SitesBackupSnapshot>(
+    `/admin/backups/${encodeURIComponent(id)}/restore-validation`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+  )
 ).data;
 
 export const backupDownloadUrl = (id: string): string =>

@@ -61,6 +61,10 @@ test("Sites build declares D1 and R2 and ships the migration", () => {
   );
   assert.match(read("dist/.openai/drizzle/0002_fix_storefront_design_data.sql"), /char\(10\)/u);
   assert.match(read("dist/.openai/drizzle/0002_fix_storefront_design_data.sql"), /transitServiceEnabled/u);
+  assert.match(
+    read("dist/.openai/drizzle/0003_chunky_tattoo.sql"),
+    /restore_validation_status/u,
+  );
 });
 
 test("Sites scopes admin design tokens and document styles away from the storefront", () => {
@@ -123,16 +127,19 @@ test("Sites logo bypasses unavailable image transforms and the worker keeps a sa
   assert.ok(worker.includes("sourceUrl.origin !== url.origin"));
 });
 
-test("Sites backup admin exposes real create, verify, and encrypted download actions", () => {
+test("Sites backup admin exposes create, verify, logical restore validation, and encrypted download", () => {
   const page = read("../admin/src/features/sites/sites-backups-page.tsx");
   const api = read("../admin/src/features/sites/backups-api.ts");
   assert.match(page, /createSitesBackup/u);
   assert.match(page, /verifySitesBackup/u);
+  assert.match(page, /validateSitesBackupRestorePackage/u);
+  assert.match(page, /外部邮件、短信或 Telegram 告警尚未连接/u);
   assert.match(page, /backupDownloadUrl/u);
-  assert.match(page, /不会覆盖当前 D1/u);
+  assert.match(page, /不会写入或覆盖当前 D1/u);
   assert.match(api, /method: "POST"/u);
+  assert.match(api, /\/restore-validation/u);
   assert.match(api, /\/download/u);
-  assert.doesNotMatch(page, /restoreSitesBackup|恢复成功/u);
+  assert.doesNotMatch(page, /restoreSitesBackup|恢复成功|恢复演练完成/u);
 });
 
 function collectJavaScriptFiles(directory) {

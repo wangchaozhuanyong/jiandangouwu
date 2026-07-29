@@ -252,6 +252,12 @@ export const backupSnapshots = sqliteTable("backup_snapshots", {
   errorCode: text("error_code"),
   createdAt: text("created_at").notNull(),
   verifiedAt: text("verified_at"),
+  restoreValidationStatus: text("restore_validation_status").notNull().default("NOT_RUN"),
+  restoreValidationJson: text("restore_validation_json").notNull().default("{}"),
+  restoreValidatedAt: text("restore_validated_at"),
+  restoreValidatedByEmail: text("restore_validated_by_email"),
+  restoreValidationReason: text("restore_validation_reason"),
+  restoreValidationErrorCode: text("restore_validation_error_code"),
 }, (table) => [
   uniqueIndex("backup_snapshots_schedule_key_unique").on(table.scheduleKey),
   index("backup_snapshots_created_idx").on(table.createdAt),

@@ -124,6 +124,37 @@ export function SiteShell({
         </div>
       </header>
       {children}
+      {transitEnabled && (
+        transitUrl ? (
+          <a
+            className={`transit-service-entry${isProductDetail ? " is-detail" : ""}`}
+            href={transitUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <span><Network size={19} aria-hidden="true" /><i /></span>
+            <strong>{t.transitService}</strong>
+            <ArrowRight size={17} aria-hidden="true" />
+          </a>
+        ) : (
+          <button
+            className={`transit-service-entry${isProductDetail ? " is-detail" : ""}`}
+            onClick={() => setTransitNotice(t.transitUnavailable)}
+            type="button"
+          >
+            <span><Network size={19} aria-hidden="true" /><i /></span>
+            <strong>{t.transitService}</strong>
+            <ArrowRight size={17} aria-hidden="true" />
+          </button>
+        )
+      )}
+      <div
+        className={`transit-service-notice${isProductDetail ? " is-detail" : ""}${transitNotice ? " is-visible" : ""}`}
+        role="status"
+        aria-live="polite"
+      >
+        {transitNotice}
+      </div>
       {!isProductDetail && (
         <footer id="support" className="site-footer">
           <div className="footer-brand">
@@ -161,37 +192,6 @@ export function SiteShell({
           <p className="footer-legal">{t.footerNote}</p>
         </footer>
       )}
-      {transitEnabled && (
-        transitUrl ? (
-          <a
-            className={`transit-service-entry${isProductDetail ? " is-detail" : ""}`}
-            href={transitUrl}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <span><Network size={19} aria-hidden="true" /><i /></span>
-            <strong>{t.transitService}</strong>
-            <ArrowRight size={17} aria-hidden="true" />
-          </a>
-        ) : (
-          <button
-            className={`transit-service-entry${isProductDetail ? " is-detail" : ""}`}
-            onClick={() => setTransitNotice(t.transitUnavailable)}
-            type="button"
-          >
-            <span><Network size={19} aria-hidden="true" /><i /></span>
-            <strong>{t.transitService}</strong>
-            <ArrowRight size={17} aria-hidden="true" />
-          </button>
-        )
-      )}
-      <div
-        className={`transit-service-notice${isProductDetail ? " is-detail" : ""}${transitNotice ? " is-visible" : ""}`}
-        role="status"
-        aria-live="polite"
-      >
-        {transitNotice}
-      </div>
       <SupportDrawer
         initialConfig={config}
         locale={locale}

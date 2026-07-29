@@ -15,7 +15,10 @@ import {
 import {
   createManualBackup,
   downloadBackupSnapshot,
+  ensureDailyBackup,
+  getBackupReadiness,
   listBackupSnapshots,
+  validateBackupRestorePackage,
   verifyBackupSnapshot,
 } from "./backup-api";
 import { reconcileExpiredOrders } from "./order-expiry";
@@ -247,7 +250,11 @@ export async function handleAdminApi(
   if (pathname === "/v1/admin/backups") {
     if (request.method === "GET") {
       await requireAdmin(env.DB, request, "settings.read");
-      return success(await listBackupSnapshots(env.DB));
+      await ensureDailyBackup(env);
+      return success({
+        items: await listBackupSnapshots(env.DB),
+        readiness: await getBackupReadiness(env.DB),
+      });
     }
     if (request.method === "POST") {
       const actor = await writeIdentity(env.DB, request, "settings.write");
@@ -261,6 +268,18 @@ export async function handleAdminApi(
       env,
       request,
       decodeURIComponent(backupVerifyMatch[1]),
+      actor,
+    ));
+  }
+  const backupRestoreValidationMatch = pathname.match(
+    /^\/v1\/admin\/backups\/([^/]+)\/restore-validation$/u,
+  );
+  if (backupRestoreValidationMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    return success(await validateBackupRestorePackage(
+      env,
+      request,
+      decodeURIComponent(backupRestoreValidationMatch[1]),
       actor,
     ));
   }

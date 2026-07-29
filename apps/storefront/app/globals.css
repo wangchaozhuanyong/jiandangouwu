@@ -363,7 +363,7 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
   .support-drawer-layer { align-items: flex-end; }
   .support-drawer { width: 100%; height: min(82dvh, 720px); padding: 22px 18px calc(20px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(93,229,238,.32); border-left: 0; border-radius: 24px 24px 0 0; animation-name: drawer-mobile-enter; }
   .support-drawer > header { padding-bottom: 17px; }
-  .transit-service-entry { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); min-width: 168px; }
+  .transit-service-entry:not(.is-detail) { position: relative; right: auto; bottom: auto; width: max-content; max-width: calc(100% - 24px); min-width: 168px; margin: 0 12px 22px auto; }
   .transit-service-entry.is-detail { bottom: max(88px, calc(72px + env(safe-area-inset-bottom))); }
   .transit-service-notice { right: 12px; bottom: max(74px, calc(60px + env(safe-area-inset-bottom))); }
   .transit-service-notice.is-detail { bottom: max(150px, calc(134px + env(safe-area-inset-bottom))); }

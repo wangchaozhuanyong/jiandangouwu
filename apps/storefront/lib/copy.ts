@@ -33,7 +33,7 @@ export const copy = {
     emptyBody: "请尝试更短的关键词，或切换到其他分类。",
     soldOut: "暂时售罄",
     lowStock: (count: number) => `仅余 ${count} 份`,
-    available: "可下单",
+    available: "现货",
     viewProduct: "查看服务",
     from: "当前价格",
     dualPrice: "参考价格",

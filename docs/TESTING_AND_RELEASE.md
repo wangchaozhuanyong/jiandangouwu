@@ -85,7 +85,7 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 - 后台数据表、记录列表和列结构：`test:admin-tables` 加桌面与 390px 浏览器检查。
 - Worker、路由或构建：`build` 后运行 `test:sites`。
 - Sites 订单预留：使用真实 SQLite migration 验证到期 `MANUAL_PENDING` 订单只取消一次、有限库存只返还一次、状态历史和审计各写一条，未到期预留不变。
-- Sites 备份：使用真实 SQLite migration 与内存 R2 验证每日唯一快照、AES-GCM 密文、R2 回读、SHA-256、解密、逐表记录数、重新校验和禁止缓存下载；不得在测试输出中显示密钥或明文联系方式。
+- Sites 备份：使用真实 SQLite migration 与内存 R2 验证每日唯一快照、AES-GCM 密文、R2 回读、SHA-256、解密、逐表记录数、重新校验、禁止缓存下载、四项异常门禁和恢复包逻辑验证；恢复包测试必须覆盖主键/关联/JSON/加密联系方式通过路径与损坏关联失败关闭，不得在测试输出中显示密钥或明文联系方式。
 - 管理后台写入、权限或敏感信息：必须检查 API 权限、CSRF、审计、重新认证与失败路径。
 - 金额、汇率、库存和人工订单：必须检查精度、边界、并发、幂等和非法状态转换。
 - 售后页面不得用模拟申请金额、部分退款、证据、双人审批、支付商状态或资金成功补齐现有订单模型；自动检查应断言这些未实现能力没有被包装成真实结果。
@@ -105,7 +105,7 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 ## 发布门禁
 
 - 当前已有本地后端和 AWS staging 模板，但尚未创建云资源；本地检查与 `synth` 通过不构成上线批准。
-- Sites D1/R2 已部署不等于恢复通过。开放真实订单前至少创建并重新校验一个生产加密快照；生产覆盖恢复必须另行在隔离 D1 演练。
-- 2026-07-29 已升级 `@cloudflare/vite-plugin` 1.48.0、`wrangler` 4.115.0、`tsx` 4.23.1、根级 `esbuild` 0.28.1、`postcss` 8.5.25 与 `aws-cdk-lib` 2.262.2，消除了 Cloudflare 开发链中的 `ws`、`undici`、旧 `miniflare/sharp` 和错误 esbuild 去重。依赖审计仍有 6 项 high：Next.js 16.2.12 稳定最新版内部锁定的 `postcss` 8.4.31 / `sharp` 0.34.5、Nest Swagger 11.4.6 稳定最新版锁定的 `js-yaml` 5.2.1，以及 AWS CDK bundle 中的 `brace-expansion` 5.0.7。`npm audit fix` 只建议破坏性降级 Next/Swagger，npm override 也不能替换这些内部或 bundled 依赖，因此不得强制覆盖来伪造清零。Sites 已停用当前 Logo 的 Next 图片优化并只处理仓库自有 CSS，这属于暴露面缓解而不是漏洞修复；公开发布前仍需稳定上游补丁或逐项风险批准。
+- Sites 生产 D1/R2 已创建并验证加密恢复点，最近一次恢复包逻辑验证覆盖 15 张表和 58 项关联；这仍不等于隔离 D1 完整导入、管理员登录、订单解密和切换回滚演练。开放真实订单前仍须完成该演练。
+- 2026-07-29 已升级 `@cloudflare/vite-plugin` 1.48.0、`wrangler` 4.115.0、`tsx` 4.23.1、根级 `esbuild` 0.28.1、`postcss` 8.5.25 与 `aws-cdk-lib` 2.262.2，消除了 Cloudflare 开发链中的 `ws`、`undici`、旧 `miniflare/sharp` 和错误 esbuild 去重；随后用受支持的 npm override 把 Nest Swagger 的 `js-yaml` 从 5.2.1 提升到 5.2.2。依赖审计现有 4 项 high：Next.js 16.2.12 稳定最新版内部锁定的 `postcss` 8.4.31 / `sharp` 0.34.5，以及 AWS CDK bundle 中的 `brace-expansion` 5.0.7。Next 与 CDK 当前均无可直接升级的稳定补丁，bundled 依赖也不能由 npm override 替换；不得破坏性降级或强制覆盖来伪造清零。Sites 已停用当前 Logo 的 Next 图片优化并只处理仓库自有 CSS，这属于暴露面缓解而不是漏洞修复；继续公开运营期间必须跟踪稳定上游补丁或完成逐项风险批准。
 - AWS staging 创建前必须确认费用、域名、证书、迁移命令、删除保护和回滚；生产前再单独完成恢复、权限、安全、监控和真实集成验收。
 - 提交、推送、创建 PR、部署和生产变更只在用户明确授权后执行。
