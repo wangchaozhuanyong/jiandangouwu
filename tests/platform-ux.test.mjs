@@ -107,7 +107,12 @@ test("遗留后台登录入口首屏直接挂载且关键控制具备 44px 点�
   assert.match(home, /onPointerDown=/u);
   assert.match(storefrontCss, /\.hero-dots button \{ width: 44px; height: 44px;/u);
   assert.match(storefrontCss, /\.hero-dots button::before/u);
-  assert.match(storefrontCss, /@media \(max-width: 760px\)[\s\S]*?\.language-picker \{ width: 112px; height: 44px; \}/u);
+  assert.match(storefrontCss, /@media \(max-width: 760px\)[\s\S]*?\.language-picker \{ width: 128px; height: 44px; \}/u);
+  assert.match(storefrontCss, /@media \(max-width: 390px\)[\s\S]*?\.language-picker \{ width: 94px; \}[\s\S]*?\.language-picker__trigger > svg:first-child \{ display: none; \}/u);
+  assert.doesNotMatch(storefrontCss, /\.language-picker__trigger strong \{[^}]*text-overflow:\s*ellipsis;/u);
+  assert.match(storefrontCss, /\.capability-rail \{[^}]*padding:\s*0;[^}]*border:\s*1px solid var\(--frame-line\);/u);
+  assert.doesNotMatch(storefrontCss, /\.capability-rail \{[^}]*padding:\s*1px;/u);
+  assert.match(storefrontCss, /@media \(max-width: 760px\)[\s\S]*?\.capability-rail \{[^}]*grid-template-columns:\s*round\(down,\s*calc\(\(100% - 1px\) \/ 2\),\s*1px\)\s+minmax\(0,\s*1fr\);/u);
   assert.doesNotMatch(storefrontCss, /\.hero-controls/u);
   assert.match(storefrontCss, /\.footer-links > a,\s*\.footer-links > button \{[^}]*min-height:\s*44px;/u);
   assert.match(adminCss, /\.auth-links button \{ min-height: 44px;/u);
