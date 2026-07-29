@@ -1,4 +1,7 @@
 import {
+  ArrowsClockwise,
+  CaretLeft,
+  CaretRight,
   Eye,
   Info,
   MagnifyingGlass,
@@ -19,6 +22,8 @@ import {
   updateProduct,
   type AdminCategory,
   type AdminProduct,
+  type AdminProductPage,
+  type AdminProductQuery,
   type Locale,
 } from "../api";
 import {
@@ -38,10 +43,16 @@ import {
   useUnsavedChanges,
 } from "../admin-ui";
 import {
+  adminProductQuerySearch,
   buildProductImpact,
+  defaultAdminProductQuery,
+  productFilterFromQuery,
+  productQueryFromFilter,
+  readAdminProductQuery,
   STOREFRONT_LOW_STOCK_MAX,
   type ProductCategoryState,
   type ProductImpactSignal,
+  type ProductQueryFilter,
 } from "../features/products/model";
 import { adminCopy } from "../i18n";
 
@@ -110,29 +121,89 @@ export default function ProductsPage({
   locale: Locale;
 }) {
   const t = adminCopy[locale];
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [query, setQuery] = useState(() => readAdminProductQuery(window.location.search));
+  const [filter, setFilter] = useState<ProductQueryFilter>(
+    () => productFilterFromQuery(query),
+  );
   const [editing, setEditing] = useState<AdminProduct | "new" | null>(null);
   const [impactOpen, setImpactOpen] = useState(false);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 260);
-    return () => window.clearTimeout(timer);
-  }, [search]);
-
-  const productLoader = useCallback((signal: AbortSignal) => getProducts(debouncedSearch, signal), [debouncedSearch]);
+  const querySearch = useMemo(() => adminProductQuerySearch(query), [query]);
+  const productLoader = useCallback(async (signal: AbortSignal) => ({
+    ...await getProducts(query, signal),
+    querySearch,
+  }), [query, querySearch]);
   const categoryLoader = useCallback((signal: AbortSignal) => getCategories(signal), []);
-  const productsResource = useCachedAdminResource<AdminProduct[]>(`products:${debouncedSearch}`, productLoader);
+  const productsResource = useCachedAdminResource<AdminProductPage & { querySearch: string }>(
+    `products:page:${querySearch || "default"}`,
+    productLoader,
+  );
   const categoriesResource = useCachedAdminResource<AdminCategory[]>("categories", categoryLoader);
   const slow = useSlowAdminRequest(productsResource.state);
-  const products = productsResource.data;
+  const page = productsResource.data?.querySearch === querySearch
+    ? productsResource.data
+    : null;
+  const products = page?.data ?? null;
   const categories = categoriesResource.data ?? [];
+  const listBusy = productsResource.state === "initial-loading"
+    || productsResource.state === "refreshing";
+  const pageCount = page?.meta.pageCount ?? 0;
+
+  useEffect(() => {
+    const onPopState = () => {
+      const next = readAdminProductQuery(window.location.search);
+      setQuery(next);
+      setFilter(productFilterFromQuery(next));
+      setImpactOpen(false);
+      setEditing(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const updateQuery = useCallback((
+    next: AdminProductQuery,
+    historyMode: "push" | "replace" = "push",
+  ) => {
+    const search = adminProductQuerySearch(next);
+    const url = `${window.location.pathname}${search ? `?${search}` : ""}`;
+    window.history[historyMode === "push" ? "pushState" : "replaceState"](
+      {
+        ...(window.history.state ?? {}),
+        page: "products",
+      },
+      "",
+      url,
+    );
+    setQuery(next);
+    setImpactOpen(false);
+    setEditing(null);
+  }, []);
+
+  useEffect(() => {
+    if (!page || listBusy || page.meta.page !== query.page) return;
+    const lastAvailablePage = Math.max(1, page.meta.pageCount);
+    if (query.page > lastAvailablePage) {
+      updateQuery({ ...query, page: lastAvailablePage }, "replace");
+    }
+  }, [listBusy, page, query, updateQuery]);
+
+  const applyFilters = (event: React.FormEvent) => {
+    event.preventDefault();
+    updateQuery(productQueryFromFilter(filter));
+  };
+
+  const resetFilters = () => {
+    const next = { ...defaultAdminProductQuery };
+    setFilter(productFilterFromQuery(next));
+    updateQuery(next);
+  };
 
   return (
     <section className="admin-panel">
       <div className="panel-heading is-action-only">
         <button
           className="admin-secondary"
-          disabled={!products}
+          disabled={!page}
           onClick={() => setImpactOpen(true)}
           type="button"
         >
@@ -159,43 +230,161 @@ export default function ProductsPage({
           )}
         </p>
       )}
-      <label className="admin-search">
-        <MagnifyingGlass aria-hidden="true" />
-        <span className="sr-only">{t.searchProducts as string}</span>
-        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.searchProducts as string} />
-      </label>
-      <RefreshNotice state={productsResource.state} locale={locale} retry={() => void productsResource.reload()} slow={slow} />
-      {!products ? <PanelState state={productsResource.state} locale={locale} retry={() => void productsResource.reload()} kind="cards" /> : (
-        <div className="product-admin-grid" aria-busy={productsResource.state === "refreshing"}>
-          {products.length === 0 && <div className="table-empty">{t.empty as string}</div>}
-          {products.map((item) => (
-            <article key={item.id}>
-              <img
-                src={item.imageKey}
-                alt={item.translations[locale]?.name || item.slug}
-                width={86}
-                height={96}
-                loading="lazy"
-                decoding="async"
-              />
-              <div className="product-admin-copy">
-                <p>{item.category.name[locale] || item.category.slug}</p>
-                <h3 title={item.translations[locale]?.name}>{item.translations[locale]?.name || "—"}</h3>
-                <div><strong>MYR {item.basePrice}</strong><StatusPill status={item.status} locale={locale} /></div>
-                <small>{item.stockMode === "UNLIMITED" ? (locale === "zh" ? "不限库存" : "Unlimited") : `${t.stock as string} ${item.stockQuantity ?? 0}`}</small>
-              </div>
-              {canWrite && (
-                <button
-                  onClick={() => setEditing(item)}
-                  aria-label={`${t.edit as string} ${item.translations[locale]?.name || item.slug}`}
-                  type="button"
-                >
-                  <NotePencil />
-                </button>
-              )}
-            </article>
-          ))}
+      {page && (
+        <div className="product-admin-truth-note" role="note">
+          <Info aria-hidden="true" size={18} />
+          <span>
+            <strong>{copy(locale, "完整目录服务端分页", "Full catalog server pagination")}</strong>
+            {copy(
+              locale,
+              `当前筛选共 ${page.meta.total} 条，第 ${page.meta.page} 页加载 ${page.data.length} 条。未选择状态时不显示已归档商品；选择“已归档”可单独查看。筛选与分页在服务器执行。`,
+              `The current server-side filter matches ${page.meta.total} products; page ${page.meta.page} loads ${page.data.length}. Archived products are hidden when no status is selected and remain available through the Archived filter.`,
+            )}
+          </span>
         </div>
+      )}
+      <form className="product-admin-filters" onSubmit={applyFilters}>
+        <label className="product-admin-search">
+          <span>{copy(locale, "商品搜索", "Product search")}</span>
+          <MagnifyingGlass aria-hidden="true" />
+          <input
+            value={filter.search}
+            maxLength={160}
+            onChange={(event) => setFilter((current) => ({
+              ...current,
+              search: event.target.value,
+            }))}
+            placeholder={copy(
+              locale,
+              "搜索中文名、英文名或 slug",
+              "Search Chinese name, English name, or slug",
+            )}
+          />
+        </label>
+        <label>
+          <span>{copy(locale, "商品状态", "Product status")}</span>
+          <select
+            value={filter.status}
+            onChange={(event) => setFilter((current) => ({
+              ...current,
+              status: event.target.value as ProductQueryFilter["status"],
+            }))}
+          >
+            <option value="all">{copy(locale, "全部非归档状态", "All non-archived statuses")}</option>
+            {(["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"] as const).map((status) => (
+              <option value={status} key={status}>
+                {statusLabels[status]?.[locale] ?? status}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="product-admin-filter-actions">
+          <button
+            className="admin-secondary"
+            disabled={
+              adminProductQuerySearch(productQueryFromFilter(filter)) === ""
+              && querySearch === ""
+            }
+            onClick={resetFilters}
+            type="button"
+          >
+            {copy(locale, "重置筛选", "Reset filters")}
+          </button>
+          <button className="admin-primary" disabled={listBusy} type="submit">
+            {copy(locale, "应用筛选", "Apply filters")}
+          </button>
+          <button
+            className="admin-secondary"
+            onClick={() => void productsResource.reload()}
+            type="button"
+          >
+            <ArrowsClockwise
+              aria-hidden="true"
+              className={productsResource.state === "refreshing" ? "spin" : ""}
+            />
+            {copy(locale, "刷新目录", "Refresh catalog")}
+          </button>
+        </div>
+      </form>
+      <RefreshNotice state={productsResource.state} locale={locale} retry={() => void productsResource.reload()} slow={slow} />
+      {!page ? (
+        <PanelState
+          state={productsResource.state === "refreshing"
+            ? "initial-loading"
+            : productsResource.state}
+          locale={locale}
+          retry={() => void productsResource.reload()}
+          kind="cards"
+        />
+      ) : (
+        <>
+          <div className="product-admin-list-meta">
+            <span>{copy(
+              locale,
+              `第 ${page.meta.page} / ${Math.max(1, page.meta.pageCount)} 页 · 本页 ${products?.length ?? 0} 条`,
+              `Page ${page.meta.page} of ${Math.max(1, page.meta.pageCount)} · ${products?.length ?? 0} on this page`,
+            )}</span>
+          </div>
+          <div className="product-admin-grid" aria-busy={productsResource.state === "refreshing"}>
+            {products?.length === 0 && (
+              <div className="table-empty" role="status">
+                {copy(
+                  locale,
+                  "没有符合当前筛选的真实商品。",
+                  "No live products match the current filters.",
+                )}
+              </div>
+            )}
+            {products?.map((item) => (
+              <article key={item.id}>
+                <img
+                  src={item.imageKey}
+                  alt={item.translations[locale]?.name || item.slug}
+                  width={86}
+                  height={96}
+                  loading="lazy"
+                  decoding="async"
+                />
+                <div className="product-admin-copy">
+                  <p>{item.category.name[locale] || item.category.slug}</p>
+                  <h3 title={item.translations[locale]?.name}>{item.translations[locale]?.name || "—"}</h3>
+                  <div><strong>MYR {item.basePrice}</strong><StatusPill status={item.status} locale={locale} /></div>
+                  <small>{item.stockMode === "UNLIMITED" ? (locale === "zh" ? "不限库存" : "Unlimited") : `${t.stock as string} ${item.stockQuantity ?? 0}`}</small>
+                </div>
+                {canWrite && (
+                  <button
+                    onClick={() => setEditing(item)}
+                    aria-label={`${t.edit as string} ${item.translations[locale]?.name || item.slug}`}
+                    type="button"
+                  >
+                    <NotePencil />
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+          <nav
+            className="product-admin-pagination"
+            aria-label={copy(locale, "商品目录分页", "Product catalog pagination")}
+          >
+            <button
+              className="admin-secondary"
+              disabled={query.page <= 1 || listBusy}
+              onClick={() => updateQuery({ ...query, page: Math.max(1, query.page - 1) })}
+              type="button"
+            >
+              <CaretLeft aria-hidden="true" />{copy(locale, "上一页", "Previous")}
+            </button>
+            <button
+              className="admin-secondary"
+              disabled={query.page >= pageCount || listBusy}
+              onClick={() => updateQuery({ ...query, page: query.page + 1 })}
+              type="button"
+            >
+              {copy(locale, "下一页", "Next")}<CaretRight aria-hidden="true" />
+            </button>
+          </nav>
+        </>
       )}
       {canWrite && editing && (
         <ProductDialog
@@ -209,12 +398,13 @@ export default function ProductsPage({
           }}
         />
       )}
-      {impactOpen && products && (
+      {impactOpen && page && (
         <ProductImpactDialog
           categories={categoriesResource.data ?? null}
           locale={locale}
-          products={products}
-          search={debouncedSearch}
+          products={page.data}
+          query={query}
+          meta={page.meta}
           onClose={() => setImpactOpen(false)}
         />
       )}
@@ -225,14 +415,16 @@ export default function ProductsPage({
 function ProductImpactDialog({
   categories,
   locale,
+  meta,
   products,
-  search,
+  query,
   onClose,
 }: {
   categories: AdminCategory[] | null;
   locale: Locale;
+  meta: AdminProductPage["meta"];
   products: AdminProduct[];
-  search: string;
+  query: AdminProductQuery;
   onClose: () => void;
 }) {
   const t = adminCopy[locale];
@@ -240,13 +432,27 @@ function ProductImpactDialog({
     () => buildProductImpact(products, categories),
     [categories, products],
   );
+  const activeFilter = [
+    query.search
+      ? copy(locale, `关键词“${query.search}”`, `keyword “${query.search}”`)
+      : null,
+    query.status
+      ? copy(
+          locale,
+          `状态“${statusLabels[query.status]?.zh ?? query.status}”`,
+          `status “${statusLabels[query.status]?.en ?? query.status}”`,
+        )
+      : copy(locale, "全部非归档状态", "all non-archived statuses"),
+  ].filter(Boolean).join(copy(locale, "、", ", "));
   const summary = [
     [
       copy(locale, "已加载商品", "Loaded products"),
       impact.loadedProductCount,
-      search
-        ? copy(locale, `当前搜索“${search}”`, `Current search “${search}”`)
-        : copy(locale, "当前第一页，最多 100 条", "Current first page, up to 100"),
+      copy(
+        locale,
+        `筛选总数 ${meta.total} · 第 ${meta.page} 页`,
+        `${meta.total} filter matches · page ${meta.page}`,
+      ),
     ],
     [
       copy(locale, "在售 / 非在售", "Active / non-active"),
@@ -291,8 +497,8 @@ function ProductImpactDialog({
           <span>
             {copy(
               locale,
-              `本概览只读取当前商品搜索结果第一页（最多 100 条）${impact.categoryCrossCheckAvailable ? "和单独加载的非归档分类列表；两次读取不是同一事务快照" : "；分类列表未成功加载，因此没有推断分类状态"}。公开列表只接收 ACTIVE 商品；分类未启用时会退出分类筛选导航，但其中的 ACTIVE 商品仍可出现在“全部”列表。前台现有规则把有限库存 0 显示为售罄、1–${STOREFRONT_LOW_STOCK_MAX} 显示低库存。本页不提供库存流水、预留返库、阈值配置、告警或发布记录。`,
-              `This overview reads only the first page of the current product search (up to 100 rows)${impact.categoryCrossCheckAvailable ? " and a separately loaded non-archived category list; the two reads are not one transactional snapshot" : "; the category list did not load, so category state was not inferred"}. The public list accepts ACTIVE products only. A non-active category leaves category filter navigation, while its ACTIVE products may still appear under All. Existing storefront rules show finite stock 0 as sold out and 1–${STOREFRONT_LOW_STOCK_MAX} as low stock. This page does not provide stock history, reservation release, threshold configuration, alerts, or publishing records.`,
+              `本概览只统计当前服务器筛选（${activeFilter}）第 ${meta.page} 页的 ${products.length} 条记录；该筛选共 ${meta.total} 条、每页最多 ${meta.pageSize} 条${impact.categoryCrossCheckAvailable ? "，并与单独加载的非归档分类列表交叉检查；两次读取不是同一事务快照" : "；分类列表未成功加载，因此没有推断分类状态"}。公开列表只接收 ACTIVE 商品；分类未启用时会退出分类筛选导航，但其中的 ACTIVE 商品仍可出现在“全部”列表。前台现有规则把有限库存 0 显示为售罄、1–${STOREFRONT_LOW_STOCK_MAX} 显示低库存。本页不提供全库聚合、库存流水、预留返库、阈值配置、告警或发布记录。`,
+              `This overview summarizes ${products.length} records on page ${meta.page} of the current server filter (${activeFilter}); ${meta.total} products match and each page contains at most ${meta.pageSize}${impact.categoryCrossCheckAvailable ? ". It cross-checks a separately loaded non-archived category list, so the two reads are not one transactional snapshot" : ". The category list did not load, so category state was not inferred"}. The public list accepts ACTIVE products only. A non-active category leaves category filter navigation, while its ACTIVE products may still appear under All. Existing storefront rules show finite stock 0 as sold out and 1–${STOREFRONT_LOW_STOCK_MAX} as low stock. This page does not provide full-catalog aggregation, stock history, reservation release, threshold configuration, alerts, or publishing records.`,
             )}
           </span>
         </p>

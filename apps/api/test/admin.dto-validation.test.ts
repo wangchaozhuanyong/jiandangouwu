@@ -10,6 +10,7 @@ import {
 const dtoPath = "../dist/src/admin/admin.dto.js";
 const {
   AdminAuditQueryDto,
+  AdminListQueryDto,
 } = await import(dtoPath) as typeof import("../src/admin/admin.dto.js");
 
 const validationPipe = new ValidationPipe({
@@ -20,6 +21,34 @@ const validationPipe = new ValidationPipe({
 
 const validateQuery = <T>(metatype: Type<T>, value: unknown): Promise<T> =>
   validationPipe.transform(value, { type: "query", metatype }) as Promise<T>;
+
+test("product query trims valid search and accepts only known statuses", async () => {
+  const query = await validateQuery(AdminListQueryDto, {
+    page: "2",
+    pageSize: "30",
+    search: "  Codex  ",
+    status: "INACTIVE",
+  });
+
+  assert.deepEqual({ ...query }, {
+    page: 2,
+    pageSize: 30,
+    search: "Codex",
+    status: "INACTIVE",
+  });
+});
+
+test("product query rejects blank search, invalid status, and unsafe pagination", async () => {
+  for (const input of [
+    { search: "   " },
+    { status: "DELETED" },
+    { page: "0" },
+    { page: "1001" },
+    { pageSize: "101" },
+  ]) {
+    await assert.rejects(validateQuery(AdminListQueryDto, input), BadRequestException);
+  }
+});
 
 test("audit query trims valid strings and converts pagination", async () => {
   const query = await validateQuery(AdminAuditQueryDto, {

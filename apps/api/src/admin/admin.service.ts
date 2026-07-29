@@ -201,14 +201,14 @@ export class AdminService {
   }
 
   async products(query: AdminListQueryDto) {
-    const normalized = query.search?.normalize("NFKC").trim();
-    const where = {
-      ...(query.status ? { status: query.status as "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED" } : {}),
+    const normalized = query.search ? normalizeName(query.search) : undefined;
+    const where: Prisma.ProductWhereInput = {
+      status: query.status ?? { not: "ARCHIVED" },
       ...(normalized
         ? {
             OR: [
               { slug: { contains: normalized } },
-              { translations: { some: { name: { contains: normalized } } } },
+              { translations: { some: { normalizedName: { contains: normalized } } } },
             ],
           }
         : {}),
@@ -217,7 +217,7 @@ export class AdminService {
       this.prisma.product.count({ where }),
       this.prisma.product.findMany({
         where,
-        orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
+        orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }, { id: "asc" }],
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
         include: {

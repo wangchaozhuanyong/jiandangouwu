@@ -21,6 +21,7 @@ export class AdminListQueryDto {
   @Transform(toNumber)
   @IsInt()
   @Min(1)
+  @Max(1000)
   page = 1;
 
   @IsOptional()
@@ -31,14 +32,15 @@ export class AdminListQueryDto {
   pageSize = 30;
 
   @IsOptional()
+  @Transform(trimString)
   @IsString()
+  @MinLength(1)
   @MaxLength(160)
   search?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  status?: string;
+  @IsIn(["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"])
+  status?: "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED";
 }
 
 export class AdminAuditQueryDto {

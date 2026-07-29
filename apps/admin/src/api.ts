@@ -89,6 +89,16 @@ export type AdminProduct = {
   translations: Record<Locale, { name: string; kicker: string; description: string }>;
   updatedAt: string;
 };
+export type AdminProductQuery = {
+  page: number;
+  pageSize: number;
+  search?: string;
+  status?: AdminProduct["status"];
+};
+export type AdminProductPage = {
+  data: AdminProduct[];
+  meta: PageMeta;
+};
 export type AdminCurrency = {
   code: string;
   token: string;
@@ -261,7 +271,39 @@ export const getCurrencyRateHistory = async (code: string, signal?: AbortSignal)
   (await request<AdminCurrencyRate[]>(`/admin/currencies/${encodeURIComponent(code)}/rates`, { signal })).data;
 export const createCategory = (body: unknown) => request<AdminCategory>("/admin/categories", { method: "POST", body: JSON.stringify(body) });
 export const updateCategory = (id: string, body: unknown) => request<AdminCategory>(`/admin/categories/${id}`, { method: "PATCH", body: JSON.stringify(body) });
-export const getProducts = async (search = "", signal?: AbortSignal) => (await request<AdminProduct[]>(`/admin/products?page=1&pageSize=100&search=${encodeURIComponent(search)}`, { signal })).data;
+export const getProducts = async (
+  query: AdminProductQuery = { page: 1, pageSize: 30 },
+  signal?: AbortSignal,
+): Promise<AdminProductPage> => {
+  const params = new URLSearchParams({
+    page: String(query.page),
+    pageSize: String(query.pageSize),
+  });
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.status) params.set("status", query.status);
+  const response = await request<AdminProduct[]>(
+    `/admin/products?${params.toString()}`,
+    { signal },
+  );
+  const { meta } = response;
+  if (
+    !meta
+    || !Number.isSafeInteger(meta.page)
+    || meta.page < 1
+    || meta.page !== query.page
+    || !Number.isSafeInteger(meta.pageSize)
+    || meta.pageSize < 1
+    || meta.pageSize !== query.pageSize
+    || !isNonNegativeSafeInteger(meta.total)
+    || !isNonNegativeSafeInteger(meta.pageCount)
+    || !Array.isArray(response.data)
+    || response.data.length > meta.pageSize
+    || meta.pageCount !== (meta.total === 0 ? 0 : Math.ceil(meta.total / meta.pageSize))
+  ) {
+    throw new Error("Product pagination metadata failed the runtime contract.");
+  }
+  return { data: response.data, meta };
+};
 export const getAllProducts = async (signal?: AbortSignal): Promise<AdminProduct[]> => {
   const products: AdminProduct[] = [];
   let page = 1;

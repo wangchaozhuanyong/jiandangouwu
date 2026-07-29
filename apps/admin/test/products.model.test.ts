@@ -5,7 +5,11 @@ import type {
   AdminProduct,
 } from "../src/api";
 import {
+  adminProductQuerySearch,
   buildProductImpact,
+  productFilterFromQuery,
+  productQueryFromFilter,
+  readAdminProductQuery,
   STOREFRONT_LOW_STOCK_MAX,
 } from "../src/features/products/model";
 
@@ -49,6 +53,44 @@ const product = (
   },
   updatedAt: "2026-07-29T12:00:00.000Z",
   ...overrides,
+});
+
+test("product URL query restores supported server filters and serializes canonically", () => {
+  const query = readAdminProductQuery(
+    "?page=3&pageSize=100&search=%20Codex%20&status=INACTIVE",
+  );
+  assert.deepEqual(query, {
+    page: 3,
+    pageSize: 30,
+    search: "Codex",
+    status: "INACTIVE",
+  });
+  assert.equal(
+    adminProductQuerySearch(query),
+    "page=3&search=Codex&status=INACTIVE",
+  );
+  assert.deepEqual(productFilterFromQuery(query), {
+    search: "Codex",
+    status: "INACTIVE",
+  });
+  assert.deepEqual(productQueryFromFilter({ search: "  Gemini  ", status: "ACTIVE" }), {
+    page: 1,
+    pageSize: 30,
+    search: "Gemini",
+    status: "ACTIVE",
+  });
+});
+
+test("product URL query rejects unsupported state without propagating it to the API", () => {
+  const query = readAdminProductQuery(
+    "?page=1001&pageSize=1&search=%20%20&status=DELETED",
+  );
+  assert.deepEqual(query, {
+    page: 1,
+    pageSize: 30,
+  });
+  assert.equal(adminProductQuerySearch(query), "");
+  assert.deepEqual(productQueryFromFilter({ search: " ", status: "all" }), query);
 });
 
 test("product impact summarizes only the loaded slice", () => {
