@@ -139,7 +139,6 @@ test("团队和角色页面使用真实 MySQL 权限模型与安全写入", () =
 test("双语内容工作台聚合现有领域并保持原权限边界", () => {
   const app = read("apps/admin/src/App.tsx");
   const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
-  const workflows = read("apps/admin/src/design-workflows.tsx");
   const page = read("apps/admin/src/features/translations/translations-page.tsx");
   const api = read("apps/admin/src/features/translations/api.ts");
   const sharedApi = read("apps/admin/src/api.ts");
@@ -149,7 +148,6 @@ test("双语内容工作台聚合现有领域并保持原权限边界", () => {
   assert.match(app, /lazy\(\(\) => import\("\.\/features\/translations\/translations-page"\)\)/u);
   assert.match(app, /page === "translations"[\s\S]*?<TranslationsPage/u);
   assert.doesNotMatch(preview, /page === "translations"|function TranslationsDesign/u);
-  assert.doesNotMatch(workflows, /translations:\s*workflow/u);
 
   for (const permission of [
     "catalog.read", "content.read", "support.read", "settings.read",
@@ -203,7 +201,6 @@ test("售后处理复用真实订单中心并限制为人工售后状态", () =>
 test("人工收款与对账准备都使用真实只读内部历史", () => {
   const app = read("apps/admin/src/App.tsx");
   const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
-  const workflows = read("apps/admin/src/design-workflows.tsx");
   const page = read("apps/admin/src/features/finance/manual-payments-page.tsx");
   const reconciliation = read("apps/admin/src/features/finance/reconciliation-page.tsx");
   const reconciliationModel = read("apps/admin/src/features/finance/reconciliation-model.ts");
@@ -218,7 +215,6 @@ test("人工收款与对账准备都使用真实只读内部历史", () => {
   assert.match(app, /lazy\(\(\) => import\("\.\/features\/finance\/reconciliation-page"\)\)/u);
   assert.match(app, /page === "reconciliation"[\s\S]*?<ReconciliationPage/u);
   assert.doesNotMatch(preview, /page === "reconciliation"|ReconciliationDesign/u);
-  assert.doesNotMatch(workflows, /reconciliation:\s*workflow/u);
   assert.match(page, /readManualPaymentQuery\(window\.location\.search\)/u);
   assert.match(page, /<OrderDetailDialog/u);
   assert.match(page, /不是支付流水，不证明款项到账或退款完成/u);

@@ -5,6 +5,7 @@ import type {
   AdminOrderListItem,
   AdminRoleDetail,
   AdminRolesOverview,
+  AdminSessionOverview,
   AdminTeamMember,
   AdminTeamOverview,
   SystemHealthStatus,
@@ -15,6 +16,8 @@ export type {
   AdminPermissionSummary,
   AdminRoleDetail,
   AdminRolesOverview,
+  AdminSessionOverview,
+  AdminSessionSummary,
   AdminTeamMember,
   AdminTeamOverview,
 } from "@cloudbridge/contracts";
@@ -202,6 +205,22 @@ export async function getSession(): Promise<SessionPayload> {
   setCsrfToken(data.csrfToken);
   return data;
 }
+
+export const getAdminSessions = async (signal?: AbortSignal): Promise<AdminSessionOverview> => (
+  await request<AdminSessionOverview>("/admin/auth/sessions", { signal })
+).data;
+
+export const revokeAdminSession = async (sessionId: string): Promise<{ revoked: true }> => (
+  await request<{ revoked: true }>(`/admin/auth/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+  })
+).data;
+
+export const revokeOtherAdminSessions = async (): Promise<{ revokedCount: number }> => (
+  await request<{ revokedCount: number }>("/admin/auth/sessions/revoke-others", {
+    method: "POST",
+  })
+).data;
 
 const isNonNegativeSafeInteger = (value: unknown): value is number =>
   Number.isSafeInteger(value) && Number(value) >= 0;

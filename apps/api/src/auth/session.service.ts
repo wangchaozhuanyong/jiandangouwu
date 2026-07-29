@@ -1,3 +1,7 @@
+import type {
+  AdminSessionOverview,
+  AdminSessionSummary,
+} from "@cloudbridge/contracts";
 import { Injectable, InternalServerErrorException, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createHmac, randomBytes } from "node:crypto";
@@ -12,6 +16,7 @@ export type SessionRecord = {
   csrfToken: string;
   reauthenticatedAt: number | null;
   createdAt: number;
+  lastSeenAt: number;
 };
 
 type ChallengeRecord = {
@@ -59,7 +64,10 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     await this.redis.quit();
   }
 
-  async create(input: Omit<SessionRecord, "sessionId" | "csrfToken" | "createdAt">): Promise<{
+  async create(input: Omit<
+    SessionRecord,
+    "sessionId" | "csrfToken" | "createdAt" | "lastSeenAt"
+  >): Promise<{
     token: string;
     record: SessionRecord;
   }> {
@@ -69,6 +77,7 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
       sessionId: randomBytes(16).toString("hex"),
       csrfToken: randomBytes(24).toString("base64url"),
       createdAt: Date.now(),
+      lastSeenAt: Date.now(),
     };
     await this.redis.set(this.sessionKey(token), JSON.stringify(record), "EX", this.sessionTtlSeconds);
     return { token, record };
@@ -79,8 +88,14 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     const key = this.sessionKey(token);
     const serialized = await this.redis.get(key);
     if (!serialized) return null;
-    await this.redis.expire(key, this.sessionTtlSeconds);
-    return JSON.parse(serialized) as SessionRecord;
+    const record = this.parseSession(serialized);
+    if (!record) {
+      await this.redis.del(key);
+      return null;
+    }
+    const refreshed = { ...record, lastSeenAt: Date.now() };
+    await this.redis.set(key, JSON.stringify(refreshed), "EX", this.sessionTtlSeconds);
+    return refreshed;
   }
 
   async destroy(token: string): Promise<void> {
@@ -94,11 +109,47 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     if (!serialized) return;
     const ttl = await this.redis.ttl(key);
     if (ttl <= 0) return;
-    const record = JSON.parse(serialized) as SessionRecord;
+    const record = this.parseSession(serialized);
+    if (!record) {
+      await this.redis.del(key);
+      return;
+    }
     await this.redis.set(key, JSON.stringify({
       ...record,
       permissions: [...new Set(permissions)].sort(),
     }), "EX", ttl);
+  }
+
+  async userSessions(userId: string, currentSessionId: string): Promise<AdminSessionOverview> {
+    const entries = await this.findUserSessionEntries(userId);
+    const sessions = entries.map(({ record, ttlMs }): AdminSessionSummary => ({
+      id: record.sessionId,
+      current: record.sessionId === currentSessionId,
+      createdAt: new Date(record.createdAt).toISOString(),
+      lastSeenAt: new Date(record.lastSeenAt).toISOString(),
+      expiresAt: new Date(Date.now() + ttlMs).toISOString(),
+    })).sort((left, right) => (
+      Number(right.current) - Number(left.current)
+      || Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt)
+      || left.id.localeCompare(right.id)
+    ));
+    return { source: "VALKEY", sessions };
+  }
+
+  async destroyUserSession(userId: string, sessionId: string): Promise<boolean> {
+    if (!/^[a-f0-9]{32}$/u.test(sessionId)) return false;
+    const entry = (await this.findUserSessionEntries(userId))
+      .find(({ record }) => record.sessionId === sessionId);
+    if (!entry) return false;
+    return await this.redis.del(entry.key) === 1;
+  }
+
+  async destroyOtherUserSessions(userId: string, currentSessionId: string): Promise<number> {
+    const keys = (await this.findUserSessionEntries(userId))
+      .filter(({ record }) => record.sessionId !== currentSessionId)
+      .map(({ key }) => key);
+    if (keys.length === 0) return 0;
+    return this.redis.del(...keys);
   }
 
   async createChallenge(record: ChallengeRecord): Promise<string> {
@@ -116,6 +167,87 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     const key = `auth-flow:${flowId}`;
     const serialized = await this.redis.getdel(key);
     return serialized ? JSON.parse(serialized) as ChallengeRecord : null;
+  }
+
+  private async findUserSessionEntries(userId: string): Promise<Array<{
+    key: string;
+    record: SessionRecord;
+    ttlMs: number;
+  }>> {
+    const entries: Array<{ key: string; record: SessionRecord; ttlMs: number }> = [];
+    const seenCursors = new Set<string>();
+    const seenKeys = new Set<string>();
+    let cursor = "0";
+    do {
+      const [nextCursor, keys] = await this.redis.scan(
+        cursor,
+        "MATCH",
+        "admin-session:*",
+        "COUNT",
+        100,
+      );
+      if (nextCursor !== "0" && seenCursors.has(nextCursor)) {
+        throw new InternalServerErrorException("Session store scan did not advance.");
+      }
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+      if (keys.length === 0) continue;
+      const [values, ttls] = await Promise.all([
+        this.redis.mget(...keys),
+        Promise.all(keys.map((key) => this.redis.pttl(key))),
+      ]);
+      for (const [index, serialized] of values.entries()) {
+        const key = keys[index]!;
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+        if (!serialized || (ttls[index] ?? -1) <= 0) continue;
+        const record = this.parseSession(serialized);
+        if (!record) {
+          await this.redis.del(key);
+          continue;
+        }
+        if (record.userId !== userId) continue;
+        entries.push({
+          key,
+          record,
+          ttlMs: ttls[index]!,
+        });
+      }
+    } while (cursor !== "0");
+    return entries;
+  }
+
+  private parseSession(serialized: string): SessionRecord | null {
+    try {
+      const candidate = JSON.parse(serialized) as Partial<SessionRecord>;
+      if (
+        !candidate
+        || typeof candidate.userId !== "string"
+        || typeof candidate.email !== "string"
+        || typeof candidate.displayName !== "string"
+        || !Array.isArray(candidate.permissions)
+        || candidate.permissions.some((permission) => typeof permission !== "string")
+        || typeof candidate.sessionId !== "string"
+        || !/^[a-f0-9]{32}$/u.test(candidate.sessionId)
+        || typeof candidate.csrfToken !== "string"
+        || typeof candidate.createdAt !== "number"
+        || !Number.isFinite(candidate.createdAt)
+      ) {
+        return null;
+      }
+      return {
+        ...candidate,
+        permissions: [...new Set(candidate.permissions)].sort(),
+        reauthenticatedAt: typeof candidate.reauthenticatedAt === "number"
+          ? candidate.reauthenticatedAt
+          : null,
+        lastSeenAt: typeof candidate.lastSeenAt === "number" && Number.isFinite(candidate.lastSeenAt)
+          ? candidate.lastSeenAt
+          : candidate.createdAt,
+      } as SessionRecord;
+    } catch {
+      return null;
+    }
   }
 
   private sessionKey(token: string): string {

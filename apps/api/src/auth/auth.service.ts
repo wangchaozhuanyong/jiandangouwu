@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -251,6 +252,70 @@ export class AuthService {
       permissions,
       totpEnabled: user.totpEnabled,
     };
+  }
+
+  async sessionOverview(userId: string, currentSessionId: string) {
+    return this.sessions.userSessions(userId, currentSessionId);
+  }
+
+  async revokeSession(
+    userId: string,
+    sessionId: string,
+    currentSessionId: string,
+    context: AuditContext,
+  ) {
+    if (sessionId === currentSessionId) {
+      await this.audit.record({
+        actorId: userId,
+        action: "auth.session.revoked",
+        targetType: "AdminSession",
+        targetId: sessionId,
+        result: "DENIED",
+        reason: "The current session must use sign out.",
+        ...context,
+      });
+      throw new ForbiddenException("The current session must use sign out.");
+    }
+    const revoked = await this.sessions.destroyUserSession(userId, sessionId);
+    if (!revoked) {
+      await this.audit.record({
+        actorId: userId,
+        action: "auth.session.revoked",
+        targetType: "AdminSession",
+        targetId: sessionId,
+        result: "DENIED",
+        reason: "The session was not found for the current administrator.",
+        ...context,
+      });
+      throw new NotFoundException("Administrator session was not found.");
+    }
+    await this.audit.record({
+      actorId: userId,
+      action: "auth.session.revoked",
+      targetType: "AdminSession",
+      targetId: sessionId,
+      result: "SUCCEEDED",
+      ...context,
+    });
+    return { revoked: true };
+  }
+
+  async revokeOtherSessions(
+    userId: string,
+    currentSessionId: string,
+    context: AuditContext,
+  ) {
+    const revokedCount = await this.sessions.destroyOtherUserSessions(userId, currentSessionId);
+    await this.audit.record({
+      actorId: userId,
+      action: "auth.sessions.others_revoked",
+      targetType: "AdminUser",
+      targetId: userId,
+      result: "SUCCEEDED",
+      afterData: { revokedCount },
+      ...context,
+    });
+    return { revokedCount };
   }
 
   private async issueSession(userId: string) {
