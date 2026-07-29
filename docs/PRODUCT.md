@@ -94,10 +94,11 @@ CloudBridge 是一个中英文 AI 服务商品展示与人工联系下单平台�
 - `/admin/secrets` 是无值只读就绪中心：只投影 `.env.example`、API 使用代码和 AWS CDK 中能够核对的配置名、来源、消费边界与门禁，不读取本地 `.env` 或 Secrets Manager，也不显示密钥值、后缀、版本、创建时间或轮换成功。
 - CDK 当前定义 RDS 生成凭据、Valkey、管理员会话和应用加密四个机密来源，以及只注入 API ECS 任务的六个绑定；这只属于 `DEFINED_INFRA` 代码证据。AWS 尚未部署，运行时元数据接口、自动轮换、双版本回滚、客户管理 KMS Key 和泄露处置手册尚未具备。
 - `AUTH_ENCRYPTION_KEY` 当前同时保护订单联系方式与 TOTP 密钥，数据域尚未分离；联系方式检索使用普通 SHA-256 规范化哈希，不是 HMAC。页面不得用伪造的 Stripe 密钥、后缀或轮换天数掩盖这些缺口。
-- `/admin/backups` 在 Sites 运行时读取真实 D1 备份清单，`settings.write` 可创建、重新校验和验证恢复包，`settings.read` 可查看和下载加密文件；接口不返回明文联系方式，下载响应禁止缓存。逻辑验证检查主键、表关联、配置 JSON 和订单联系方式能否用当前密钥解密。隔离演练使用一次性 RSA 公钥重新封装快照，本地只在内存 SQLite 导入、回读并执行 `foreign_key_check`，完成结果必须带限时签名证明才能写回审计。
+- `/admin/backups` 在 Sites 运行时读取真实 D1 备份清单，`settings.write` 可创建、重新校验和验证恢复包，`settings.read` 可查看和下载加密文件；接口不返回明文联系方式，下载响应禁止缓存。逻辑验证检查主键、表关联、配置 JSON 和订单联系方式能否用当前密钥解密。隔离演练工作台使用一次性 RSA 公钥重新封装快照，本地只在内存 SQLite 导入、回读并执行 `foreign_key_check`，完成结果必须带限时签名证明才能写回审计。
 - Sites 自动备份采用每日首次访问触发，同一天通过唯一调度键最多创建一次。快照在同一 D1 batch 中读取固定业务表，使用 `CLOUDBRIDGE_DATA_KEY` 的 AES-256-GCM 加密后写入 R2，并在记录为 `VERIFIED` 前完成回读、SHA-256、解密和逐表记录数校验。
 - Sites 后台的重新校验和隔离 SQLite 演练都不修改当前业务表；当前不提供生产一键恢复、自动删除备份、跨区域副本或不可变保留。正式覆盖恢复仍必须在独立 D1 中验证 schema、记录数、管理员访问和订单数据，再安排生产切换与回滚。
 - Sites 备份异常监测只在管理页读取时计算并展示，不代表外部告警已经投递。邮件、短信或 Telegram 告警尚未连接，`EXTERNAL_ALERT_DELIVERY` 门禁固定失败，因此缺少真实送达证据时页面只能显示需要复核，不能显示完全就绪。
+- 2026-07-29 的生产演练已把最新快照的 15 张表、77 条记录导入一次性内存 SQLite 并逐表回读，外键违规为 0；该证据已写回备份元数据和审计，但不扩大为独立 D1 切换或覆盖恢复成功。
 - 本地 `cloudbridge_mysql` 和 `cloudbridge_redis` 命名卷只代表同机持久化，Valkey AOF 也不是离机备份；页面必须把它们标记为 `NOT_A_BACKUP`，不能显示最近成功时间、文件大小、校验和、保留期或可恢复结论。
 - CDK 中 RDS 7 天自动备份、删除保护和 `RETAIN`，以及 Valkey 7 份快照和固定窗口只属于 `DEFINED_INFRA`；AWS 未部署时必须保持 `NOT_DEPLOYED`，RPO/RTO 与恢复完整性在真实演练前不得写成已达成。
 - `/admin/integrations` 是真实只读集成边界页：公开健康接口只证明本次 API 请求、MySQL `SELECT 1` 与 Valkey `PING` 在各自 1500ms 上限内完成；`catalog.read` 才读取币种与已保存汇率，`settings.read` 才读取 Telegram 配置，无权限时不得发起相应请求。
