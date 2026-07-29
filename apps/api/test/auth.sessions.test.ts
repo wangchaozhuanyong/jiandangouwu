@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   ForbiddenException,
   NotFoundException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { AuthService } from "../src/auth/auth.service.js";
 
@@ -31,6 +32,10 @@ function authHarness(options: {
     destroyOtherUserSessions: async (userId: string, sessionId: string) => {
       sessionCalls.push({ kind: "others", userId, sessionId });
       return options.revokedOtherCount ?? 2;
+    },
+    destroyUserAuthenticationState: async (userId: string) => {
+      sessionCalls.push({ kind: "account", userId });
+      return { revokedSessionCount: 0, revokedChallengeCount: 0 };
     },
   };
   const service = new AuthService(
@@ -103,6 +108,56 @@ test("missing or foreign sessions fail closed and are audited", async () => {
     auditEvents[0]?.reason,
     "The session was not found for the current administrator.",
   );
+});
+
+test("automatic account lock revokes every existing session and authentication flow", async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  const sessionCalls: string[] = [];
+  const auditEvents: Array<Record<string, unknown>> = [];
+  const prisma = {
+    adminUser: {
+      findUnique: async () => ({
+        id: "admin-one",
+        status: "ACTIVE",
+        lockedUntil: null,
+        passwordHash: "invalid-test-hash",
+        totpEnabled: false,
+      }),
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        updates.push(data);
+        return {
+          id: "admin-one",
+          failedLoginCount: updates.length === 1 ? 4 : 0,
+        };
+      },
+    },
+  };
+  const service = new AuthService(
+    prisma as never,
+    {} as never,
+    {
+      destroyUserAuthenticationState: async (userId: string) => {
+        sessionCalls.push(userId);
+        return { revokedSessionCount: 2, revokedChallengeCount: 1 };
+      },
+    } as never,
+    {} as never,
+    {
+      record: async (event: Record<string, unknown>) => {
+        auditEvents.push(event);
+      },
+    } as never,
+  );
+
+  await assert.rejects(
+    service.loginWithPassword("admin-one@invalid.example", "wrong-password", context),
+    UnauthorizedException,
+  );
+  assert.deepEqual(updates[0], { failedLoginCount: { increment: 1 } });
+  assert.equal(updates[1]?.status, "LOCKED");
+  assert.ok(updates[1]?.lockedUntil instanceof Date);
+  assert.deepEqual(sessionCalls, ["admin-one"]);
+  assert.equal(auditEvents[0]?.action, "auth.login.failed");
 });
 
 test("individual and bulk revocation record committed outcomes", async () => {

@@ -152,6 +152,23 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     return this.redis.del(...keys);
   }
 
+  async destroyUserAuthenticationState(userId: string): Promise<{
+    revokedSessionCount: number;
+    revokedChallengeCount: number;
+  }> {
+    const [sessionEntries, challengeKeys] = await Promise.all([
+      this.findUserSessionEntries(userId),
+      this.findUserChallengeKeys(userId),
+    ]);
+    const [revokedSessionCount, revokedChallengeCount] = await Promise.all([
+      sessionEntries.length > 0
+        ? this.redis.del(...sessionEntries.map(({ key }) => key))
+        : 0,
+      challengeKeys.length > 0 ? this.redis.del(...challengeKeys) : 0,
+    ]);
+    return { revokedSessionCount, revokedChallengeCount };
+  }
+
   async createChallenge(record: ChallengeRecord): Promise<string> {
     const flowId = randomBytes(24).toString("base64url");
     await this.redis.set(`auth-flow:${flowId}`, JSON.stringify(record), "EX", this.challengeTtlSeconds);
@@ -159,14 +176,18 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getChallenge(flowId: string): Promise<ChallengeRecord | null> {
-    const serialized = await this.redis.get(`auth-flow:${flowId}`);
-    return serialized ? JSON.parse(serialized) as ChallengeRecord : null;
+    const key = `auth-flow:${flowId}`;
+    const serialized = await this.redis.get(key);
+    if (!serialized) return null;
+    const record = this.parseChallenge(serialized);
+    if (!record) await this.redis.del(key);
+    return record;
   }
 
   async consumeChallenge(flowId: string): Promise<ChallengeRecord | null> {
     const key = `auth-flow:${flowId}`;
     const serialized = await this.redis.getdel(key);
-    return serialized ? JSON.parse(serialized) as ChallengeRecord : null;
+    return serialized ? this.parseChallenge(serialized) : null;
   }
 
   private async findUserSessionEntries(userId: string): Promise<Array<{
@@ -175,6 +196,50 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     ttlMs: number;
   }>> {
     const entries: Array<{ key: string; record: SessionRecord; ttlMs: number }> = [];
+    const keys = await this.scanKeys("admin-session:*");
+    if (keys.length === 0) return entries;
+    const [values, ttls] = await Promise.all([
+      this.redis.mget(...keys),
+      Promise.all(keys.map((key) => this.redis.pttl(key))),
+    ]);
+    for (const [index, serialized] of values.entries()) {
+      const key = keys[index]!;
+      if (!serialized || (ttls[index] ?? -1) <= 0) continue;
+      const record = this.parseSession(serialized);
+      if (!record) {
+        await this.redis.del(key);
+        continue;
+      }
+      if (record.userId !== userId) continue;
+      entries.push({
+        key,
+        record,
+        ttlMs: ttls[index]!,
+      });
+    }
+    return entries;
+  }
+
+  private async findUserChallengeKeys(userId: string): Promise<string[]> {
+    const keys = await this.scanKeys("auth-flow:*");
+    if (keys.length === 0) return [];
+    const values = await this.redis.mget(...keys);
+    const matches: string[] = [];
+    for (const [index, serialized] of values.entries()) {
+      const key = keys[index]!;
+      if (!serialized) continue;
+      const record = this.parseChallenge(serialized);
+      if (!record) {
+        await this.redis.del(key);
+        continue;
+      }
+      if (record.userId === userId) matches.push(key);
+    }
+    return matches;
+  }
+
+  private async scanKeys(pattern: string): Promise<string[]> {
+    const matches: string[] = [];
     const seenCursors = new Set<string>();
     const seenKeys = new Set<string>();
     let cursor = "0";
@@ -182,7 +247,7 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
       const [nextCursor, keys] = await this.redis.scan(
         cursor,
         "MATCH",
-        "admin-session:*",
+        pattern,
         "COUNT",
         100,
       );
@@ -191,30 +256,13 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
       }
       seenCursors.add(nextCursor);
       cursor = nextCursor;
-      if (keys.length === 0) continue;
-      const [values, ttls] = await Promise.all([
-        this.redis.mget(...keys),
-        Promise.all(keys.map((key) => this.redis.pttl(key))),
-      ]);
-      for (const [index, serialized] of values.entries()) {
-        const key = keys[index]!;
+      for (const key of keys) {
         if (seenKeys.has(key)) continue;
         seenKeys.add(key);
-        if (!serialized || (ttls[index] ?? -1) <= 0) continue;
-        const record = this.parseSession(serialized);
-        if (!record) {
-          await this.redis.del(key);
-          continue;
-        }
-        if (record.userId !== userId) continue;
-        entries.push({
-          key,
-          record,
-          ttlMs: ttls[index]!,
-        });
+        matches.push(key);
       }
     } while (cursor !== "0");
-    return entries;
+    return matches;
   }
 
   private parseSession(serialized: string): SessionRecord | null {
@@ -245,6 +293,33 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
           ? candidate.lastSeenAt
           : candidate.createdAt,
       } as SessionRecord;
+    } catch {
+      return null;
+    }
+  }
+
+  private parseChallenge(serialized: string): ChallengeRecord | null {
+    try {
+      const candidate = JSON.parse(serialized) as Partial<ChallengeRecord>;
+      if (
+        !candidate
+        || (candidate.kind !== "totp-login" && candidate.kind !== "totp-enrollment")
+        || typeof candidate.userId !== "string"
+        || candidate.userId.length === 0
+        || (
+          candidate.encryptedSecret !== undefined
+          && typeof candidate.encryptedSecret !== "string"
+        )
+      ) {
+        return null;
+      }
+      return {
+        kind: candidate.kind,
+        userId: candidate.userId,
+        ...(candidate.encryptedSecret
+          ? { encryptedSecret: candidate.encryptedSecret }
+          : {}),
+      };
     } catch {
       return null;
     }

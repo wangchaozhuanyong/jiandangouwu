@@ -31,6 +31,9 @@ export const statusLabels: Record<string, Record<Locale, string>> = {
   SUCCEEDED: { zh: "成功", en: "Succeeded" },
   FAILED: { zh: "失败", en: "Failed" },
   DENIED: { zh: "已拒绝", en: "Denied" },
+  INVITED: { zh: "待设置", en: "Pending setup" },
+  LOCKED: { zh: "已锁定", en: "Locked" },
+  DISABLED: { zh: "已停用", en: "Disabled" },
 };
 
 export function formatDate(value: string, locale: Locale): string {

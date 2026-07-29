@@ -127,10 +127,10 @@
 .status-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #8da0ac; }
 .status-pill.is-active, .status-pill.is-completed, .status-pill.is-paid, .status-pill.is-succeeded { color: #34775f; background: #eaf7f1; }
 .status-pill.is-active::before, .status-pill.is-completed::before, .status-pill.is-paid::before, .status-pill.is-succeeded::before { background: var(--green); }
-.status-pill.is-manual_pending, .status-pill.is-contacted, .status-pill.is-awaiting_payment, .status-pill.is-payment_processing, .status-pill.is-fulfilling, .status-pill.is-refund_pending { color: #8b672d; background: #faf3e5; }
-.status-pill.is-manual_pending::before, .status-pill.is-contacted::before, .status-pill.is-awaiting_payment::before, .status-pill.is-payment_processing::before, .status-pill.is-fulfilling::before, .status-pill.is-refund_pending::before { background: var(--amber); }
-.status-pill.is-failed, .status-pill.is-denied, .status-pill.is-disputed { color: #a34d57; background: #faedef; }
-.status-pill.is-failed::before, .status-pill.is-denied::before, .status-pill.is-disputed::before { background: var(--red); }
+.status-pill.is-manual_pending, .status-pill.is-contacted, .status-pill.is-awaiting_payment, .status-pill.is-payment_processing, .status-pill.is-fulfilling, .status-pill.is-refund_pending, .status-pill.is-invited { color: #8b672d; background: #faf3e5; }
+.status-pill.is-manual_pending::before, .status-pill.is-contacted::before, .status-pill.is-awaiting_payment::before, .status-pill.is-payment_processing::before, .status-pill.is-fulfilling::before, .status-pill.is-refund_pending::before, .status-pill.is-invited::before { background: var(--amber); }
+.status-pill.is-failed, .status-pill.is-denied, .status-pill.is-disputed, .status-pill.is-locked, .status-pill.is-disabled { color: #a34d57; background: #faedef; }
+.status-pill.is-failed::before, .status-pill.is-denied::before, .status-pill.is-disputed::before, .status-pill.is-locked::before, .status-pill.is-disabled::before { background: var(--red); }
 
 .category-head, .category-list article { display: grid; grid-template-columns: 62px minmax(200px,1.5fr) minmax(130px,1fr) 80px 100px 32px; align-items: center; gap: 16px; }
 .category-head { min-height: 43px; padding: 0 20px; color: #9aabb6; background: #f8fafb; font-size: 8px; text-transform: uppercase; }
@@ -463,15 +463,16 @@
 .access-boundary-note > svg { flex: none; margin-top: 1px; color: #218ba4; }
 .access-boundary-note span, .access-boundary-note strong { display: block; }
 .access-boundary-note strong { margin-bottom: 2px; color: #264b5f; }
-.access-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); margin-bottom: 13px; overflow: hidden; }
+.access-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); margin-bottom: 13px; overflow: hidden; }
 .access-summary > div { min-height: 96px; display: grid; grid-template-columns: 42px minmax(0,1fr); align-items: center; gap: 12px; padding: 17px 20px; border-right: 1px solid var(--line-soft); }
 .access-summary > div:last-child { border-right: 0; }
 .access-summary > div > span { width: 42px; height: 42px; display: grid; place-items: center; grid-row: span 2; border-radius: 12px; color: #258ba3; background: #eaf5f8; }
 .access-summary small, .access-summary strong { display: block; }
 .access-summary small { align-self: end; color: #899da9; font-size: 8px; }
 .access-summary strong { align-self: start; color: var(--ink); font-family: var(--serif); font-size: 22px; }
-.team-table .table-head, .team-table .table-row { min-width: 1040px; grid-template-columns: 140px 210px 105px 105px minmax(170px,1fr) 145px 52px; }
+.team-table .table-head, .team-table .table-row { min-width: 1320px; grid-template-columns: 140px 210px 105px 105px 90px 150px minmax(170px,1fr) 145px 104px; }
 .team-table .table-row > span, .team-table .table-row > small, .team-table .table-row > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-table .table-row > .member-action-group { display: flex; align-items: center; gap: 8px; overflow: visible; }
 .row-icon-action { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; color: #557586; background: #fff; }
 .row-icon-action:hover:not(:disabled) { border-color: #aad6df; color: #247f96; background: #f1f9fa; }
 .row-icon-action:disabled { color: #afbdc4; background: #f5f7f8; cursor: not-allowed; }
@@ -501,6 +502,23 @@
 .access-permission-panel fieldset:disabled { opacity: 1; }
 .access-permission-panel fieldset:disabled input { opacity: .55; }
 .access-permission-panel .form-error { margin-top: 2px; }
+.account-lifecycle-body { display: grid; gap: 16px; padding: 20px; }
+.account-lifecycle-body dl { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1px; margin: 0; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--line-soft); }
+.account-lifecycle-body dl > div { min-width: 0; padding: 12px 13px; background: #fff; }
+.account-lifecycle-body dt, .account-lifecycle-body dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-lifecycle-body dt { color: #8a9da8; font-size: 8px; }
+.account-lifecycle-body dd { margin-top: 5px; color: #315466; font-size: 10px; font-weight: 800; }
+.account-lifecycle-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.account-lifecycle-actions > button { min-width: 0; min-height: 74px; display: grid; grid-template-columns: 34px minmax(0,1fr); align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid #cde1e6; border-radius: 11px; text-align: left; }
+.account-lifecycle-actions > button > svg { color: #277e94; }
+.account-lifecycle-actions > button > span, .account-lifecycle-actions strong, .account-lifecycle-actions small { min-width: 0; display: block; }
+.account-lifecycle-actions strong { color: #2c5062; font-size: 9px; }
+.account-lifecycle-actions small { margin-top: 4px; color: #718c99; font-size: 8px; line-height: 1.55; }
+.account-lifecycle-actions > button.is-primary { background: #f0f8fa; }
+.account-lifecycle-actions > button.is-danger { border-color: #efd5d8; background: #fff7f7; }
+.account-lifecycle-actions > button.is-danger > svg, .account-lifecycle-actions > button.is-danger strong { color: #9d4651; }
+.account-lifecycle-actions > button:disabled { cursor: not-allowed; opacity: .55; }
+.account-lifecycle-empty { margin: 0; padding: 13px 14px; border-radius: 10px; color: #6f8793; background: #f1f5f6; font-size: 9px; line-height: 1.6; }
 .translation-truth-note { min-height: 54px; display: flex; align-items: flex-start; gap: 10px; margin-bottom: 13px; padding: 11px 14px; border: 1px solid #cde3e9; border-radius: 12px; color: #557587; background: #f2f8fa; font-size: 9px; line-height: 1.6; }
 .translation-truth-note > svg { flex: none; margin-top: 1px; color: #218ba4; }
 .translation-truth-note span, .translation-truth-note strong { display: block; }
@@ -1870,6 +1888,8 @@
   .access-summary > div { min-height: 78px; border-right: 0; border-top: 1px solid var(--line-soft); }
   .access-summary > div:first-child { border-top: 0; }
   .access-choice-grid, .access-permission-grid { grid-template-columns: 1fr; }
+  .account-lifecycle-body { padding: 12px; }
+  .account-lifecycle-body dl, .account-lifecycle-actions { grid-template-columns: 1fr; }
   .access-editor-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .access-editor-actions > button { width: 100%; }
   .after-sales-truth-note { align-items: flex-start; }

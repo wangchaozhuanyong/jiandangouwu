@@ -26,6 +26,12 @@ class FakeRedis {
     return value?.value ?? null;
   }
 
+  async getdel(key: string): Promise<string | null> {
+    const value = await this.get(key);
+    this.values.delete(key);
+    return value;
+  }
+
   async mget(...keys: string[]): Promise<Array<string | null>> {
     return Promise.all(keys.map((key) => this.get(key)));
   }
@@ -57,11 +63,15 @@ class FakeRedis {
   ): Promise<[string, string[]]> {
     assert.equal(cursor, "0");
     assert.equal(matchKeyword, "MATCH");
-    assert.equal(pattern, "admin-session:*");
+    assert.ok(
+      pattern === "admin-session:*" || pattern === "auth-flow:*",
+      `Unexpected scan pattern ${pattern}`,
+    );
     assert.equal(countKeyword, "COUNT");
     assert.equal(count, 100);
     this.scanCalls += 1;
-    return ["0", [...this.values.keys()].filter((key) => key.startsWith("admin-session:"))];
+    const prefix = pattern.slice(0, -1);
+    return ["0", [...this.values.keys()].filter((key) => key.startsWith(prefix))];
   }
 
   keyForSession(sessionId: string): string {
@@ -174,4 +184,40 @@ test("invalid stored session data fails closed and is removed", async () => {
 
   assert.equal(await service.get(issued.token), null);
   assert.equal(redis.values.has(key), false);
+});
+
+test("account lifecycle revocation removes only the target user's sessions and challenges", async () => {
+  const { service } = sessionHarness();
+  const first = await service.create(sessionInput("admin-one"));
+  const second = await service.create(sessionInput("admin-one"));
+  const foreign = await service.create(sessionInput("admin-two"));
+  const firstFlow = await service.createChallenge({
+    kind: "totp-login",
+    userId: "admin-one",
+  });
+  const secondFlow = await service.createChallenge({
+    kind: "totp-enrollment",
+    userId: "admin-one",
+    encryptedSecret: "encrypted-test-secret",
+  });
+  const foreignFlow = await service.createChallenge({
+    kind: "totp-login",
+    userId: "admin-two",
+  });
+
+  const result = await service.destroyUserAuthenticationState("admin-one");
+
+  assert.deepEqual(result, {
+    revokedSessionCount: 2,
+    revokedChallengeCount: 2,
+  });
+  assert.equal(await service.get(first.token), null);
+  assert.equal(await service.get(second.token), null);
+  assert.ok(await service.get(foreign.token));
+  assert.equal(await service.getChallenge(firstFlow), null);
+  assert.equal(await service.getChallenge(secondFlow), null);
+  assert.deepEqual(await service.getChallenge(foreignFlow), {
+    kind: "totp-login",
+    userId: "admin-two",
+  });
 });

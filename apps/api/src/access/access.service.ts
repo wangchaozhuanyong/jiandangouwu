@@ -1,5 +1,7 @@
 import type {
   AdminAccessRoleSummary,
+  AdminMemberLifecycleAction,
+  AdminMemberLifecycleResult,
   AdminRoleDetail,
   AdminRolesOverview,
   AdminTeamMember,
@@ -13,10 +15,15 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service.js";
+import { SessionService } from "../auth/session.service.js";
 import type { AdminActor } from "../common/admin-actor.js";
 import { Prisma } from "../generated/prisma/client.js";
 import { PrismaService } from "../prisma/prisma.service.js";
-import type { UpdateMemberRolesDto, UpdateRolePermissionsDto } from "./access.dto.js";
+import type {
+  UpdateMemberLifecycleDto,
+  UpdateMemberRolesDto,
+  UpdateRolePermissionsDto,
+} from "./access.dto.js";
 
 const SYSTEM_ROLE_KEY = "SUPER_ADMIN";
 const RECENT_AUTH_WINDOW_MS = 5 * 60_000;
@@ -34,7 +41,10 @@ type MemberRow = {
   email: string;
   displayName: string;
   status: "INVITED" | "ACTIVE" | "LOCKED" | "DISABLED";
+  passwordHash: string | null;
   totpEnabled: boolean;
+  failedLoginCount: number;
+  lockedUntil: Date | null;
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -59,7 +69,11 @@ const memberView = (member: MemberRow): AdminTeamMember => ({
   email: member.email,
   displayName: member.displayName,
   status: member.status,
+  authProvider: "PASSWORD",
+  passwordConfigured: Boolean(member.passwordHash),
   totpEnabled: member.totpEnabled,
+  failedLoginCount: member.failedLoginCount,
+  lockedUntil: member.lockedUntil?.toISOString() ?? null,
   lastLoginAt: member.lastLoginAt?.toISOString() ?? null,
   createdAt: member.createdAt.toISOString(),
   updatedAt: member.updatedAt.toISOString(),
@@ -79,6 +93,7 @@ export class AccessService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly sessions: SessionService,
   ) {}
 
   async members(): Promise<AdminTeamOverview> {
@@ -90,7 +105,10 @@ export class AccessService {
           email: true,
           displayName: true,
           status: true,
+          passwordHash: true,
           totpEnabled: true,
+          failedLoginCount: true,
+          lockedUntil: true,
           lastLoginAt: true,
           createdAt: true,
           updatedAt: true,
@@ -257,7 +275,10 @@ export class AccessService {
             email: true,
             displayName: true,
             status: true,
+            passwordHash: true,
             totpEnabled: true,
+            failedLoginCount: true,
+            lockedUntil: true,
             lastLoginAt: true,
             createdAt: true,
             updatedAt: true,
@@ -287,6 +308,158 @@ export class AccessService {
         && error.code === "P2034"
       ) {
         throw new ConflictException("Administrator access changed. Reload before saving.");
+      }
+      throw error;
+    }
+  }
+
+  async updateMemberLifecycle(
+    memberId: string,
+    input: UpdateMemberLifecycleDto,
+    actor: AdminActor,
+  ): Promise<AdminMemberLifecycleResult> {
+    const auditAction = lifecycleAuditAction(input.action);
+    await this.requireRecentAuthentication(
+      actor,
+      auditAction,
+      "AdminUser",
+      memberId,
+      input.reason,
+    );
+    if (memberId === actor.userId) {
+      await this.audit.record({
+        actorId: actor.userId,
+        action: auditAction,
+        targetType: "AdminUser",
+        targetId: memberId,
+        result: "DENIED",
+        requestId: actor.requestId,
+        reason: input.reason,
+        ip: actor.ip,
+      });
+      throw new ForbiddenException(
+        input.action === "RESET_TOTP"
+          ? "Use the security center to change your own two-factor authentication."
+          : "Administrators cannot change their own account lifecycle.",
+      );
+    }
+
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const current = await transaction.adminUser.findUnique({
+          where: { id: memberId },
+          include: {
+            roles: {
+              include: { role: true },
+            },
+          },
+        });
+        if (!current) throw new NotFoundException("Administrator not found.");
+
+        const update = lifecycleUpdate(input.action, current);
+        if (
+          input.action === "DISABLE"
+          && current.status === "ACTIVE"
+          && current.roles.some(({ role }) => role.key === SYSTEM_ROLE_KEY)
+        ) {
+          const activeSuperAdmins = await transaction.adminUser.count({
+            where: {
+              status: "ACTIVE",
+              roles: {
+                some: {
+                  role: { key: SYSTEM_ROLE_KEY },
+                },
+              },
+            },
+          });
+          if (activeSuperAdmins <= 1) {
+            throw new ConflictException(
+              "The last active super administrator cannot be disabled.",
+            );
+          }
+        }
+
+        const revoked = await this.sessions.destroyUserAuthenticationState(memberId);
+        const nextUpdatedAt = new Date(
+          Math.max(Date.now(), current.updatedAt.getTime() + 1),
+        );
+        const changed = await transaction.adminUser.updateMany({
+          where: {
+            id: memberId,
+            updatedAt: new Date(input.expectedUpdatedAt),
+          },
+          data: {
+            ...update.data,
+            updatedAt: nextUpdatedAt,
+          },
+        });
+        if (changed.count !== 1) {
+          throw new ConflictException(
+            "Administrator account changed. Reload before continuing.",
+          );
+        }
+        await this.audit.record({
+          actorId: actor.userId,
+          action: auditAction,
+          targetType: "AdminUser",
+          targetId: memberId,
+          result: "SUCCEEDED",
+          requestId: actor.requestId,
+          reason: input.reason,
+          beforeData: update.beforeData,
+          afterData: {
+            ...update.afterData,
+            revokedSessionCount: revoked.revokedSessionCount,
+            revokedChallengeCount: revoked.revokedChallengeCount,
+          },
+          ip: actor.ip,
+        }, transaction);
+        const committed = await transaction.adminUser.findUniqueOrThrow({
+          where: { id: memberId },
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            status: true,
+            passwordHash: true,
+            totpEnabled: true,
+            failedLoginCount: true,
+            lockedUntil: true,
+            lastLoginAt: true,
+            createdAt: true,
+            updatedAt: true,
+            roles: {
+              orderBy: { assignedAt: "asc" },
+              select: {
+                role: {
+                  select: {
+                    id: true,
+                    key: true,
+                    nameZh: true,
+                    nameEn: true,
+                    description: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+        return {
+          action: input.action,
+          member: memberView(committed),
+          ...revoked,
+        };
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError
+        && error.code === "P2034"
+      ) {
+        throw new ConflictException(
+          "Administrator account changed. Reload before continuing.",
+        );
       }
       throw error;
     }
@@ -419,4 +592,122 @@ export class AccessService {
     });
     throw new ForbiddenException("Recent reauthentication is required.");
   }
+}
+
+function lifecycleAuditAction(action: AdminMemberLifecycleAction): string {
+  return {
+    ENABLE: "team.member.enabled",
+    DISABLE: "team.member.disabled",
+    UNLOCK: "team.member.unlocked",
+    RESET_TOTP: "team.member.totp_reset",
+  }[action];
+}
+
+function lifecycleUpdate(
+  action: AdminMemberLifecycleAction,
+  current: {
+    status: "INVITED" | "ACTIVE" | "LOCKED" | "DISABLED";
+    passwordHash: string | null;
+    totpEnabled: boolean;
+    totpSecretEncrypted: string | null;
+    failedLoginCount: number;
+    lockedUntil: Date | null;
+    roles: Array<{ role: { key: string } }>;
+  },
+): {
+  data: Prisma.AdminUserUpdateManyMutationInput;
+  beforeData: Record<string, unknown>;
+  afterData: Record<string, unknown>;
+} {
+  const beforeData = {
+    status: current.status,
+    totpEnabled: current.totpEnabled,
+    failedLoginCount: current.failedLoginCount,
+    lockedUntil: current.lockedUntil?.toISOString() ?? null,
+  };
+  if (action === "ENABLE") {
+    if (current.status !== "DISABLED") {
+      throw new ConflictException("Only a disabled administrator can be enabled.");
+    }
+    if (!current.passwordHash) {
+      throw new ConflictException(
+        "This administrator has no password and cannot be enabled before invitation setup exists.",
+      );
+    }
+    if (current.roles.length === 0) {
+      throw new ConflictException(
+        "Assign at least one role before enabling this administrator.",
+      );
+    }
+    return {
+      data: {
+        status: "ACTIVE",
+        failedLoginCount: 0,
+        lockedUntil: null,
+      },
+      beforeData,
+      afterData: {
+        status: "ACTIVE",
+        totpEnabled: current.totpEnabled,
+        failedLoginCount: 0,
+        lockedUntil: null,
+      },
+    };
+  }
+  if (action === "DISABLE") {
+    if (!["ACTIVE", "LOCKED", "INVITED"].includes(current.status)) {
+      throw new ConflictException("This administrator is already disabled.");
+    }
+    return {
+      data: {
+        status: "DISABLED",
+        failedLoginCount: 0,
+        lockedUntil: null,
+      },
+      beforeData,
+      afterData: {
+        status: "DISABLED",
+        totpEnabled: current.totpEnabled,
+        failedLoginCount: 0,
+        lockedUntil: null,
+      },
+    };
+  }
+  if (action === "UNLOCK") {
+    if (current.status !== "LOCKED") {
+      throw new ConflictException("Only a locked administrator can be unlocked.");
+    }
+    return {
+      data: {
+        status: "ACTIVE",
+        failedLoginCount: 0,
+        lockedUntil: null,
+      },
+      beforeData,
+      afterData: {
+        status: "ACTIVE",
+        totpEnabled: current.totpEnabled,
+        failedLoginCount: 0,
+        lockedUntil: null,
+      },
+    };
+  }
+  if (!current.totpEnabled || !current.totpSecretEncrypted) {
+    throw new ConflictException(
+      "Two-factor authentication is not enabled for this administrator.",
+    );
+  }
+  return {
+    data: {
+      totpEnabled: false,
+      totpSecretEncrypted: null,
+    },
+    beforeData,
+    afterData: {
+      status: current.status,
+      totpEnabled: false,
+      failedLoginCount: current.failedLoginCount,
+      lockedUntil: current.lockedUntil?.toISOString() ?? null,
+    },
+  };
 }

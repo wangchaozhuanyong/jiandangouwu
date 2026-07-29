@@ -375,6 +375,7 @@ export class AuthService {
           lockedUntil: new Date(Date.now() + 15 * 60_000),
         },
       });
+      await this.sessions.destroyUserAuthenticationState(userId);
     }
     await this.audit.record({
       actorId: userId,

@@ -1521,7 +1521,11 @@ async function teamOverview(db: D1Database) {
   return {
     members: (members.results ?? []).map((member) => ({
       ...member,
-      totpEnabled: false,
+      authProvider: "SITES",
+      passwordConfigured: null,
+      totpEnabled: null,
+      failedLoginCount: null,
+      lockedUntil: null,
       roles: [superRole],
     })),
     availableRoles: [superRole],
