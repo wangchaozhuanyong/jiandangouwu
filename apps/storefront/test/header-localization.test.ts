@@ -37,6 +37,9 @@ test("the language picker exposes only the current native-language label", () =>
   assert.match(controls, /value:\s*"en",\s*label:\s*"English"/u);
   assert.match(controls, /export function LanguagePicker/u);
   assert.match(shell, /<LanguagePicker/u);
+  assert.match(shell, /window\.location\.assign\(target\)/u);
+  assert.match(shell, /searchParams\.toString\(\)/u);
+  assert.doesNotMatch(shell, /router\.replace\(/u);
   assert.doesNotMatch(shell, /className="language-switch"/u);
 });
 

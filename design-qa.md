@@ -806,11 +806,14 @@ final result: blocked
 - 全视图证据：
   - `design-qa/evidence/header-currency-localization-20260729/03-en-mobile-full-390.jpg`
   - `design-qa/evidence/header-currency-localization-20260729/08-en-desktop-header-1440.jpg`
+  - `design-qa/evidence/header-currency-localization-20260729/13-final-local-en-after-switch-390.jpg`
 - 聚焦区域证据：
   - `design-qa/evidence/header-currency-localization-20260729/02-zh-mobile-language-open-390.jpg`
   - `design-qa/evidence/header-currency-localization-20260729/04-en-mobile-currency-open-390.jpg`
   - `design-qa/evidence/header-currency-localization-20260729/05-zh-mobile-support-open-390.jpg`
   - `design-qa/evidence/header-currency-localization-20260729/10-reference-vs-implementation.jpg`
+  - `design-qa/evidence/header-currency-localization-20260729/11-live-zh-support-unavailable-390.jpg`
+  - `design-qa/evidence/header-currency-localization-20260729/12-live-zh-currency-open-390.jpg`
 - 参考与实现被放入同一张比较图。实现保留参考图的深色底、青色细描边、左侧币种符号和右侧展开箭头，同时删除可见 ISO 代码，并将单一当前语言名称提升为主标签。
 
 ### 五项视觉表面
@@ -826,9 +829,16 @@ final result: blocked
 - 1440 × 1024：客服按钮 158 × 48px，语言控件 132 × 48px，完整显示 `Customer Support` 与 `English`；币种触发器显示 `$ US Dollar`，页面无横向溢出。
 - 390 × 844：中文页头显示 `云桥`、44 × 44px 客服图标和当前语言 `中文`；语言菜单只包含 `中文 / English`。英文币种触发器和菜单只显示英文名称。
 - 320 × 844：中文与英文页头均保留完整品牌、客服入口和当前语言，不截断、不移除品牌且无横向溢出。
-- 路由与状态：`/zh?category=developer&q=Codex` 切换为英文后保留路径语义和查询参数；已选美元保持选中，并从 `$ US Dollar` 同步变为 `$ 美元`。
+- 路由与状态：`/zh?category=developer&q=Codex` 切换为英文后保留路径语义和查询参数；已选美元保持选中，中文显示 `$ 美元`，英文显示 `$ US Dollar`。
+- Sites 兼容：语言切换使用保留路径与查询参数的完整导航，币种代码由 `sessionStorage` 恢复；390px 实测从中文切换后，页头、轮播、分类和币种同时变为英文，已选美元保持为 `$ US Dollar`。
 - 键盘：语言与币种均支持方向键展开、Escape 关闭并返回触发器焦点；客服抽屉支持 Escape、滚动解锁和焦点返回。
 - 控制台：本轮浏览器会话 `error` 与 `warn` 均为 0。
+
+### 迭代记录
+
+- 首轮本地 Next.js 验收通过，但 Sites 第 9 版生产复核发现客户端语言路由只更新了页头，商品分类和币种名称仍保留旧语言。
+- 根因是 Vinext 托管运行时没有在该客户端路由切换中重新取得所有本地化数据；直接访问英文地址时数据完整。
+- 修复为保留当前路径和查询参数的完整页面导航，并复用既有会话币种存储。最终复验同时满足英文内容完整、币种保持、查询参数保持和零横向溢出。
 
 ### 自动检查
 

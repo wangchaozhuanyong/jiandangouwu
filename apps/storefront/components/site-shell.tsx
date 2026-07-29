@@ -8,7 +8,7 @@ import {
 import type { Locale } from "@cloudbridge/contracts";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { getConfig, type StorefrontConfig } from "../lib/api";
 import { copy } from "../lib/copy";
@@ -27,7 +27,6 @@ export function SiteShell({
   const t = copy[locale];
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [navigating, setNavigating] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
@@ -79,8 +78,9 @@ export function SiteShell({
     const segments = pathname.split("/");
     segments[1] = next;
     const query = searchParams.toString();
+    const target = `${segments.join("/") || `/${next}`}${query ? `?${query}` : ""}`;
     setNavigating(true);
-    router.replace(`${segments.join("/") || `/${next}`}${query ? `?${query}` : ""}`, { scroll: false });
+    window.location.assign(target);
   };
 
   return (
