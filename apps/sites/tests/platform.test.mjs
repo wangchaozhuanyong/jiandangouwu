@@ -97,6 +97,18 @@ test("Sites admin uses ChatGPT authentication and never enables customer login",
   assert.doesNotMatch(storefrontProvider, /password|signIn|loginWithPassword/u);
 });
 
+test("Sites sets the server-rendered document language from the locale route", () => {
+  const proxy = read("proxy.ts");
+  const layout = read("app/layout.tsx");
+
+  assert.match(proxy, /requestHeaders\.set\(\s*DOCUMENT_LOCALE_HEADER/u);
+  assert.match(proxy, /resolveDocumentLocale\(request\.nextUrl\.pathname\)/u);
+  assert.match(layout, /await headers\(\)/u);
+  assert.match(layout, /requestHeaders\.get\(DOCUMENT_LOCALE_HEADER\)/u);
+  assert.match(layout, /<html lang=\{documentLanguage\}>/u);
+  assert.doesNotMatch(layout, /<html lang="zh-CN">/u);
+});
+
 test("Sites runtime contains public, admin, health, D1, and R2 routes", () => {
   const router = read("server/router.ts");
   const admin = read("server/admin-api.ts");

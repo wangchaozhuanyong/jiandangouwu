@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { ExperienceProvider } from "../../storefront/components/experience-provider";
+import {
+  DOCUMENT_LOCALE_HEADER,
+  resolveDocumentLanguage,
+} from "../../storefront/lib/document-language";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,9 +18,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  const requestHeaders = await headers();
+  const documentLanguage = resolveDocumentLanguage(
+    requestHeaders.get(DOCUMENT_LOCALE_HEADER),
+  );
+
   return (
-    <html lang="zh-CN">
+    <html lang={documentLanguage}>
       <body><ExperienceProvider>{children}</ExperienceProvider></body>
     </html>
   );
