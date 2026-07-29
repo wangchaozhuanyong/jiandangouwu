@@ -2,19 +2,18 @@
 
 import {
   ArrowRight,
-  GlobeHemisphereWest,
   Headset,
   Network,
 } from "@phosphor-icons/react";
 import type { Locale } from "@cloudbridge/contracts";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { getConfig, type StorefrontConfig } from "../lib/api";
 import { copy } from "../lib/copy";
 import { UX_TIMINGS } from "../lib/experience";
-import { SupportDrawer } from "./storefront-controls";
+import { LanguagePicker, SupportDrawer } from "./storefront-controls";
 
 export function SiteShell({
   locale,
@@ -28,7 +27,6 @@ export function SiteShell({
   const t = copy[locale];
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [navigating, setNavigating] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
@@ -47,10 +45,6 @@ export function SiteShell({
     setNavigating(false);
     setShowProgress(false);
   }, [locale, pathname, searchParams]);
-
-  useEffect(() => {
-    if (!supportEnabled) setSupportOpen(false);
-  }, [supportEnabled]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -84,8 +78,9 @@ export function SiteShell({
     const segments = pathname.split("/");
     segments[1] = next;
     const query = searchParams.toString();
+    const target = `${segments.join("/") || `/${next}`}${query ? `?${query}` : ""}`;
     setNavigating(true);
-    router.replace(`${segments.join("/") || `/${next}`}${query ? `?${query}` : ""}`, { scroll: false });
+    window.location.assign(target);
   };
 
   return (
@@ -112,23 +107,20 @@ export function SiteShell({
           <Link href={`/${locale}#catalog`} onClick={() => pathname !== `/${locale}` && setNavigating(true)}>{t.navServices}</Link>
         </nav>
         <div className="header-utilities">
-          {supportEnabled && (
-            <button
-              aria-label={t.navSupport}
-              className="support-trigger"
-              onClick={() => setSupportOpen(true)}
-              type="button"
-            >
-              <Headset aria-hidden="true" size={18} />
-              <span>{t.navSupport}</span>
-            </button>
-          )}
-          <div className="language-switch" aria-label={t.languageLabel}>
-            <GlobeHemisphereWest size={16} aria-hidden="true" />
-            <button className={locale === "zh" ? "is-active" : ""} onClick={() => changeLocale("zh")}>{t.languageZh}</button>
-            <span />
-            <button className={locale === "en" ? "is-active" : ""} onClick={() => changeLocale("en")}>{t.languageEn}</button>
-          </div>
+          <button
+            aria-label={t.customerSupport}
+            className="support-trigger"
+            onClick={() => setSupportOpen(true)}
+            type="button"
+          >
+            <Headset aria-hidden="true" size={18} />
+            <span>{t.customerSupport}</span>
+          </button>
+          <LanguagePicker
+            ariaLabel={t.languageLabel}
+            onChange={changeLocale}
+            value={locale}
+          />
         </div>
       </header>
       {children}
@@ -200,14 +192,12 @@ export function SiteShell({
           <p className="footer-legal">{t.footerNote}</p>
         </footer>
       )}
-      {supportEnabled && (
-        <SupportDrawer
-          initialConfig={config}
-          locale={locale}
-          onClose={closeSupport}
-          open={supportOpen}
-        />
-      )}
+      <SupportDrawer
+        initialConfig={config}
+        locale={locale}
+        onClose={closeSupport}
+        open={supportOpen}
+      />
     </div>
   );
 }

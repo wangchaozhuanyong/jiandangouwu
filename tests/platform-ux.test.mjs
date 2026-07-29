@@ -107,7 +107,7 @@ test("遗留后台登录入口首屏直接挂载且关键控制具备 44px 点�
   assert.match(home, /onPointerDown=/u);
   assert.match(storefrontCss, /\.hero-dots button \{ width: 44px; height: 44px;/u);
   assert.match(storefrontCss, /\.hero-dots button::before/u);
-  assert.match(storefrontCss, /@media \(max-width: 390px\)[\s\S]*?\.language-switch button \{ min-width: 44px;/u);
+  assert.match(storefrontCss, /@media \(max-width: 760px\)[\s\S]*?\.language-picker \{ width: 112px; height: 44px; \}/u);
   assert.doesNotMatch(storefrontCss, /\.hero-controls/u);
   assert.match(storefrontCss, /\.footer-links > a,\s*\.footer-links > button \{[^}]*min-height:\s*44px;/u);
   assert.match(adminCss, /\.auth-links button \{ min-height: 44px;/u);
@@ -122,12 +122,21 @@ test("正式客户端恢复可访问币种菜单、客服抽屉、旧版编辑�
 
   assert.match(controls, /role="combobox"/u);
   assert.match(controls, /role="listbox"/u);
+  assert.match(controls, /export function LanguagePicker/u);
+  assert.match(controls, /<strong>\{activeCurrency\?\.name \?\? ariaLabel\}<\/strong>/u);
+  assert.match(controls, /<span><strong>\{currency\.name\}<\/strong><\/span>/u);
+  assert.doesNotMatch(controls, /<strong>\{activeCurrency\?\.code/u);
+  assert.doesNotMatch(controls, /<strong>\{currency\.code\}<\/strong>/u);
   assert.match(controls, /event\.key === "Home" \|\| event\.key === "End"/u);
   assert.match(controls, /event\.key === "Escape"/u);
   assert.match(controls, /aria-modal="true"/u);
   assert.match(controls, /document\.body\.style\.overflow = "hidden"/u);
   assert.match(controls, /returnFocusRef\.current\?\.focus\(\)/u);
-  assert.match(shell, /aria-label=\{t\.navSupport\}[\s\S]*?className="support-trigger"/u);
+  assert.match(shell, /aria-label=\{t\.customerSupport\}[\s\S]*?className="support-trigger"/u);
+  assert.doesNotMatch(shell, /\{supportEnabled && \(\s*<button[\s\S]*?className="support-trigger"/u);
+  assert.doesNotMatch(shell, /\{supportEnabled && \(\s*<SupportDrawer/u);
+  assert.match(shell, /<LanguagePicker/u);
+  assert.doesNotMatch(shell, /className="language-switch"/u);
   assert.match(shell, /<SupportDrawer[\s\S]*?initialConfig=\{config\}[\s\S]*?locale=\{locale\}/u);
   assert.match(shell, /const isProductDetail = pathname\.startsWith\(`\/\$\{locale\}\/products\/`\)/u);
   assert.match(shell, /\{!isProductDetail && \(/u);
