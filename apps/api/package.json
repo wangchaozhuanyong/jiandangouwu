@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/src/main.js",
     "typecheck": "tsc -p tsconfig.json",
-    "db:generate": "prisma generate",
+    "db:generate": "node scripts/generate.mjs",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "node scripts/migrate-deploy.mjs",
     "db:seed": "tsx prisma/seed.ts",

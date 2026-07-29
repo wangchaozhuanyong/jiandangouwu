@@ -35,6 +35,15 @@ npm audit --omit=dev
 npm run check
 ```
 
+GitHub 上的 `.github/workflows/ci.yml` 对所有指向 `main` 的 PR、`main` 推送和手动触发执行以下门禁：
+
+- 使用 Node.js 24 和锁文件执行 `npm ci`、`npm run check` 与无查找的 CDK `synth`。
+- `npm audit --omit=dev --audit-level=critical` 阻止新增 critical 运行依赖漏洞，同时在日志中持续公开现有 high 公告。
+- 分别构建 API、管理后台和客户端的生产容器镜像，防止源码构建通过但 Dockerfile 已失效。
+- GitHub 官方 Actions 固定到已核对的提交 SHA，工作流权限保持为只读。
+
+CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 AWS staging 发布门禁阻断，不能因为 CI 只对 critical 设置自动失败阈值而被视为接受风险。
+
 - `check:rules`：检查规则文件、文档链接、技术栈约束和环境变量示例。
 - `test:catalog`：检查商品搜索、分类组合、顺序和浏览器存储容错。
 - `test:i18n`：检查双语键完整性及固定文案不串用。
@@ -45,6 +54,7 @@ npm run check
 - `test:platform`：检查主平台技术栈、MySQL 约束、双语订单、认证安全边界和 AWS 高可用模板。
 - `test:api`：检查 DTO、领域服务、权限依赖、幂等、并发条件写入、事务审计和敏感字段边界。
 - `test:storefront`：检查联系渠道动作、接单可用性、订单输入边界及客户端纯逻辑。
+- `prepare:platform`：先构建共享契约并生成 Prisma Client，保证新克隆仓库没有依赖本机遗留构建产物。
 - `build`：生成遗留 Vite 与 Sites 兼容产物。
 - `test:sites`：检查静态 Worker 路由以及构建产物完整性；应在构建后运行。
 - `typecheck:platform`：检查共享契约、API、Next.js 客户端、Vite 后台和 CDK。

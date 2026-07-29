@@ -6,6 +6,7 @@ COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/contracts/package.json packages/contracts/tsconfig*.json ./packages/contracts/
 COPY packages/contracts/src ./packages/contracts/src
 COPY apps/api/package.json apps/api/tsconfig*.json apps/api/prisma.config.ts ./apps/api/
+COPY apps/api/scripts/generate.mjs ./apps/api/scripts/generate.mjs
 COPY apps/api/prisma ./apps/api/prisma
 RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit --no-fund
 COPY apps/api/src ./apps/api/src

@@ -12,6 +12,7 @@ test("主平台技术栈和 MySQL 数据约束保持一致", () => {
   const schema = read("apps/api/prisma/schema.prisma");
   const apiDockerfile = read("apps/api/Dockerfile");
   const prismaService = read("apps/api/src/prisma/prisma.service.ts");
+  const prismaGenerate = read("apps/api/scripts/generate.mjs");
 
   assert.equal(root.name, "cloudbridge-platform");
   assert.match(storefront.dependencies.next, /^16\./u);
@@ -21,6 +22,11 @@ test("主平台技术栈和 MySQL 数据约束保持一致", () => {
   assert.equal(root.dependencies.react, admin.dependencies.react);
   assert.equal(root.dependencies["react-dom"], storefront.dependencies["react-dom"]);
   assert.equal(root.dependencies["react-dom"], admin.dependencies["react-dom"]);
+  assert.match(root.scripts["prepare:platform"], /build --workspace @cloudbridge\/contracts/u);
+  assert.match(root.scripts["prepare:platform"], /db:generate --workspace @cloudbridge\/api/u);
+  assert.match(root.scripts["test:api"], /^npm run prepare:platform &&/u);
+  assert.match(root.scripts["typecheck:platform"], /^npm run prepare:platform &&/u);
+  assert.match(root.scripts["build:platform"], /^npm run prepare:platform &&/u);
   assert.match(schema, /provider\s*=\s*"mysql"/u);
   assert.match(schema, /basePrice\s+Decimal/u);
   assert.match(schema, /idempotencyKey\s+String\s+@unique/u);
@@ -29,6 +35,10 @@ test("主平台技术栈和 MySQL 数据约束保持一致", () => {
   assert.match(apiDockerfile, /ENV DATABASE_URL=mysql:\/\/cloudbridge:build-only@localhost:3306\/cloudbridge/u);
   assert.match(apiDockerfile, /ENV SHADOW_DATABASE_URL=mysql:\/\/cloudbridge:build-only@localhost:3306\/cloudbridge_shadow/u);
   assert.match(apiDockerfile, /--mount=type=cache,target=\/root\/\.npm npm ci --prefer-offline --no-audit --no-fund/u);
+  assert.match(apiDockerfile, /COPY apps\/api\/scripts\/generate\.mjs \.\/apps\/api\/scripts\/generate\.mjs/u);
+  assert.match(prismaGenerate, /process\.env\.DATABASE_URL \?\? generateDatabaseUrl/u);
+  assert.match(prismaGenerate, /process\.env\.SHADOW_DATABASE_URL \?\? generateShadowDatabaseUrl/u);
+  assert.match(prismaGenerate, /spawnSync\("npx", \["prisma", "generate"\]/u);
   assert.match(prismaService, /DB_TLS/u);
   assert.match(prismaService, /DB_ALLOW_PUBLIC_KEY_RETRIEVAL/u);
 });
@@ -108,4 +118,20 @@ test("AWS 模板固定新加坡并保留高可用与部署授权边界", () => {
   assert.match(stack, /deletionProtection:\s*true/u);
   assert.match(stack, /CfnWebACL/u);
   assert.equal(infra.scripts.deploy, undefined);
+});
+
+test("GitHub CI 固定只读权限、完整检查和三个生产镜像门禁", () => {
+  const workflow = read(".github/workflows/ci.yml");
+
+  assert.match(workflow, /permissions:\s*\n\s*contents:\s*read/u);
+  assert.match(workflow, /node-version:\s*"24"/u);
+  assert.match(workflow, /run:\s*npm ci/u);
+  assert.match(workflow, /run:\s*npm run check/u);
+  assert.match(workflow, /synth --workspace @cloudbridge\/infra -- --no-lookups/u);
+  assert.match(workflow, /npm audit --omit=dev --audit-level=critical/u);
+  assert.match(workflow, /actions\/checkout@[a-f0-9]{40}/u);
+  assert.match(workflow, /actions\/setup-node@[a-f0-9]{40}/u);
+  for (const target of ["apps/api/Dockerfile", "apps/admin/Dockerfile", "apps/storefront/Dockerfile"]) {
+    assert.match(workflow, new RegExp(target.replace("/", "\\/"), "u"));
+  }
 });
