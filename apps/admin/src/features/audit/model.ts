@@ -23,6 +23,8 @@ const actionLabels: Record<string, Record<Locale, string>> = {
   "auth.login.failed": { zh: "管理员登录失败", en: "Administrator sign-in failed" },
   "auth.login.password": { zh: "密码登录成功", en: "Password sign-in succeeded" },
   "auth.login.totp": { zh: "双重验证登录成功", en: "Two-factor sign-in succeeded" },
+  "auth.session.revoked": { zh: "后台会话已撤销", en: "Administrator session revoked" },
+  "auth.sessions.others_revoked": { zh: "其他后台会话已撤销", en: "Other administrator sessions revoked" },
   "auth.setup.complete": { zh: "首位管理员已创建", en: "First administrator created" },
   "auth.totp.disabled": { zh: "双重验证已关闭", en: "Two-factor authentication disabled" },
   "auth.totp.enabled": { zh: "双重验证已开启", en: "Two-factor authentication enabled" },

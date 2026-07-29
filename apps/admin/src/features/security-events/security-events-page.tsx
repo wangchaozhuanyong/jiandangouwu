@@ -117,8 +117,8 @@ export default function SecurityEventsPage({ locale }: { locale: Locale }) {
           <strong>{copy(locale, "真实审计安全信号", "Live audit security signals")}</strong>
           {copy(
             locale,
-            "数据来自平台数据库最近 100 条审计记录。复核优先级由固定规则派生，不代表已经接入威胁检测、SIEM、自动告警、账号锁定或会话撤销。",
-            "Data comes from the latest 100 platform-database audit records. Review priority is derived by fixed rules and does not mean threat detection, SIEM, automated alerts, account locking, or session revocation is connected.",
+            "数据来自平台数据库最近 100 条审计记录。复核优先级由固定规则派生，不代表已经接入威胁检测、SIEM、自动告警或自动账号处置；当前账号的其他会话可在安全中心手动撤销。",
+            "Data comes from the latest 100 platform-database audit records. Review priority is derived by fixed rules and does not mean threat detection, SIEM, automated alerts, or automatic account response is connected. Other sessions for the current account can be revoked manually in Security.",
           )}
         </span>
       </div>

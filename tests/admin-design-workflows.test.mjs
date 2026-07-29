@@ -8,7 +8,6 @@ const readOptional = (file) => (
 );
 
 test("正式后台的24个页面都使用真实或明确受限的专属页面", () => {
-  const workflows = read("apps/admin/src/design-workflows.tsx");
   const app = read("apps/admin/src/App.tsx");
   const dashboard = read("apps/admin/src/pages/dashboard-page.tsx");
   const orders = read("apps/admin/src/pages/orders-page.tsx");
@@ -27,6 +26,7 @@ test("正式后台的24个页面都使用真实或明确受限的专属页面", 
   const integrations = read("apps/admin/src/features/integrations/integration-readiness-page.tsx");
 
   assert.equal(existsSync(new URL("../apps/admin/src/pages/design-preview-page.tsx", import.meta.url)), false);
+  assert.equal(existsSync(new URL("../apps/admin/src/design-workflows.tsx", import.meta.url)), false);
   assert.doesNotMatch(app, /DesignPreviewPage|design-preview-page/u);
   assert.match(app, /<AccountCenterDialog/u);
   assert.match(app, /ChatGPT 管理登录/u);
@@ -57,7 +57,7 @@ test("正式后台的24个页面都使用真实或明确受限的专属页面", 
   assert.doesNotMatch(categories, /DesignWorkflowDialog|id="categories"|影响与排序设计|Impact and ordering design/u);
   assert.match(currencies, /getCurrencyRateHistory/u);
   assert.doesNotMatch(currencies, /DesignWorkflowDialog|id="currencies"/u);
-  assert.match(security, /id="security"/u);
+  assert.match(security, /<SessionWorkbench locale=\{locale\}/u);
   assert.match(audit, /getAuditPage/u);
   assert.doesNotMatch(audit, /DesignWorkflowDialog|design-preview-note|id="logs"/u);
   assert.match(app, /page === "banners"[\s\S]*?<BannersPage/u);
@@ -83,13 +83,6 @@ test("正式后台的24个页面都使用真实或明确受限的专属页面", 
   assert.match(secrets, /buildSecretReadiness/u);
   assert.match(backups, /buildBackupReadiness/u);
   assert.match(integrations, /buildIntegrationReadiness/u);
-  for (const stalePage of ["disputes", "payments", "reconciliation", "telegram-bot", "security-events", "media", "notifications", "data-security", "secrets", "backups", "integrations", "logs", "order-workbench", "dashboard-insights", "categories"]) {
-    assert.doesNotMatch(
-      workflows,
-      new RegExp(`(?:^|\\n)\\s*(?:["']${stalePage}["']|${stalePage}):\\s*workflow\\(`, "u"),
-      `${stalePage} should not keep an unreachable preview workflow`,
-    );
-  }
 });
 
 test("审计日志页面使用服务端筛选与完整历史分页并只展示安全白名单字段", () => {
@@ -132,7 +125,6 @@ test("集成就绪中心只读取真实证据并删除旧健康与任务幻象",
   const api = read("apps/admin/src/api.ts");
   const page = read("apps/admin/src/features/integrations/integration-readiness-page.tsx");
   const model = read("apps/admin/src/features/integrations/model.ts");
-  const workflows = read("apps/admin/src/design-workflows.tsx");
   const css = read("apps/admin/src/styles.css");
   const health = read("apps/api/src/health/health.controller.ts");
   const healthContract = read("packages/contracts/src/health.ts");
@@ -179,8 +171,7 @@ test("集成就绪中心只读取真实证据并删除旧健康与任务幻象",
   assert.match(session, /new Redis\(redisUrl/u);
   assert.match(infra, /engine:\s*"valkey"/u);
   assert.match(infra, /new s3\.Bucket\(this, "AccessLogsBucket"/u);
-  assert.doesNotMatch(`${page}\n${model}\n${workflows}`, /99\.99%|TRACE-CB-JOB|2 个通知等待重试|每 30 分钟同步|3 项正常|每日数据备份/u);
-  assert.doesNotMatch(workflows, /integrations:\s*workflow/u);
+  assert.doesNotMatch(`${page}\n${model}`, /99\.99%|TRACE-CB-JOB|2 个通知等待重试|每 30 分钟同步|3 项正常|每日数据备份/u);
   assert.equal(existsSync(new URL("../apps/admin/src/pages/design-preview-page.tsx", import.meta.url)), false);
   assert.match(css, /\.integration-readiness-table\s*\{[^}]*min-width:\s*1420px;/u);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.integration-readiness-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
@@ -195,7 +186,6 @@ test("备份就绪页只投影仓库定义并明确关闭恢复门禁", () => {
   const page = read("apps/admin/src/features/backups/backup-readiness-page.tsx");
   const model = read("apps/admin/src/features/backups/model.ts");
   const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
-  const workflows = read("apps/admin/src/design-workflows.tsx");
   const css = read("apps/admin/src/styles.css");
   const compose = read("compose.yaml");
   const infra = read("infra/lib/cloudbridge-stack.ts");
@@ -224,7 +214,6 @@ test("备份就绪页只投影仓库定义并明确关闭恢复门禁", () => {
 
   assert.doesNotMatch(`${page}\n${model}`, /BKP-|1\.8[149] GB|04:00|30 days|21m 48s|完整备份成功|备份存储正常|全部通过/u);
   assert.doesNotMatch(preview, /page === "backups"|function BackupsDesign|BKP-/u);
-  assert.doesNotMatch(workflows, /["']?backups["']?\s*:\s*workflow|BKP-/u);
   assert.match(css, /\.backup-readiness-table\s*\{[^}]*min-width:\s*1500px;/u);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.backup-readiness-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
 });
@@ -234,7 +223,6 @@ test("机密配置页只投影仓库定义并关闭未具备证据的上线门�
   const page = read("apps/admin/src/features/secrets/secrets-readiness-page.tsx");
   const model = read("apps/admin/src/features/secrets/model.ts");
   const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
-  const workflows = read("apps/admin/src/design-workflows.tsx");
   const css = read("apps/admin/src/styles.css");
   const infra = read("infra/lib/cloudbridge-stack.ts");
 
@@ -258,7 +246,6 @@ test("机密配置页只投影仓库定义并关闭未具备证据的上线门�
   }
   assert.doesNotMatch(`${page}\n${model}`, /••••|14 天|32 天|71 天|rotateSecret|createSecret/u);
   assert.doesNotMatch(preview, /page === "secrets"|function SecretsDesign/u);
-  assert.doesNotMatch(workflows, /["']?secrets["']?\s*:\s*workflow/u);
   assert.match(css, /\.secrets-readiness-table\s*\{[^}]*min-width:\s*1340px;/u);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.secrets-readiness-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
 });
@@ -269,7 +256,6 @@ test("数据安全中心只读取当前会话与安全审计并明确治理缺�
   const model = read("apps/admin/src/features/data-security/model.ts");
   const api = read("apps/admin/src/api.ts");
   const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
-  const workflows = read("apps/admin/src/design-workflows.tsx");
   const css = read("apps/admin/src/styles.css");
 
   assert.match(app, /lazy\(\(\) => import\("\.\/features\/data-security\/data-security-page"\)\)/u);
@@ -291,7 +277,6 @@ test("数据安全中心只读取当前会话与安全审计并明确治理缺�
   assert.match(model, /visibleAuditEvents = canReadAudit \? auditEvents : null/u);
   assert.doesNotMatch(page, /30 天|365 天|90 天|设备数据|运行日志|不可篡改|执行策略检查/u);
   assert.doesNotMatch(preview, /page === "data-security"|function DataSecurityDesign/u);
-  assert.doesNotMatch(workflows, /["']?data-security["']?\s*:\s*workflow/u);
   assert.match(css, /\.data-security-audit-table\s*\{[^}]*min-width:\s*1320px;/u);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.data-security-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
 });
@@ -302,7 +287,6 @@ test("对账中心只读取内部人工状态并明确外部证据未采集", ()
   const model = read("apps/admin/src/features/finance/reconciliation-model.ts");
   const api = read("apps/admin/src/features/finance/api.ts");
   const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
-  const workflows = read("apps/admin/src/design-workflows.tsx");
   const css = read("apps/admin/src/styles.css");
 
   assert.match(app, /lazy\(\(\) => import\("\.\/features\/finance\/reconciliation-page"\)\)/u);
@@ -324,7 +308,6 @@ test("对账中心只读取内部人工状态并明确外部证据未采集", ()
   assert.doesNotMatch(model, /totalAmount|settledAmount|variance/u);
 
   assert.doesNotMatch(preview, /page === "reconciliation"|function ReconciliationDesign|Stripe/u);
-  assert.doesNotMatch(workflows, /reconciliation:\s*workflow/u);
   assert.match(css, /\.reconciliation-record-table\s*\{[^}]*min-width:\s*1120px;/u);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.reconciliation-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
 });
@@ -334,7 +317,6 @@ test("通知中心只读取真实未连接状态且不伪造投递记录", () =>
   const page = read("apps/admin/src/features/notifications/notifications-page.tsx");
   const model = read("apps/admin/src/features/notifications/model.ts");
   const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
-  const workflows = read("apps/admin/src/design-workflows.tsx");
   const css = read("apps/admin/src/styles.css");
 
   assert.match(app, /lazy\(\(\) => import\("\.\/features\/notifications\/notifications-page"\)\)/u);
@@ -351,7 +333,6 @@ test("通知中心只读取真实未连接状态且不伪造投递记录", () =>
   assert.match(model, /RETRY_QUEUE/u);
   assert.match(model, /state:\s*"NOT_IMPLEMENTED"/u);
   assert.doesNotMatch(preview, /page === "notifications"|function NotificationsDesign|TRACE-CB-NTF/u);
-  assert.doesNotMatch(workflows, /notifications:\s*workflow/u);
   assert.match(css, /\.notification-toolbar button\s*\{[^}]*white-space:\s*nowrap;/u);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.notification-toolbar\s*\{\s*grid-template-columns:\s*1fr;/u);
 });
@@ -365,7 +346,6 @@ test("媒体页在 Sites 运行时管理真实 R2 对象并保持引用与删除
   const sitesAdmin = read("apps/sites/server/admin-api.ts");
   const router = read("apps/sites/server/router.ts");
   const preview = readOptional("apps/admin/src/pages/design-preview-page.tsx");
-  const workflows = read("apps/admin/src/design-workflows.tsx");
   const css = read("apps/admin/src/styles.css");
 
   assert.match(app, /lazy\(\(\) => import\("\.\/features\/media\/media-page"\)\)/u);
@@ -395,7 +375,6 @@ test("媒体页在 Sites 运行时管理真实 R2 对象并保持引用与删除
   assert.match(model, /referencesByPath/u);
   assert.match(model, /mergeMediaInventory/u);
   assert.doesNotMatch(preview, /page === "media"|function MediaDesign|mediaAssets/u);
-  assert.doesNotMatch(workflows, /media:\s*workflow/u);
   assert.match(css, /\.media-detail-button\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
   assert.match(css, /\.media-kind-filter button\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/u);
   assert.match(css, /\.media-reference-scroll\s*\{[^}]*overflow-x:\s*auto;/u);
@@ -413,7 +392,7 @@ test("安全事件页面只投影真实审计信号且不伪造威胁检测结�
   assert.match(app, /page === "security-events"[\s\S]*?<SecurityEventsPage/u);
   assert.match(page, /useCachedAdminResource<AuditEvent\[\]>\("audit"/u);
   assert.match(page, /最近 100 条审计记录/u);
-  assert.match(page, /不代表已经接入威胁检测、SIEM、自动告警、账号锁定或会话撤销/u);
+  assert.match(page, /当前账号的其他会话可在安全中心手动撤销/u);
   assert.doesNotMatch(page, /安全评分|实时风险事件|已阻止行为/u);
   assert.match(model, /event\.result !== "DENIED"/u);
   assert.match(model, /securityActionProfiles/u);
@@ -424,36 +403,32 @@ test("安全事件页面只投影真实审计信号且不伪造威胁检测结�
   assert.match(css, /\.security-event-detail-button\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
 });
 
-test("设计工作流覆盖主流程与恢复状态且不产生服务器写入", () => {
-  const workflows = read("apps/admin/src/design-workflows.tsx");
-
-  for (const state of [
-    "ready",
-    "initial-loading",
-    "empty",
-    "offline",
-    "error",
-    "forbidden",
-    "conflict",
-  ]) {
-    assert.match(workflows, new RegExp(`"${state}"`, "u"), `${state} should be previewable`);
-  }
-
-  assert.match(workflows, /aria-current=\{step === index \? "step"/u);
-  assert.match(workflows, /服务器数据保持不变/u);
-  assert.match(workflows, /没有执行保存、发送或其他服务器操作/u);
-  assert.match(workflows, /event\.key === "Escape"|<Dialog/u);
-  assert.doesNotMatch(workflows, /\bfetch\(|createProduct\(|updateOrderStatus\(|updateRate\(/u);
-});
-
-test("完整流程设计保持移动端和44px操作目标", () => {
+test("安全中心使用真实 Valkey 会话并保持 Sites 身份边界", () => {
+  const page = read("apps/admin/src/pages/security-page.tsx");
+  const api = read("apps/admin/src/api.ts");
+  const controller = read("apps/api/src/auth/auth.controller.ts");
+  const auth = read("apps/api/src/auth/auth.service.ts");
+  const sessions = read("apps/api/src/auth/session.service.ts");
   const css = read("apps/admin/src/styles.css");
 
-  assert.match(css, /\.design-flow-statebar button\s*\{[^}]*min-height:\s*40px;/u);
-  assert.match(css, /\.design-flow-actions > button\s*\{[^}]*min-height:\s*44px;/u);
-  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.design-flow-layout\s*\{\s*grid-template-columns:\s*1fr;/u);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.design-flow-steps\s*\{\s*grid-template-columns:\s*1fr;/u);
-  assert.match(css, /\.row-actions\s*\{[^}]*display:\s*flex;/u);
+  assert.match(page, /getAdminSessions/u);
+  assert.match(page, /revokeAdminSession/u);
+  assert.match(page, /revokeOtherAdminSessions/u);
+  assert.match(page, /仅列出当前账号的服务端会话，不采集设备名称、IP 地址或浏览器指纹/u);
+  assert.match(page, /密码与双重验证由 ChatGPT 管理/u);
+  assert.doesNotMatch(page, /DesignWorkflowDialog|界面设计预览|Interface design preview/u);
+  assert.match(api, /\/admin\/auth\/sessions/u);
+  assert.match(controller, /@Get\("sessions"\)/u);
+  assert.match(controller, /@Delete\("sessions\/:sessionId"\)/u);
+  assert.match(controller, /@Post\("sessions\/revoke-others"\)/u);
+  assert.match(auth, /The current session must use sign out/u);
+  assert.match(auth, /auth\.session\.revoked/u);
+  assert.match(auth, /auth\.sessions\.others_revoked/u);
+  assert.match(sessions, /\.scan\([\s\S]*?"admin-session:\*"/u);
+  assert.doesNotMatch(sessions, /\.keys\(/u);
+  assert.match(css, /\.security-session-table\s*\{[^}]*min-width:\s*980px;/u);
+  assert.match(css, /\.security-session-table-wrap\s*\{[^}]*overflow-x:\s*auto;/u);
+  assert.match(css, /\.security-session-table \.admin-danger\s*\{[^}]*min-height:\s*44px;/u);
 });
 
 test("真实订单中心使用模块化列表、详情、权限和敏感信息边界", () => {

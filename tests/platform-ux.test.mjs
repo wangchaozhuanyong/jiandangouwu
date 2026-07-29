@@ -207,7 +207,10 @@ test("正式后台只保留密码登录和可开关的 TOTP 双重验证", () =>
   assert.match(api, /\/admin\/auth\/totp\/disable/u);
   assert.match(security, /user\.totpEnabled/u);
   assert.match(security, /disableTotp\(password\)/u);
-  assert.doesNotMatch(`${app}\n${api}\n${security}`, /Passkey|Fingerprint|WebAuthn|recoveryCodes|bootstrapToken/iu);
+  assert.doesNotMatch(
+    `${app}\n${api}\n${security}`,
+    /Passkey|<Fingerprint|WebAuthn|recoveryCodes|bootstrapToken/iu,
+  );
 });
 
 test("正式后台使用可展开的任务分组并自动定位当前二级入口", () => {

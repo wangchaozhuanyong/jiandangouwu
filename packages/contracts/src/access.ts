@@ -26,6 +26,19 @@ export type AdminTeamOverview = {
   availableRoles: AdminAccessRoleSummary[];
 };
 
+export type AdminSessionSummary = {
+  id: string;
+  current: boolean;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+};
+
+export type AdminSessionOverview = {
+  source: "VALKEY";
+  sessions: AdminSessionSummary[];
+};
+
 export type AdminPermissionSummary = {
   key: string;
   description: string | null;

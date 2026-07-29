@@ -1,21 +1,36 @@
 import {
-  Eye,
+  ArrowsClockwise,
+  Browsers,
   Key,
   LockKey,
   ShieldCheck,
+  SignOut,
   WarningCircle,
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   beginTotpEnrollment,
   disableTotp,
+  getAdminSessions,
+  revokeAdminSession,
+  revokeOtherAdminSessions,
   verifyTotpEnrollment,
+  type AdminSessionOverview,
   type AdminUser,
   type Locale,
 } from "../api";
-import { invalidateAdminCache, useAdminStatus } from "../admin-experience";
-import { DesignWorkflowDialog } from "../design-workflows";
-import { StatusPill } from "../admin-ui";
+import {
+  invalidateAdminCache,
+  useAdminStatus,
+  useCachedAdminResource,
+  useSlowAdminRequest,
+} from "../admin-experience";
+import {
+  formatDate,
+  PanelState,
+  RefreshNotice,
+  StatusPill,
+} from "../admin-ui";
 import { adminCopy } from "../i18n";
 
 export default function SecurityPage({
@@ -68,7 +83,7 @@ function SitesSecurityPage({
             : "The storefront has no customer account or sign-in. Authentication here only protects catalog, order, settings, and audit data."}
         </p>
       </section>
-      <section className="admin-panel security-design-entry">
+      <section className="admin-panel security-provider-boundary">
         <span><Key size={25} /></span>
         <div>
           <small>{locale === "zh" ? "真实安全边界" : "LIVE SECURITY BOUNDARY"}</small>
@@ -100,7 +115,6 @@ function PasswordSecurityPage({
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [sessionsOpen, setSessionsOpen] = useState(false);
 
   const begin = async () => {
     if (busy) return;
@@ -208,18 +222,222 @@ function PasswordSecurityPage({
 
         {error && <p className="form-error" role="alert"><WarningCircle />{error}</p>}
       </section>
-      <section className="admin-panel security-design-entry">
-        <span><Eye size={25} /></span>
-        <div>
-          <small>{locale === "zh" ? "界面设计预览" : "INTERFACE DESIGN PREVIEW"}</small>
-          <h2>{locale === "zh" ? "密码、锁定与活动会话" : "Password, lockout, and active sessions"}</h2>
-          <p>{locale === "zh" ? "补齐 TOTP 之外的账户安全管理，但不增加新的登录方式。" : "Complete account-security management around TOTP without adding sign-in methods."}</p>
-        </div>
-        <button className="admin-primary" onClick={() => setSessionsOpen(true)}>
-          <Eye />{locale === "zh" ? "打开安全流程" : "Open security flow"}
-        </button>
-      </section>
-      {sessionsOpen && <DesignWorkflowDialog id="security" locale={locale} onClose={() => setSessionsOpen(false)} />}
+      <SessionWorkbench locale={locale} />
     </div>
+  );
+}
+
+function SessionWorkbench({ locale }: { locale: Locale }) {
+  const { notify } = useAdminStatus();
+  const loader = useCallback((signal: AbortSignal) => getAdminSessions(signal), []);
+  const {
+    data,
+    state,
+    reload,
+    commit,
+  } = useCachedAdminResource<AdminSessionOverview>("security-sessions", loader);
+  const slow = useSlowAdminRequest(state);
+  const [revoking, setRevoking] = useState("");
+  const [error, setError] = useState("");
+  const otherSessionCount = data?.sessions.filter((session) => !session.current).length ?? 0;
+
+  const revokeOne = async (sessionId: string) => {
+    if (!data || revoking) return;
+    if (!window.confirm(
+      locale === "zh"
+        ? "撤销后，该浏览器中的后台登录会立即失效。确定继续吗？"
+        : "Revoking this session immediately signs that browser out. Continue?",
+    )) return;
+    setRevoking(sessionId);
+    setError("");
+    try {
+      await revokeAdminSession(sessionId);
+      commit({
+        ...data,
+        sessions: data.sessions.filter((session) => session.id !== sessionId),
+      });
+      invalidateAdminCache("audit");
+      notify(locale === "zh" ? "会话已撤销。" : "Session revoked.");
+    } catch {
+      const message = locale === "zh"
+        ? "会话撤销失败，真实服务器状态没有改变。"
+        : "Session revocation failed. Server state was not changed.";
+      setError(message);
+      notify(message, "error");
+    } finally {
+      setRevoking("");
+    }
+  };
+
+  const revokeOthers = async () => {
+    if (!data || revoking || otherSessionCount === 0) return;
+    if (!window.confirm(
+      locale === "zh"
+        ? `将撤销另外 ${otherSessionCount} 个后台会话，并保留当前会话。确定继续吗？`
+        : `Revoke ${otherSessionCount} other admin session(s) and keep this session?`,
+    )) return;
+    setRevoking("others");
+    setError("");
+    try {
+      const result = await revokeOtherAdminSessions();
+      commit({
+        ...data,
+        sessions: data.sessions.filter((session) => session.current),
+      });
+      invalidateAdminCache("audit");
+      notify(
+        locale === "zh"
+          ? `已撤销 ${result.revokedCount} 个其他会话。`
+          : `${result.revokedCount} other session(s) revoked.`,
+      );
+    } catch {
+      const message = locale === "zh"
+        ? "其他会话撤销失败，真实服务器状态没有改变。"
+        : "Other-session revocation failed. Server state was not changed.";
+      setError(message);
+      notify(message, "error");
+    } finally {
+      setRevoking("");
+    }
+  };
+
+  return (
+    <section className="admin-panel security-sessions-panel">
+      <div className="panel-heading">
+        <div>
+          <small>{locale === "zh" ? "VALKEY 实时会话" : "LIVE VALKEY SESSIONS"}</small>
+          <h2>{locale === "zh" ? "活动后台会话" : "Active administrator sessions"}</h2>
+          <p>
+            {locale === "zh"
+              ? "仅列出当前账号的服务端会话，不采集设备名称、IP 地址或浏览器指纹。"
+              : "Only server sessions for this account are listed. Device names, IP addresses, and browser fingerprints are not collected."}
+          </p>
+        </div>
+        <div className="security-session-heading-actions">
+          <button
+            className="admin-secondary"
+            disabled={state === "refreshing" || Boolean(revoking)}
+            onClick={() => void reload()}
+            type="button"
+          >
+            <ArrowsClockwise
+              aria-hidden="true"
+              className={state === "refreshing" ? "spin" : ""}
+              size={17}
+            />
+            {locale === "zh" ? "刷新" : "Refresh"}
+          </button>
+          <button
+            className="admin-danger"
+            disabled={otherSessionCount === 0 || Boolean(revoking)}
+            onClick={() => void revokeOthers()}
+            type="button"
+          >
+            <SignOut aria-hidden="true" size={17} />
+            {revoking === "others"
+              ? locale === "zh" ? "正在撤销" : "Revoking"
+              : locale === "zh" ? "撤销其他会话" : "Revoke other sessions"}
+          </button>
+        </div>
+      </div>
+      <RefreshNotice
+        state={state}
+        locale={locale}
+        retry={() => void reload()}
+        slow={slow}
+      />
+      <p className="security-session-note">
+        <Browsers aria-hidden="true" size={18} />
+        <span>
+          {locale === "zh"
+            ? "会话采用 8 小时滑动过期。当前会话只能通过右下角“退出登录”结束，防止在此误撤销自己。"
+            : "Sessions use an eight-hour sliding expiry. End the current session with Sign out in the sidebar to prevent accidental self-revocation here."}
+        </span>
+      </p>
+      {!data ? (
+        <PanelState
+          state={state}
+          locale={locale}
+          retry={() => void reload()}
+          kind="table"
+        />
+      ) : (
+        <>
+          <div className="security-session-summary">
+            <article>
+              <small>{locale === "zh" ? "全部会话" : "All sessions"}</small>
+              <strong>{data.sessions.length}</strong>
+            </article>
+            <article>
+              <small>{locale === "zh" ? "当前会话" : "Current session"}</small>
+              <strong>{data.sessions.filter((session) => session.current).length}</strong>
+            </article>
+            <article>
+              <small>{locale === "zh" ? "其他会话" : "Other sessions"}</small>
+              <strong>{otherSessionCount}</strong>
+            </article>
+          </div>
+          <div
+            aria-label={locale === "zh" ? "活动会话表，可横向滚动" : "Active sessions table, horizontally scrollable"}
+            className="security-session-table-wrap"
+            tabIndex={0}
+          >
+            <table className="security-session-table">
+              <thead>
+                <tr>
+                  <th scope="col">{locale === "zh" ? "会话" : "Session"}</th>
+                  <th scope="col">{locale === "zh" ? "创建时间" : "Created"}</th>
+                  <th scope="col">{locale === "zh" ? "最近活动" : "Last active"}</th>
+                  <th scope="col">{locale === "zh" ? "预计过期" : "Expected expiry"}</th>
+                  <th scope="col">{locale === "zh" ? "操作" : "Action"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.sessions.map((session) => (
+                  <tr key={session.id}>
+                    <td>
+                      <span className={`security-session-state ${session.current ? "is-current" : ""}`}>
+                        {session.current
+                          ? locale === "zh" ? "当前" : "Current"
+                          : locale === "zh" ? "其他" : "Other"}
+                      </span>
+                      <code title={session.id}>{session.id.slice(0, 8)}</code>
+                    </td>
+                    <td><time dateTime={session.createdAt}>{formatDate(session.createdAt, locale)}</time></td>
+                    <td><time dateTime={session.lastSeenAt}>{formatDate(session.lastSeenAt, locale)}</time></td>
+                    <td><time dateTime={session.expiresAt}>{formatDate(session.expiresAt, locale)}</time></td>
+                    <td>
+                      {session.current ? (
+                        <span className="security-session-current-label">
+                          {locale === "zh" ? "请使用退出登录" : "Use Sign out"}
+                        </span>
+                      ) : (
+                        <button
+                          className="admin-danger"
+                          disabled={Boolean(revoking)}
+                          onClick={() => void revokeOne(session.id)}
+                          type="button"
+                        >
+                          <SignOut aria-hidden="true" size={16} />
+                          {revoking === session.id
+                            ? locale === "zh" ? "正在撤销" : "Revoking"
+                            : locale === "zh" ? "撤销" : "Revoke"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {data.sessions.length === 0 && (
+              <div className="table-empty" role="status">
+                {locale === "zh" ? "没有可读取的活动会话。" : "No active sessions could be read."}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+      {error && <p className="form-error security-session-error" role="alert"><WarningCircle />{error}</p>}
+    </section>
   );
 }

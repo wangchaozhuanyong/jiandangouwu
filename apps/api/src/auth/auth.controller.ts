@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Req,
+  Res,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { Request, Response } from "express";
 import { PublicAdmin } from "./auth.decorators.js";
@@ -74,6 +84,36 @@ export class AuthController {
       user,
       csrfToken: request.adminSession!.csrfToken,
     };
+  }
+
+  @Get("sessions")
+  sessionOverview(@Req() request: Request) {
+    return this.auth.sessionOverview(
+      request.adminSession!.userId,
+      request.adminSession!.sessionId,
+    );
+  }
+
+  @Delete("sessions/:sessionId")
+  revokeSession(
+    @Param("sessionId") sessionId: string,
+    @Req() request: Request,
+  ) {
+    return this.auth.revokeSession(
+      request.adminSession!.userId,
+      sessionId,
+      request.adminSession!.sessionId,
+      this.context(request),
+    );
+  }
+
+  @Post("sessions/revoke-others")
+  revokeOtherSessions(@Req() request: Request) {
+    return this.auth.revokeOtherSessions(
+      request.adminSession!.userId,
+      request.adminSession!.sessionId,
+      this.context(request),
+    );
   }
 
   @Post("totp/enrollment")
