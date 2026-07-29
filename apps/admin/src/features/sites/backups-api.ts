@@ -17,13 +17,19 @@ export type SitesBackupSnapshot = {
   downloadable: boolean;
   restoreValidationStatus: "NOT_RUN" | "PASSED" | "FAILED";
   restoreValidation: {
-    kind: "LOGICAL_PACKAGE";
+    kind: "LOGICAL_PACKAGE" | "ISOLATED_SQLITE";
     tableCount: number;
     recordCount: number;
     relationshipChecks: number;
     encryptedContactChecks: number;
     jsonDocumentChecks: number;
     activeAdministratorCount: number;
+    drillId?: string;
+    target?: "NODE_SQLITE_MEMORY";
+    payloadSha256?: string;
+    readbackRecordCount?: number;
+    foreignKeyViolationCount?: number;
+    completedAt?: string;
   } | null;
   restoreValidatedAt: string | null;
   restoreValidatedByEmail: string | null;
@@ -44,11 +50,16 @@ export type SitesBackupReadiness = {
       | "RECENT_VERIFIED_BACKUP"
       | "TODAY_AUTOMATIC_BACKUP"
       | "NO_RECENT_BACKUP_FAILURE"
-      | "RECENT_LOGICAL_RESTORE_VALIDATION";
+      | "RECENT_ISOLATED_RESTORE_DRILL"
+      | "EXTERNAL_ALERT_DELIVERY";
     state: "PASS" | "FAIL";
     checkedAt: string | null;
   }>;
-  externalAlerting: "NOT_CONNECTED";
+  externalAlerting: {
+    state: "NOT_CONNECTED";
+    configuredChannels: number;
+    lastDeliveryVerifiedAt: string | null;
+  };
 };
 
 export type SitesBackupsResponse = {

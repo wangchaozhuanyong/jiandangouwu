@@ -224,8 +224,8 @@ export default function SitesBackupsPage({
                 <strong>{copy(locale, "恢复边界", "Restore boundary")}</strong>
                 {copy(
                   locale,
-                  "“验证恢复包”会检查主键、表关联、配置 JSON 与加密联系方式能否读取，但不会写入或覆盖当前 D1。它不是隔离数据库恢复演练；正式恢复仍须先在独立 D1 完整导入，再验证管理员访问和订单数据后安排切换。",
-                  "\"Validate restore package\" checks primary keys, table relations, configuration JSON, and encrypted-contact readability without writing to the current D1 database. It is not an isolated-database restore drill; a real recovery must still import into a separate D1 database and validate administrator access and orders before cutover.",
+                  "“验证恢复包”只执行逻辑检查。隔离恢复运行器会把加密转移包恢复到一次性内存 SQLite，核对全部表、记录数和外键后回传签名证明，全程不会写入当前 D1。该演练仍不等于独立 D1 的切换演练；正式覆盖恢复前还要在另一套 D1 完成导入、管理员访问和订单核验。",
+                  "\"Validate restore package\" performs logical checks only. The isolated recovery runner restores an encrypted transfer into a one-time in-memory SQLite database, verifies every table, record count, and foreign key, then returns signed evidence without writing to the current D1 database. This still does not replace a separate-D1 cutover rehearsal, which remains required before an in-place production recovery.",
                 )}
               </span>
             </div>
@@ -315,7 +315,8 @@ function BackupReadiness({
     RECENT_VERIFIED_BACKUP: copy(locale, "26 小时内有已验证备份", "Verified backup within 26 hours"),
     TODAY_AUTOMATIC_BACKUP: copy(locale, "今天的自动备份已完成", "Today's automatic backup completed"),
     NO_RECENT_BACKUP_FAILURE: copy(locale, "七天内无失败或卡住记录", "No failed or stuck backup in seven days"),
-    RECENT_LOGICAL_RESTORE_VALIDATION: copy(locale, "七天内完成恢复包逻辑验证", "Restore package logically validated within seven days"),
+    RECENT_ISOLATED_RESTORE_DRILL: copy(locale, "30 天内完成隔离 SQLite 恢复演练", "Isolated SQLite restore drill completed within 30 days"),
+    EXTERNAL_ALERT_DELIVERY: copy(locale, "外部备份异常告警已验证送达", "External backup alert delivery verified"),
   };
   return (
     <section className={`sites-backup-readiness is-${readiness.state.toLocaleLowerCase()}`}>
@@ -327,8 +328,8 @@ function BackupReadiness({
           <p>
             {copy(
               locale,
-              "每次打开本页都会核对最近备份、今日自动备份、失败/卡住记录与恢复包验证。外部邮件、短信或 Telegram 告警尚未连接。",
-              "Opening this page checks recent backups, today's automatic run, failed or stuck records, and restore-package validation. External email, SMS, or Telegram alerts are not connected.",
+              "每次打开本页都会核对最近备份、今日自动备份、失败/卡住记录、隔离恢复演练与外部告警送达。邮件、短信或 Telegram 告警尚未连接，因此当前不会显示为完全就绪。",
+              "Opening this page checks recent backups, today's automatic run, failed or stuck records, the isolated restore drill, and external alert delivery. Email, SMS, and Telegram alerts are not connected, so readiness remains incomplete.",
             )}
           </p>
         </div>
@@ -380,8 +381,11 @@ function RestoreValidationStatus({
   backup: SitesBackupSnapshot;
   locale: Locale;
 }) {
+  const isolated = backup.restoreValidation?.kind === "ISOLATED_SQLITE";
   const label = backup.restoreValidationStatus === "PASSED"
-    ? copy(locale, "逻辑验证通过", "Logical validation passed")
+    ? isolated
+      ? copy(locale, "隔离演练通过", "Isolated drill passed")
+      : copy(locale, "逻辑验证通过", "Logical validation passed")
     : backup.restoreValidationStatus === "FAILED"
       ? copy(locale, "逻辑验证失败", "Logical validation failed")
       : copy(locale, "尚未运行", "Not run");

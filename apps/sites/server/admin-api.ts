@@ -13,7 +13,9 @@ import {
   type AdminIdentity,
 } from "./http";
 import {
+  completeBackupRestoreDrill,
   createManualBackup,
+  createBackupRestoreDrillTransfer,
   downloadBackupSnapshot,
   ensureDailyBackup,
   getBackupReadiness,
@@ -280,6 +282,30 @@ export async function handleAdminApi(
       env,
       request,
       decodeURIComponent(backupRestoreValidationMatch[1]),
+      actor,
+    ));
+  }
+  const backupRestoreDrillTransferMatch = pathname.match(
+    /^\/v1\/admin\/backups\/([^/]+)\/restore-drill-transfer$/u,
+  );
+  if (backupRestoreDrillTransferMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    return success(await createBackupRestoreDrillTransfer(
+      env,
+      request,
+      decodeURIComponent(backupRestoreDrillTransferMatch[1]),
+      actor,
+    ));
+  }
+  const backupRestoreDrillCompleteMatch = pathname.match(
+    /^\/v1\/admin\/backups\/([^/]+)\/restore-drill-complete$/u,
+  );
+  if (backupRestoreDrillCompleteMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    return success(await completeBackupRestoreDrill(
+      env,
+      request,
+      decodeURIComponent(backupRestoreDrillCompleteMatch[1]),
       actor,
     ));
   }

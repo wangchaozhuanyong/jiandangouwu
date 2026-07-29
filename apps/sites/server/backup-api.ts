@@ -49,7 +49,7 @@ type BackupEnvelope = {
   ciphertext: string;
 };
 
-type RestoreValidationDetails = {
+type LogicalRestoreValidationDetails = {
   kind: "LOGICAL_PACKAGE";
   tableCount: number;
   recordCount: number;
@@ -59,12 +59,54 @@ type RestoreValidationDetails = {
   activeAdministratorCount: number;
 };
 
+type IsolatedRestoreDrillDetails = Omit<LogicalRestoreValidationDetails, "kind"> & {
+  kind: "ISOLATED_SQLITE";
+  drillId: string;
+  target: "NODE_SQLITE_MEMORY";
+  payloadSha256: string;
+  readbackRecordCount: number;
+  foreignKeyViolationCount: 0;
+  completedAt: string;
+};
+
+type RestoreValidationDetails =
+  | LogicalRestoreValidationDetails
+  | IsolatedRestoreDrillDetails;
+
+type RestoreDrillTokenPayload = {
+  format: "cloudbridge-restore-drill-token";
+  version: 1;
+  backupId: string;
+  drillId: string;
+  requestedByEmail: string;
+  issuedAt: string;
+  expiresAt: string;
+  challenge: string;
+  payloadSha256: string;
+  schemaVersion: number;
+  tableCount: number;
+  recordCount: number;
+};
+
+type RestoreDrillResult = {
+  drillId: string;
+  payloadSha256: string;
+  schemaVersion: number;
+  tableCount: number;
+  recordCount: number;
+  readbackRecordCount: number;
+  foreignKeyViolationCount: number;
+  target: "NODE_SQLITE_MEMORY";
+  completedAt: string;
+};
+
 const schemaVersion = 2;
 const maximumBackupBytes = 20 * 1024 * 1024;
 const recentBackupWindowMs = 26 * 60 * 60_000;
-const recentRestoreValidationWindowMs = 7 * 24 * 60 * 60_000;
+const recentIsolatedRestoreDrillWindowMs = 30 * 24 * 60 * 60_000;
 const recentFailureWindowMs = 7 * 24 * 60 * 60_000;
 const staleCreatingWindowMs = 15 * 60_000;
+const restoreDrillTransferWindowMs = 30 * 60_000;
 const snapshotTables = [
   "admin_members",
   "audit_events",
@@ -148,8 +190,11 @@ export async function getBackupReadiness(
   const latestAutomatic = backups.find(
     (backup) => backup.status === "VERIFIED" && backup.mode === "AUTOMATIC",
   ) ?? null;
-  const latestRestoreValidation = backups.find(
-    (backup) => backup.restoreValidationStatus === "PASSED",
+  const latestIsolatedRestoreDrill = backups.find(
+    (backup) => (
+      backup.restoreValidationStatus === "PASSED"
+      && backup.restoreValidation?.kind === "ISOLATED_SQLITE"
+    ),
   ) ?? null;
   const recentFailureBoundary = new Date(now.getTime() - recentFailureWindowMs).toISOString();
   const staleCreatingBoundary = new Date(now.getTime() - staleCreatingWindowMs).toISOString();
@@ -169,12 +214,13 @@ export async function getBackupReadiness(
     recentBackupWindowMs,
   );
   const automaticToday = latestAutomatic?.createdAt.slice(0, 10) === checkedAt.slice(0, 10);
-  const restoreValidationRecent = isRecent(
-    latestRestoreValidation?.restoreValidatedAt,
+  const isolatedRestoreDrillRecent = isRecent(
+    latestIsolatedRestoreDrill?.restoreValidatedAt,
     now,
-    recentRestoreValidationWindowMs,
+    recentIsolatedRestoreDrillWindowMs,
   );
   const noRecentFailures = failedRecentCount === 0 && staleCreatingCount === 0;
+  const externalAlertingConnected = false;
   const gates = [
     {
       code: "RECENT_VERIFIED_BACKUP",
@@ -192,9 +238,14 @@ export async function getBackupReadiness(
       checkedAt,
     },
     {
-      code: "RECENT_LOGICAL_RESTORE_VALIDATION",
-      state: restoreValidationRecent ? "PASS" : "FAIL",
-      checkedAt: latestRestoreValidation?.restoreValidatedAt ?? null,
+      code: "RECENT_ISOLATED_RESTORE_DRILL",
+      state: isolatedRestoreDrillRecent ? "PASS" : "FAIL",
+      checkedAt: latestIsolatedRestoreDrill?.restoreValidatedAt ?? null,
+    },
+    {
+      code: "EXTERNAL_ALERT_DELIVERY",
+      state: externalAlertingConnected ? "PASS" : "FAIL",
+      checkedAt: null,
     },
   ] as const;
   return {
@@ -206,11 +257,15 @@ export async function getBackupReadiness(
     checkedAt,
     latestVerifiedAt: latestVerified?.verifiedAt ?? null,
     latestAutomaticAt: latestAutomatic?.createdAt ?? null,
-    latestRestoreValidatedAt: latestRestoreValidation?.restoreValidatedAt ?? null,
+    latestRestoreValidatedAt: latestIsolatedRestoreDrill?.restoreValidatedAt ?? null,
     failedRecentCount,
     staleCreatingCount,
     gates,
-    externalAlerting: "NOT_CONNECTED",
+    externalAlerting: {
+      state: "NOT_CONNECTED",
+      configuredChannels: 0,
+      lastDeliveryVerifiedAt: null,
+    },
   };
 }
 
@@ -320,6 +375,215 @@ export async function validateBackupRestorePackage(
       409,
     );
   }
+}
+
+export async function createBackupRestoreDrillTransfer(
+  env: SitesEnv,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const reason = backupReason(body.reason);
+  const publicKey = await importRestoreDrillPublicKey(body.publicKey);
+  const row = await backupById(env.DB, id);
+  if (!row || row.status !== "VERIFIED" || !row.checksumSha256) {
+    throw new ApiInputError(
+      "BACKUP_NOT_RESTORE_VALIDATABLE",
+      "The backup is not available for an isolated restore drill.",
+      409,
+    );
+  }
+
+  const payload = await readVerifiedSnapshot(env, row);
+  const logicalValidation = await validateRestorePayload(
+    payload,
+    env.CLOUDBRIDGE_DATA_KEY,
+  );
+  if (logicalValidation.kind !== "LOGICAL_PACKAGE") {
+    throw restoreValidationError("BACKUP_RESTORE_STRUCTURE_INVALID");
+  }
+  const payloadText = JSON.stringify(payload);
+  const payloadSha256 = await sha256Hex(payloadText);
+  const issuedAt = new Date();
+  const expiresAt = new Date(issuedAt.getTime() + restoreDrillTransferWindowMs);
+  const drillId = crypto.randomUUID();
+  const challenge = encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+  const proofKey = await deriveRestoreDrillProofKey(
+    env.CLOUDBRIDGE_DATA_KEY,
+    drillId,
+    challenge,
+  );
+  const tokenPayload: RestoreDrillTokenPayload = {
+    format: "cloudbridge-restore-drill-token",
+    version: 1,
+    backupId: id,
+    drillId,
+    requestedByEmail: actor.email,
+    issuedAt: issuedAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    challenge,
+    payloadSha256,
+    schemaVersion: payload.schemaVersion,
+    tableCount: logicalValidation.tableCount,
+    recordCount: logicalValidation.recordCount,
+  };
+  const drillToken = await createRestoreDrillToken(
+    tokenPayload,
+    env.CLOUDBRIDGE_DATA_KEY,
+  );
+  const transferKey = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt"],
+  );
+  const rawTransferKey = await crypto.subtle.exportKey("raw", transferKey);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const bundle = {
+    format: "cloudbridge-restore-drill-bundle",
+    version: 1,
+    drillId,
+    backupId: id,
+    issuedAt: tokenPayload.issuedAt,
+    expiresAt: tokenPayload.expiresAt,
+    challenge,
+    proofKey: encodeBase64Url(new Uint8Array(proofKey)),
+    payloadSha256,
+    logicalValidation,
+    payload,
+  };
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    transferKey,
+    new TextEncoder().encode(JSON.stringify(bundle)),
+  );
+  const wrappedKey = await crypto.subtle.encrypt(
+    { name: "RSA-OAEP" },
+    publicKey,
+    rawTransferKey,
+  );
+
+  await writeAudit(env.DB, {
+    action: "backup.restore-drill.transfer-created",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "BACKUP",
+    targetId: id,
+    reason,
+  });
+  return {
+    format: "cloudbridge-restore-drill-transfer",
+    version: 1,
+    algorithm: "RSA-OAEP-SHA256+AES-256-GCM",
+    createdAt: tokenPayload.issuedAt,
+    expiresAt: tokenPayload.expiresAt,
+    drillToken,
+    iv: encodeBase64Url(iv),
+    wrappedKey: encodeBase64Url(new Uint8Array(wrappedKey)),
+    ciphertext: encodeBase64Url(new Uint8Array(ciphertext)),
+  };
+}
+
+export async function completeBackupRestoreDrill(
+  env: SitesEnv,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const reason = backupReason(body.reason);
+  const token = typeof body.token === "string" ? body.token : "";
+  const proof = typeof body.proof === "string" ? body.proof : "";
+  const tokenPayload = await verifyRestoreDrillToken(
+    token,
+    env.CLOUDBRIDGE_DATA_KEY,
+  );
+  const now = new Date();
+  if (
+    tokenPayload.backupId !== id
+    || tokenPayload.requestedByEmail !== actor.email
+    || !isValidDate(tokenPayload.issuedAt)
+    || !isValidDate(tokenPayload.expiresAt)
+    || new Date(tokenPayload.expiresAt).getTime() < now.getTime()
+  ) {
+    throw restoreValidationError("BACKUP_RESTORE_DRILL_TOKEN_INVALID");
+  }
+  const result = restoreDrillResult(body.result);
+  const completedAt = new Date(result.completedAt);
+  if (
+    result.drillId !== tokenPayload.drillId
+    || result.payloadSha256 !== tokenPayload.payloadSha256
+    || result.schemaVersion !== tokenPayload.schemaVersion
+    || result.tableCount !== tokenPayload.tableCount
+    || result.recordCount !== tokenPayload.recordCount
+    || result.readbackRecordCount !== tokenPayload.recordCount
+    || result.foreignKeyViolationCount !== 0
+    || result.target !== "NODE_SQLITE_MEMORY"
+    || completedAt.getTime() < new Date(tokenPayload.issuedAt).getTime()
+    || completedAt.getTime() > new Date(tokenPayload.expiresAt).getTime()
+    || completedAt.getTime() > now.getTime() + 5 * 60_000
+  ) {
+    throw restoreValidationError("BACKUP_RESTORE_DRILL_RESULT_INVALID");
+  }
+  const proofKey = await deriveRestoreDrillProofKey(
+    env.CLOUDBRIDGE_DATA_KEY,
+    tokenPayload.drillId,
+    tokenPayload.challenge,
+  );
+  if (!await verifyRestoreDrillProof(result, proof, proofKey)) {
+    throw restoreValidationError("BACKUP_RESTORE_DRILL_PROOF_INVALID");
+  }
+
+  const row = await backupById(env.DB, id);
+  if (!row || row.status !== "VERIFIED" || !row.checksumSha256) {
+    throw restoreValidationError("BACKUP_NOT_RESTORE_VALIDATABLE");
+  }
+  const payload = await readVerifiedSnapshot(env, row);
+  const payloadSha256 = await sha256Hex(JSON.stringify(payload));
+  if (payloadSha256 !== tokenPayload.payloadSha256) {
+    throw restoreValidationError("BACKUP_RESTORE_DRILL_PAYLOAD_CHANGED");
+  }
+  const logicalValidation = await validateRestorePayload(
+    payload,
+    env.CLOUDBRIDGE_DATA_KEY,
+  );
+  if (logicalValidation.kind !== "LOGICAL_PACKAGE") {
+    throw restoreValidationError("BACKUP_RESTORE_STRUCTURE_INVALID");
+  }
+  const details: IsolatedRestoreDrillDetails = {
+    ...logicalValidation,
+    kind: "ISOLATED_SQLITE",
+    drillId: tokenPayload.drillId,
+    target: result.target,
+    payloadSha256: result.payloadSha256,
+    readbackRecordCount: result.readbackRecordCount,
+    foreignKeyViolationCount: 0,
+    completedAt: result.completedAt,
+  };
+  await env.DB.prepare(
+    `UPDATE backup_snapshots
+     SET restore_validation_status = 'PASSED', restore_validation_json = ?,
+       restore_validated_at = ?, restore_validated_by_email = ?,
+       restore_validation_reason = ?, restore_validation_error_code = NULL
+     WHERE id = ? AND status = 'VERIFIED'`,
+  ).bind(
+    JSON.stringify(details),
+    result.completedAt,
+    actor.email,
+    reason,
+    id,
+  ).run();
+  await writeAudit(env.DB, {
+    action: "backup.restore-drill.completed",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "BACKUP",
+    targetId: id,
+    reason,
+  });
+  const updated = await backupById(env.DB, id);
+  if (!updated) throw new ApiInputError("BACKUP_NOT_FOUND", "The backup was not found.", 404);
+  return backupItem(updated);
 }
 
 export async function downloadBackupSnapshot(
@@ -804,6 +1068,185 @@ function restoreValidationError(code: string): ApiInputError {
   );
 }
 
+async function importRestoreDrillPublicKey(value: unknown): Promise<CryptoKey> {
+  if (
+    typeof value !== "object"
+    || value === null
+    || Array.isArray(value)
+  ) {
+    throw restoreValidationError("BACKUP_RESTORE_DRILL_PUBLIC_KEY_INVALID");
+  }
+  const jwk = value as JsonWebKey;
+  if (
+    jwk.kty !== "RSA"
+    || typeof jwk.n !== "string"
+    || typeof jwk.e !== "string"
+    || decodeBase64Url(jwk.n).byteLength < 256
+  ) {
+    throw restoreValidationError("BACKUP_RESTORE_DRILL_PUBLIC_KEY_INVALID");
+  }
+  try {
+    return await crypto.subtle.importKey(
+      "jwk",
+      jwk,
+      { name: "RSA-OAEP", hash: "SHA-256" },
+      false,
+      ["encrypt"],
+    );
+  } catch {
+    throw restoreValidationError("BACKUP_RESTORE_DRILL_PUBLIC_KEY_INVALID");
+  }
+}
+
+async function createRestoreDrillToken(
+  payload: RestoreDrillTokenPayload,
+  encodedKey: string | undefined,
+): Promise<string> {
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
+  const signature = await signHmac(payloadBytes, requireBackupKey(encodedKey));
+  return `${encodeBase64Url(payloadBytes)}.${encodeBase64Url(new Uint8Array(signature))}`;
+}
+
+async function verifyRestoreDrillToken(
+  token: string,
+  encodedKey: string | undefined,
+): Promise<RestoreDrillTokenPayload> {
+  try {
+    const [payloadValue, signatureValue, extra] = token.split(".");
+    if (!payloadValue || !signatureValue || extra) {
+      throw new Error("invalid token shape");
+    }
+    const payloadBytes = decodeBase64Url(payloadValue);
+    const signature = decodeBase64Url(signatureValue);
+    const key = await importHmacKey(requireBackupKey(encodedKey), ["verify"]);
+    const valid = await crypto.subtle.verify("HMAC", key, signature, payloadBytes);
+    if (!valid) throw new Error("invalid token signature");
+    const payload = JSON.parse(new TextDecoder().decode(payloadBytes)) as RestoreDrillTokenPayload;
+    if (
+      payload.format !== "cloudbridge-restore-drill-token"
+      || payload.version !== 1
+      || typeof payload.backupId !== "string"
+      || typeof payload.drillId !== "string"
+      || typeof payload.requestedByEmail !== "string"
+      || typeof payload.challenge !== "string"
+      || typeof payload.payloadSha256 !== "string"
+      || !Number.isSafeInteger(payload.schemaVersion)
+      || !Number.isSafeInteger(payload.tableCount)
+      || !Number.isSafeInteger(payload.recordCount)
+    ) {
+      throw new Error("invalid token payload");
+    }
+    return payload;
+  } catch (error) {
+    if (
+      error instanceof ApiInputError
+      && error.code.startsWith("BACKUP_ENCRYPTION_")
+    ) {
+      throw error;
+    }
+    throw restoreValidationError("BACKUP_RESTORE_DRILL_TOKEN_INVALID");
+  }
+}
+
+async function deriveRestoreDrillProofKey(
+  encodedKey: string | undefined,
+  drillId: string,
+  challenge: string,
+): Promise<ArrayBuffer> {
+  return signHmac(
+    new TextEncoder().encode(`restore-drill-proof:${drillId}:${challenge}`),
+    requireBackupKey(encodedKey),
+  );
+}
+
+async function signHmac(
+  value: BufferSource,
+  rawKey: BufferSource,
+): Promise<ArrayBuffer> {
+  const key = await importHmacKey(rawKey, ["sign"]);
+  return crypto.subtle.sign("HMAC", key, value);
+}
+
+async function importHmacKey(
+  rawKey: BufferSource,
+  usages: KeyUsage[],
+): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    "raw",
+    rawKey,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    usages,
+  );
+}
+
+async function verifyRestoreDrillProof(
+  result: RestoreDrillResult,
+  proof: string,
+  proofKey: ArrayBuffer,
+): Promise<boolean> {
+  try {
+    const key = await importHmacKey(proofKey, ["verify"]);
+    return crypto.subtle.verify(
+      "HMAC",
+      key,
+      decodeBase64Url(proof),
+      new TextEncoder().encode(restoreDrillProofMessage(result)),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function restoreDrillProofMessage(result: RestoreDrillResult): string {
+  return [
+    result.drillId,
+    result.payloadSha256,
+    String(result.schemaVersion),
+    String(result.tableCount),
+    String(result.recordCount),
+    String(result.readbackRecordCount),
+    String(result.foreignKeyViolationCount),
+    result.target,
+    result.completedAt,
+  ].join("\n");
+}
+
+function restoreDrillResult(value: unknown): RestoreDrillResult {
+  if (
+    typeof value !== "object"
+    || value === null
+    || Array.isArray(value)
+  ) {
+    throw restoreValidationError("BACKUP_RESTORE_DRILL_RESULT_INVALID");
+  }
+  const result = value as Partial<RestoreDrillResult>;
+  if (
+    typeof result.drillId !== "string"
+    || typeof result.payloadSha256 !== "string"
+    || !/^[a-f0-9]{64}$/u.test(result.payloadSha256)
+    || !Number.isSafeInteger(result.schemaVersion)
+    || !Number.isSafeInteger(result.tableCount)
+    || !Number.isSafeInteger(result.recordCount)
+    || !Number.isSafeInteger(result.readbackRecordCount)
+    || !Number.isSafeInteger(result.foreignKeyViolationCount)
+    || Number(result.tableCount) < 1
+    || Number(result.recordCount) < 0
+    || Number(result.readbackRecordCount) < 0
+    || Number(result.foreignKeyViolationCount) < 0
+    || result.target !== "NODE_SQLITE_MEMORY"
+    || typeof result.completedAt !== "string"
+    || !isValidDate(result.completedAt)
+  ) {
+    throw restoreValidationError("BACKUP_RESTORE_DRILL_RESULT_INVALID");
+  }
+  return result as RestoreDrillResult;
+}
+
+function isValidDate(value: string): boolean {
+  return Number.isFinite(new Date(value).getTime());
+}
+
 async function importBackupKey(
   encodedKey: string | undefined,
   usages: KeyUsage[],
@@ -857,13 +1300,27 @@ function safeRestoreValidation(value: string): RestoreValidationDetails | null {
   try {
     const parsed = JSON.parse(value) as Partial<RestoreValidationDetails>;
     if (
-      parsed.kind !== "LOGICAL_PACKAGE"
+      (parsed.kind !== "LOGICAL_PACKAGE" && parsed.kind !== "ISOLATED_SQLITE")
       || !Number.isSafeInteger(parsed.tableCount)
       || !Number.isSafeInteger(parsed.recordCount)
       || !Number.isSafeInteger(parsed.relationshipChecks)
       || !Number.isSafeInteger(parsed.encryptedContactChecks)
       || !Number.isSafeInteger(parsed.jsonDocumentChecks)
       || !Number.isSafeInteger(parsed.activeAdministratorCount)
+    ) {
+      return null;
+    }
+    if (
+      parsed.kind === "ISOLATED_SQLITE"
+      && (
+        typeof parsed.drillId !== "string"
+        || parsed.target !== "NODE_SQLITE_MEMORY"
+        || typeof parsed.payloadSha256 !== "string"
+        || !Number.isSafeInteger(parsed.readbackRecordCount)
+        || parsed.foreignKeyViolationCount !== 0
+        || typeof parsed.completedAt !== "string"
+        || !isValidDate(parsed.completedAt)
+      )
     ) {
       return null;
     }

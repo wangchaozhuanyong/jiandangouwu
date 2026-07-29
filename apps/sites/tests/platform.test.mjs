@@ -127,15 +127,26 @@ test("Sites logo bypasses unavailable image transforms and the worker keeps a sa
   assert.ok(worker.includes("sourceUrl.origin !== url.origin"));
 });
 
-test("Sites backup admin exposes create, verify, logical restore validation, and encrypted download", () => {
+test("Sites backup admin exposes encrypted backup, isolated restore drill evidence, and fail-closed alerting", () => {
   const page = read("../admin/src/features/sites/sites-backups-page.tsx");
   const api = read("../admin/src/features/sites/backups-api.ts");
+  const server = read("server/backup-api.ts");
+  const admin = read("server/admin-api.ts");
+  const runner = read("../../scripts/sites-restore-drill.mjs");
   assert.match(page, /createSitesBackup/u);
   assert.match(page, /verifySitesBackup/u);
   assert.match(page, /validateSitesBackupRestorePackage/u);
-  assert.match(page, /外部邮件、短信或 Telegram 告警尚未连接/u);
+  assert.match(page, /邮件、短信或 Telegram 告警尚未连接/u);
+  assert.match(page, /隔离恢复运行器/u);
+  assert.match(page, /不会写入当前 D1/u);
   assert.match(page, /backupDownloadUrl/u);
-  assert.match(page, /不会写入或覆盖当前 D1/u);
+  assert.match(server, /createBackupRestoreDrillTransfer/u);
+  assert.match(server, /completeBackupRestoreDrill/u);
+  assert.match(server, /EXTERNAL_ALERT_DELIVERY/u);
+  assert.match(admin, /\/restore-drill-transfer/u);
+  assert.match(admin, /\/restore-drill-complete/u);
+  assert.match(runner, /new DatabaseSync\(":memory:"\)/u);
+  assert.match(runner, /PRAGMA foreign_key_check/u);
   assert.match(api, /method: "POST"/u);
   assert.match(api, /\/restore-validation/u);
   assert.match(api, /\/download/u);

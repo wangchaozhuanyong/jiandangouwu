@@ -1,8 +1,18 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { generateKeyPairSync } from "node:crypto";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { DatabaseSync } from "node:sqlite";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
+  completeBackupRestoreDrill,
+  createBackupRestoreDrillTransfer,
   downloadBackupSnapshot,
   ensureDailyBackup,
   getBackupReadiness,
@@ -10,6 +20,10 @@ import {
   validateBackupRestorePackage,
   verifyBackupSnapshot,
 } from "../server/backup-api.ts";
+import {
+  prepareRestoreDrill,
+  runIsolatedRestoreDrill,
+} from "../../../scripts/sites-restore-drill.mjs";
 
 const migrations = [
   "0000_salty_fat_cobra.sql",
@@ -67,7 +81,7 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
   const readinessBefore = await getBackupReadiness(env.DB);
   assert.equal(readinessBefore.state, "ATTENTION");
   assert.equal(
-    readinessBefore.gates.find((gate) => gate.code === "RECENT_LOGICAL_RESTORE_VALIDATION")?.state,
+    readinessBefore.gates.find((gate) => gate.code === "RECENT_ISOLATED_RESTORE_DRILL")?.state,
     "FAIL",
   );
 
@@ -91,10 +105,114 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
   assert.equal(restoreValidated.restoreValidation.encryptedContactChecks, 1);
   assert.ok(restoreValidated.restoreValidation.relationshipChecks > 0);
 
-  const readinessAfter = await getBackupReadiness(env.DB);
-  assert.equal(readinessAfter.state, "READY");
-  assert.ok(readinessAfter.gates.every((gate) => gate.state === "PASS"));
-  assert.equal(readinessAfter.externalAlerting, "NOT_CONNECTED");
+  const readinessAfterLogicalValidation = await getBackupReadiness(env.DB);
+  assert.equal(readinessAfterLogicalValidation.state, "ATTENTION");
+  assert.equal(
+    readinessAfterLogicalValidation.gates.find(
+      (gate) => gate.code === "RECENT_ISOLATED_RESTORE_DRILL",
+    )?.state,
+    "FAIL",
+  );
+
+  const { publicKey, privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+  });
+  const drillTransfer = await createBackupRestoreDrillTransfer(
+    env,
+    new Request("https://example.test/v1/admin/backups/restore-drill-transfer", {
+      method: "POST",
+      body: JSON.stringify({
+        reason: "Create an encrypted isolated restore drill transfer",
+        publicKey: publicKey.export({ format: "jwk" }),
+      }),
+    }),
+    backups[0].id,
+    {
+      id: "admin-test",
+      email: "owner@example.test",
+      displayName: "Owner",
+      permissions: ["settings.write"],
+    },
+  );
+  assert.equal(drillTransfer.format, "cloudbridge-restore-drill-transfer");
+  assert.doesNotMatch(JSON.stringify(drillTransfer), /OpenAI Codex Professional/u);
+  const isolatedDrill = runIsolatedRestoreDrill({
+    transfer: drillTransfer,
+    privateKey: privateKey.export({ format: "pem", type: "pkcs8" }),
+  });
+  assert.deepEqual(isolatedDrill.summary, {
+    target: "NODE_SQLITE_MEMORY",
+    tableCount: 15,
+    recordCount: restoreValidated.restoreValidation.recordCount,
+    foreignKeyViolationCount: 0,
+    completedAt: isolatedDrill.summary.completedAt,
+  });
+  const tamperedCompletion = structuredClone(isolatedDrill.completion);
+  tamperedCompletion.result.readbackRecordCount += 1;
+  await assert.rejects(
+    completeBackupRestoreDrill(
+      env,
+      new Request("https://example.test/v1/admin/backups/restore-drill-complete", {
+        method: "POST",
+        body: JSON.stringify({
+          ...tamperedCompletion,
+          reason: "Reject a forged isolated restore drill result",
+        }),
+      }),
+      backups[0].id,
+      {
+        id: "admin-test",
+        email: "owner@example.test",
+        displayName: "Owner",
+        permissions: ["settings.write"],
+      },
+    ),
+    (error) => error?.code === "BACKUP_RESTORE_DRILL_RESULT_INVALID",
+  );
+  const drillCompleted = await completeBackupRestoreDrill(
+    env,
+    new Request("https://example.test/v1/admin/backups/restore-drill-complete", {
+      method: "POST",
+      body: JSON.stringify({
+        ...isolatedDrill.completion,
+        reason: "Record the successful isolated SQLite restore drill",
+      }),
+    }),
+    backups[0].id,
+    {
+      id: "admin-test",
+      email: "owner@example.test",
+      displayName: "Owner",
+      permissions: ["settings.write"],
+    },
+  );
+  assert.equal(drillCompleted.restoreValidationStatus, "PASSED");
+  assert.equal(drillCompleted.restoreValidation.kind, "ISOLATED_SQLITE");
+  assert.equal(drillCompleted.restoreValidation.foreignKeyViolationCount, 0);
+  assert.equal(
+    drillCompleted.restoreValidation.readbackRecordCount,
+    drillCompleted.restoreValidation.recordCount,
+  );
+
+  const readinessAfterDrill = await getBackupReadiness(env.DB);
+  assert.equal(readinessAfterDrill.state, "ATTENTION");
+  assert.equal(
+    readinessAfterDrill.gates.find(
+      (gate) => gate.code === "RECENT_ISOLATED_RESTORE_DRILL",
+    )?.state,
+    "PASS",
+  );
+  assert.equal(
+    readinessAfterDrill.gates.find(
+      (gate) => gate.code === "EXTERNAL_ALERT_DELIVERY",
+    )?.state,
+    "FAIL",
+  );
+  assert.deepEqual(readinessAfterDrill.externalAlerting, {
+    state: "NOT_CONNECTED",
+    configuredChannels: 0,
+    lastDeliveryVerifiedAt: null,
+  });
 
   const download = await downloadBackupSnapshot(env, backups[0].id);
   assert.equal(download.status, 200);
@@ -149,6 +267,21 @@ test("restore-package validation fails closed on broken table relationships", as
   const [failed] = await listBackupSnapshots(env.DB);
   assert.equal(failed.restoreValidationStatus, "FAILED");
   assert.equal(failed.restoreValidationErrorCode, "BACKUP_RESTORE_RELATION_INVALID");
+});
+
+test("restore drill runner protects ephemeral private-key state from overwrite", () => {
+  const stateDirectory = mkdtempSync(join(tmpdir(), "cloudbridge-restore-test-"));
+  try {
+    const prepared = prepareRestoreDrill(stateDirectory);
+    assert.equal(statSync(prepared.privateKeyPath).mode & 0o777, 0o600);
+    assert.equal(statSync(prepared.requestPath).mode & 0o777, 0o600);
+    assert.throws(
+      () => prepareRestoreDrill(stateDirectory),
+      (error) => error?.code === "EEXIST",
+    );
+  } finally {
+    rmSync(stateDirectory, { recursive: true, force: true });
+  }
 });
 
 async function seedRecoverableOrder(sqlite, dataKey) {
