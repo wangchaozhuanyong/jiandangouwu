@@ -17,6 +17,7 @@ import {
   STOREFRONT_SETTINGS_KEY,
 } from "../settings/settings.model.js";
 import { ContactProtectionService } from "./contact-protection.service.js";
+import { OrderReservationService } from "./order-reservation.service.js";
 import type { CreateOrderDto } from "./orders.dto.js";
 
 const createOrderNumber = (): string => {
@@ -34,6 +35,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contacts: ContactProtectionService,
+    private readonly reservations: OrderReservationService,
   ) {}
 
   private async receipt(order: {
@@ -78,6 +80,7 @@ export class OrdersService {
   }
 
   async create(input: CreateOrderDto, idempotencyKey: string): Promise<OrderReceipt> {
+    await this.reservations.reconcileExpired();
     const protectedContact = this.contacts.protect(input.contactValue);
     const existing = await this.prisma.order.findUnique({ where: { idempotencyKey } });
     if (existing) {
@@ -177,6 +180,7 @@ export class OrdersService {
             maskedContact: protectedContact.masked,
             acceptedPolicyVersion: input.acceptedPolicyVersion,
             reservedUntil,
+            inventoryReserved: product.stockMode === "FINITE",
             statusHistory: {
               create: {
                 toStatus: "MANUAL_PENDING",

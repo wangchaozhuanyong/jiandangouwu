@@ -15,9 +15,14 @@
 - 本地 Docker Compose 提供 MySQL 与 Valkey；Prisma migration 和 seed 已可重复运行。
 - 本地 API 已持久化目录、订单、认证与审计数据；联系值使用 AES-GCM 加密，后台列表默认只返回脱敏值。
 - AWS CDK 已能 `synth`，但没有执行 `deploy`，所以 RDS、ECS、ALB、WAF、域名和证书仍属于未来规划/待创建资源。
-- Telegram、在线支付、真实通知、对象存储媒体管线和生产恢复演练尚未实现。
+- MySQL 主平台的 Telegram、在线支付、真实通知、对象存储媒体管线和生产恢复演练尚未实现；Sites 的 R2 媒体与加密 D1 恢复证据属于另一运行面。
 
-## Sites 数据保护与订单预留
+## MySQL 与 Sites 订单预留
+
+- MySQL `Order` 以 `inventoryReserved` 明确保存该订单是否真实扣过有限库存，并以 `inventoryReleasedAt` 作为只返一次的释放门禁；迁移对历史订单默认写入 `false`，不会根据商品当前库存模式猜测历史扣减。
+- 新有限库存订单的扣减、预留标记和初始历史保持在同一 Serializable 事务。商品列表/详情、下单、后台总览及订单读写会先扫描最多 100 条到期 `MANUAL_PENDING` 预留；每张订单通过 Serializable 事务和条件更新竞争唯一取消权，取消、返库、历史和 `order.reservation.expired` 审计共同提交或回滚。
+- 自动核对采用保守范围：只处理仍为 `MANUAL_PENDING` 的有限库存预留；`CONTACTED`、`AWAITING_PAYMENT`、`PAYMENT_PROCESSING` 及后续状态不因截止时间自动取消。管理员通过合法状态机人工取消仍未释放的预留时，同一事务最多返还一次。
+- MySQL 当前采用请求驱动核对，不把它描述为 Cron、队列或无人值守后台任务。最多 100 条的批次让请求延迟有界，后续商品或订单访问继续处理剩余候选。
 
 - 有限库存下单会立即扣减并记录 30 分钟 `reserved_until`。Sites 在商品列表、商品详情、下单、后台总览和订单访问前核对到期的 `MANUAL_PENDING` 订单；状态历史、取消、库存返还和审计使用唯一历史事件作为幂等门禁，同一订单不会重复返库。
 - Sites 不依赖尚未开放的 Cron 触发器。只要新的商品或订单请求到达，到期预留会先完成核对，因此用户看到和再次下单使用的是已释放后的库存。

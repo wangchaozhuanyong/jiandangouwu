@@ -46,6 +46,8 @@ const orderRow = (
   status,
   paymentMode: "MANUAL" as const,
   reservedUntil: new Date("2026-07-28T12:30:00.000Z"),
+  inventoryReserved: true,
+  inventoryReleasedAt: null as Date | null,
   assignedTo,
   createdAt: new Date("2026-07-28T11:55:00.000Z"),
   updatedAt: new Date(initialUpdatedAt),
@@ -61,6 +63,10 @@ const actor = () => ({
   ip: "127.0.0.1",
   reauthenticatedAt: Date.now(),
 });
+
+const reservations = {
+  reconcileExpired: async () => ({ candidates: 0, cancelled: 0, stockRestored: 0 }),
+};
 
 test("order list uses an explicit safe projection and returns the shared list contract", async () => {
   let select: Record<string, unknown> | undefined;
@@ -95,6 +101,7 @@ test("order list uses an explicit safe projection and returns the shared list co
     prisma as never,
     { record: async () => undefined } as never,
     { reveal: () => "" } as never,
+    reservations as never,
   );
 
   const result = await service.list({
@@ -163,6 +170,7 @@ test("after-sales list scope uses a whitelisted status set and keeps pagination"
     prisma as never,
     { record: async () => undefined } as never,
     { reveal: () => "" } as never,
+    reservations as never,
   );
 
   const result = await service.list({
@@ -213,6 +221,7 @@ test("after-sales list scope rejects an incompatible status before querying", as
     prisma as never,
     { record: async () => undefined } as never,
     { reveal: () => "" } as never,
+    reservations as never,
   );
 
   await assert.rejects(
@@ -235,6 +244,7 @@ function statusHarness(updateCount = 1) {
     event: Record<string, unknown>;
     client: unknown;
   }> = [];
+  const stockCalls: Array<Record<string, unknown>> = [];
   let transactionOptions: Record<string, unknown> | undefined;
 
   const transaction = {
@@ -244,19 +254,29 @@ function statusHarness(updateCount = 1) {
         return {
           id: row.id,
           status: "MANUAL_PENDING" as const,
+          productId: row.productId,
+          inventoryReserved: row.inventoryReserved,
+          inventoryReleasedAt: row.inventoryReleasedAt,
           updatedAt: initialUpdatedAt,
         };
       },
       updateMany: async (input: {
         where: Record<string, unknown>;
-        data: { status: OrderStatus };
+        data: { status: OrderStatus; inventoryReleasedAt?: Date };
       }) => {
         updateCalls.push(input as unknown as Record<string, unknown>);
         if (updateCount === 1) {
           row.status = input.data.status;
+          row.inventoryReleasedAt = input.data.inventoryReleasedAt ?? row.inventoryReleasedAt;
           row.updatedAt = new Date(committedUpdatedAt);
         }
         return { count: updateCount };
+      },
+    },
+    product: {
+      updateMany: async (input: Record<string, unknown>) => {
+        stockCalls.push(input);
+        return { count: 1 };
       },
     },
     orderStatusHistory: {
@@ -298,12 +318,15 @@ function statusHarness(updateCount = 1) {
       prisma as never,
       audit as never,
       { reveal: () => "" } as never,
+      reservations as never,
     ),
     transaction,
+    row,
     transactionOptions: () => transactionOptions,
     updateCalls,
     historyCalls,
     auditCalls,
+    stockCalls,
   };
 }
 
@@ -377,6 +400,66 @@ test("status mutation rejects illegal transitions and CAS conflicts before histo
   assert.equal(stale.auditCalls.length, 0);
 });
 
+test("manual cancellation releases a reserved finite item exactly once in the status transaction", async () => {
+  const harness = statusHarness();
+  const result = await harness.service.updateStatus(
+    "order-1",
+    updateStatusInput("CANCELLED"),
+    actor(),
+  );
+
+  assert.equal(result.status, "CANCELLED");
+  assert.deepEqual(harness.updateCalls[0]?.where, {
+    id: "order-1",
+    status: "MANUAL_PENDING",
+    updatedAt: initialUpdatedAt,
+    inventoryReleasedAt: null,
+  });
+  const updateData = harness.updateCalls[0]?.data as {
+    status: OrderStatus;
+    inventoryReleasedAt: Date;
+  };
+  assert.equal(updateData.status, "CANCELLED");
+  assert.ok(updateData.inventoryReleasedAt instanceof Date);
+  assert.equal(harness.stockCalls.length, 1);
+  assert.deepEqual(harness.stockCalls[0], {
+    where: {
+      id: "product-1",
+      stockMode: "FINITE",
+      stockQuantity: { not: null },
+    },
+    data: {
+      stockQuantity: { increment: 1 },
+      version: { increment: 1 },
+    },
+  });
+  assert.deepEqual(harness.auditCalls[0]?.event.afterData, {
+    status: "CANCELLED",
+    externalActionVerified: false,
+    inventoryReleased: true,
+    stockRestored: true,
+  });
+});
+
+test("manual cancellation never restores an inventory reservation that was already released", async () => {
+  const harness = statusHarness();
+  harness.row.inventoryReleasedAt = new Date("2026-07-28T12:10:00.000Z");
+
+  await harness.service.updateStatus(
+    "order-1",
+    updateStatusInput("CANCELLED"),
+    actor(),
+  );
+
+  assert.equal(harness.stockCalls.length, 0);
+  assert.deepEqual(harness.auditCalls[0]?.event.afterData, {
+    status: "CANCELLED",
+    externalActionVerified: false,
+    inventoryReleased: false,
+    stockRestored: false,
+  });
+});
+
 function assignmentHarness(options: {
   eligible?: boolean;
   updateCount?: number;
@@ -441,6 +524,7 @@ function assignmentHarness(options: {
       prisma as never,
       audit as never,
       { reveal: () => "" } as never,
+      reservations as never,
     ),
     transaction,
     assigneeReads,
@@ -549,6 +633,7 @@ test("contact reveal audits stale reauthentication denial without reading contac
         return "customer@example.com";
       },
     } as never,
+    reservations as never,
   );
 
   await assert.rejects(
@@ -594,6 +679,7 @@ test("successful contact reveal selects only encrypted contact fields and never 
     {
       reveal: () => plaintext,
     } as never,
+    reservations as never,
   );
 
   const result = await service.revealContact(

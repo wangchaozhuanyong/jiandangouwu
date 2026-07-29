@@ -37,8 +37,8 @@ const capabilityCopy: Record<
   RESERVATION_EXPIRY: {
     title: { zh: "库存预留到期返库", en: "Reservation expiry release" },
     body: {
-      zh: "返库规则与后台任务仍等待业务确认，当前只保留订单中的预留截止时间。",
-      en: "Release rules and the background job still await business approval; orders only retain their reservation deadline.",
+      zh: "有限库存订单会记录预留状态；商品、下单、工作台或订单访问时，系统先取消到期的待确认订单并幂等返库。",
+      en: "Finite-stock orders persist reservation state. Product, checkout, workspace, and order access reconcile expired pending orders and release stock idempotently.",
     },
     action: { zh: "查看订单", en: "View orders" },
     icon: Receipt,
@@ -76,6 +76,7 @@ const capabilityStateCopy: Record<
   DashboardCapabilityState,
   Record<Locale, string>
 > = {
+  IMPLEMENTED_REQUEST_DRIVEN: { zh: "按访问运行", en: "On-access" },
   NOT_COLLECTED: { zh: "未采集", en: "Not collected" },
   NOT_IMPLEMENTED: { zh: "未开发", en: "Not implemented" },
 };
@@ -159,8 +160,8 @@ export default function DashboardPage({
           <span>
             {copy(
               locale,
-              "下列能力没有运行证据时显示“未采集”或“未开发”，不会用 0 或演示数字伪装为健康状态。",
-              "Capabilities without runtime evidence are marked Not collected or Not implemented; zeroes and demo counts are never used as health claims.",
+              "下列能力按真实实现和证据显示；缺少运行证据时仍标记“未采集”或“未开发”，不会用 0 或演示数字伪装为健康状态。",
+              "Capabilities show their actual implementation and evidence state. Missing runtime evidence remains Not collected or Not implemented; zeroes and demo counts are never used as health claims.",
             )}
           </span>
         </p>

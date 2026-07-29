@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service.js";
 import type { AdminActor } from "../common/admin-actor.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import { deriveManualPaymentStage } from "../orders/orders.admin.service.js";
+import { OrderReservationService } from "../orders/order-reservation.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type {
   AdminAuditQueryDto,
@@ -27,9 +28,11 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly reservations: OrderReservationService,
   ) {}
 
   async overview() {
+    await this.reservations.reconcileExpired();
     const [
       productCount,
       activeProducts,

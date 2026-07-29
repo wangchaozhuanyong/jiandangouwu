@@ -142,8 +142,8 @@ const jobCopy: Record<
   RESERVATION_EXPIRY_RELEASE: {
     title: { zh: "预留到期自动返库", en: "Automatic expired-reservation release" },
     body: {
-      zh: "订单含预留到期时间，但当前没有自动返库任务或执行事件。",
-      en: "Orders have reservation expiry timestamps, but no automatic stock-release job or run event exists.",
+      zh: "MySQL 已在商品、下单、工作台和订单访问时幂等返库；这里仍标记未开发，因为没有独立调度器、持久化任务运行记录或无人值守执行证据。",
+      en: "MySQL now reconciles reservations on product, checkout, workspace, and order access. This scheduled-job row remains Not implemented because there is no independent scheduler, durable run history, or unattended execution evidence.",
     },
   },
   EMAIL_DELIVERY_RETRY: {

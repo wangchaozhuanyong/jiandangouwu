@@ -1,7 +1,10 @@
 import type { Overview } from "../../api";
 import type { Page } from "../../admin-model";
 
-export type DashboardCapabilityState = "NOT_COLLECTED" | "NOT_IMPLEMENTED";
+export type DashboardCapabilityState =
+  | "IMPLEMENTED_REQUEST_DRIVEN"
+  | "NOT_COLLECTED"
+  | "NOT_IMPLEMENTED";
 
 export type DashboardCapabilityCode =
   | "RESERVATION_EXPIRY"
@@ -25,7 +28,7 @@ export type DashboardSnapshot = {
 const capabilityBoundaries: readonly DashboardCapabilityBoundary[] = [
   {
     code: "RESERVATION_EXPIRY",
-    state: "NOT_IMPLEMENTED",
+    state: "IMPLEMENTED_REQUEST_DRIVEN",
     ownerPage: "orders",
   },
   {

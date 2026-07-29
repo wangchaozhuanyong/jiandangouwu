@@ -238,6 +238,8 @@ model Order {
   status                OrderStatus        @default(MANUAL_PENDING)
   paymentMode           PaymentMode        @default(MANUAL)
   reservedUntil         DateTime
+  inventoryReserved     Boolean            @default(false)
+  inventoryReleasedAt   DateTime?
   assignedToId          String?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
@@ -247,6 +249,7 @@ model Order {
   statusHistory         OrderStatusHistory[]
 
   @@index([status, createdAt])
+  @@index([status, inventoryReserved, inventoryReleasedAt, reservedUntil], map: "Order_inventory_expiry_idx")
   @@index([productId, createdAt])
   @@index([assignedToId, status])
 }

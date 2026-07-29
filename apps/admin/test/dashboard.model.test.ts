@@ -52,7 +52,7 @@ test("dashboard snapshot does not turn missing alert evidence into zero", () => 
   assert.deepEqual(
     snapshot.capabilities.map(({ code, state }) => [code, state]),
     [
-      ["RESERVATION_EXPIRY", "NOT_IMPLEMENTED"],
+      ["RESERVATION_EXPIRY", "IMPLEMENTED_REQUEST_DRIVEN"],
       ["LOW_STOCK_ALERT", "NOT_COLLECTED"],
       ["NOTIFICATION_DELIVERY", "NOT_COLLECTED"],
       ["SECURITY_ALERT", "NOT_IMPLEMENTED"],

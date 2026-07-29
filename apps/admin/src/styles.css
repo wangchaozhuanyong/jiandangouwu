@@ -620,6 +620,7 @@
 .dashboard-capability-list article > div > strong { color: #375768; font-size: 9px; }
 .dashboard-capability-list article > div > p { margin: 5px 0 0; color: #7e929e; font-size: 8px; line-height: 1.55; }
 .dashboard-capability-state { min-height: 28px; display: inline-flex; align-items: center; padding: 0 9px; border-radius: 999px; font-size: 8px; font-weight: 800; white-space: nowrap; }
+.dashboard-capability-state.is-implemented_request_driven { color: #0d6570; background: #e2f3f3; }
 .dashboard-capability-state.is-not_collected { color: #7c6236; background: #f8efd9; }
 .dashboard-capability-state.is-not_implemented { color: #687d88; background: #edf2f4; }
 .dashboard-capability-list .admin-secondary { min-width: 132px; }
