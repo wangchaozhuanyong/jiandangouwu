@@ -1,5 +1,54 @@
 # CloudBridge 完整设计补全 QA
 
+## 2026-07-30 正式客户端页脚固定四入口
+
+### 视觉真值与实现范围
+
+- 用户参考图：`/var/folders/y2/73zzsdhn3d78m_qqhkb2lrq80000gn/T/codex-clipboard-446ea108-1f16-443c-96c8-5de1982b09ea.png`，原始像素为 1360 × 265；图中页脚导航只显示服务、服务条款、隐私说明，右下角为空。
+- 本轮采用“联系我们 / Contact us”作为第四入口，顺序固定为服务、服务条款、隐私说明、联系我们，保持既有品牌区、2 × 2 桌面网格、移动端全宽行和法律说明不变。
+- “联系我们”复用现有客服抽屉；即使没有可用渠道也保留入口，并在抽屉中直接显示真实不可用或加载错误状态，不伪造客服已启用。
+
+### 浏览器证据
+
+- 桌面 1440 × 1024 CSS：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-footer-four-grid-1440-zh-fixed.jpg`。
+- 中文移动端 390 × 844 CSS：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-footer-four-rows-390-zh-fixed.jpg`。
+- 英文移动端 320 × 844 CSS：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-footer-four-rows-320-en-fixed.jpg`。
+- 用户截图与桌面实现同屏对比：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-footer-before-after.jpg`。
+
+### 全视图、聚焦区域与五项视觉表面
+
+- 全视图：1440、390、320 均无页面级横向溢出；桌面页脚为完整四宫格，移动端为四条全宽导航行。
+- 聚焦比较：桌面品牌区和前三项位置保持不变，只填补参考图右下角空位；四项的列宽与行高一致，没有出现半格留白。
+- 字体与排版：复用既有页脚字号、字重和中英文排版；“联系我们 / Contact us”在 320px 下完整显示。
+- 间距与布局：桌面内容宽 1240px、页脚高 280px；390px 内容宽 351px、320px 内容宽 281px，移动端四行均为 58px。
+- 颜色与视觉变量：复用既有深海军蓝、边框、文字和青色箭头，没有新增视觉变量或高亮色。
+- 图片与素材：继续复用 `/assets/cloudbridge-logo.png`，未新增或替换图片、图标、Logo。
+- 文案与内容：第四项中文为“联系我们”，英文为“Contact us”；法律说明和前三项文案不变。
+
+### 交互、控制台与比较历史
+
+- 中文“联系我们”按钮可打开“联系客服”对话框，关闭按钮可正常关闭。
+- 本地公开配置接口不可用时，抽屉显示“暂时无法读取客服渠道 / 请检查网络后重新加载”，没有把错误状态伪装成可用渠道。
+- 320px 英文页面控制台 warning/error 为 0。
+- 首轮截图使用了视口坐标作为文档裁剪坐标，截取到错误区域；改用元素文档坐标重新生成 1440、390、320 三份聚焦证据后完成对比。
+
+### Findings
+
+- P0：0。
+- P1：0。
+- P2：0。
+- P3：0。
+
+### 自动检查
+
+- `npm run test --workspace @cloudbridge/storefront`：14/14 通过。
+- `node --test tests/platform-ux.test.mjs`：14/14 通过。
+- `npm run check`：完整通过；首次沙箱内执行仅因 Wrangler 无权写日志和监听本机临时端口失败，获准在沙箱外原命令复跑后全部通过。
+- `npm run build:sites`：通过。
+- `git diff --check`：通过。
+
+final result: passed
+
 ## 2026-07-29 正式客户端语言与客服按钮顺序
 
 ### 视觉真值与实现范围

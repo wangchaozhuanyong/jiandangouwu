@@ -12,6 +12,8 @@ export function ResilientImage({
   loading = "lazy",
   fetchPriority = "auto",
   fallbackLabel,
+  srcSet,
+  sizes,
 }: {
   src: string;
   alt: string;
@@ -21,6 +23,8 @@ export function ResilientImage({
   loading?: "eager" | "lazy";
   fetchPriority?: "high" | "low" | "auto";
   fallbackLabel: string;
+  srcSet?: string;
+  sizes?: string;
 }) {
   const [failed, setFailed] = useState(false);
 
@@ -45,6 +49,8 @@ export function ResilientImage({
       loading={loading}
       decoding="async"
       fetchPriority={fetchPriority}
+      srcSet={srcSet}
+      sizes={sizes}
       onError={() => setFailed(true)}
     />
   );

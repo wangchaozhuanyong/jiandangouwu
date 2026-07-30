@@ -33,6 +33,22 @@ test("the header always exposes truthful customer support", () => {
   );
 });
 
+test("the footer keeps four stable entries and opens truthful contact support last", () => {
+  const shell = read("components/site-shell.tsx");
+  const footer = shell.slice(
+    shell.indexOf('className="footer-links"'),
+    shell.indexOf("</nav>", shell.indexOf('className="footer-links"')),
+  );
+
+  assert.match(
+    footer,
+    /t\.navServices[\s\S]*?policies\/terms[\s\S]*?t\.terms[\s\S]*?policies\/privacy[\s\S]*?t\.privacy[\s\S]*?<button[\s\S]*?t\.navSupport/u,
+  );
+  assert.doesNotMatch(footer, /\{supportEnabled &&/u);
+  assert.equal(copy.zh.navSupport, "联系我们");
+  assert.equal(copy.en.navSupport, "Contact us");
+});
+
 test("the language picker exposes only the current native-language label", () => {
   const controls = read("components/storefront-controls.tsx");
   const shell = read("components/site-shell.tsx");

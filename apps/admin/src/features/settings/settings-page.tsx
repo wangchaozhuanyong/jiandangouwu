@@ -26,10 +26,12 @@ import {
 } from "../../admin-experience";
 import {
   formatDate,
+  HelpTip,
   PanelState,
   RefreshNotice,
   useUnsavedChanges,
 } from "../../admin-ui";
+import { helpTriggerLabel } from "../../help-content";
 import { getSiteSettings, updateSiteSettings } from "./api";
 
 type SettingsSection = "brand" | "access" | "inventory" | "seo";
@@ -214,12 +216,45 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
   useUnsavedChanges(dirty);
   useAdminPageDirty(dirty);
 
-  const sections: Array<{ id: SettingsSection; label: string }> = [
-    { id: "brand", label: copy(locale, "品牌与语言", "Brand & language") },
-    { id: "access", label: copy(locale, "订单与入口", "Orders & access") },
-    { id: "inventory", label: copy(locale, "库存风险", "Inventory risk") },
-    { id: "seo", label: copy(locale, "SEO 与政策", "SEO & policy") },
+  const sections: Array<{ id: SettingsSection; label: string; help: string }> = [
+    {
+      id: "brand",
+      label: copy(locale, "品牌与语言", "Brand & language"),
+      help: copy(
+        locale,
+        "设置客户端使用的中英文站点名称和默认语言。默认语言只影响首次进入，不会锁定用户的语言选择。",
+        "Sets the bilingual storefront name and default language. The default affects first entry but does not lock the user's language choice.",
+      ),
+    },
+    {
+      id: "access",
+      label: copy(locale, "订单与入口", "Orders & access"),
+      help: copy(
+        locale,
+        "控制客户端是否接受新订单、显示客服入口和中转站入口。真实接单依赖至少一个配置完整并已启用的联系方式。",
+        "Controls new orders, support access, and the transit entry. Live ordering requires at least one complete, active contact channel.",
+      ),
+    },
+    {
+      id: "inventory",
+      label: copy(locale, "库存风险", "Inventory risk"),
+      help: copy(
+        locale,
+        "设置工作台低库存风险队列的阈值。该设置只改变运营摘要，不修改商品库存或客户端购买状态。",
+        "Sets the threshold for the workspace low-stock queue. It changes only the operations summary, not product stock or storefront purchase state.",
+      ),
+    },
+    {
+      id: "seo",
+      label: copy(locale, "SEO 与政策", "SEO & policy"),
+      help: copy(
+        locale,
+        "维护客户端中英文 SEO 描述和当前政策版本。政策版本使用稳定标识，保存后用于后续客户端配置读取。",
+        "Maintains bilingual storefront SEO descriptions and the current policy version. The version uses a stable identifier and applies to later configuration reads.",
+      ),
+    },
   ];
+  const selectedSection = sections.find((item) => item.id === section) ?? sections[0]!;
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -328,9 +363,13 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
 
         <section className="admin-panel design-settings-form">
           <div>
-            <small>{sections.find((item) => item.id === section)?.label}</small>
-            <h2>{copy(locale, "真实网站配置", "Live site configuration")}</h2>
-            <p>{copy(locale, "保存后，客户端配置与后台风险查询会在下次读取时生效。", "Changes apply when storefront configuration or admin risk data is next read.")}</p>
+            <small>{selectedSection.label}</small>
+            <div className="admin-section-title">
+              <h2>{copy(locale, "真实网站配置", "Live site configuration")}</h2>
+              <HelpTip label={helpTriggerLabel(locale, selectedSection.label)}>
+                {selectedSection.help}
+              </HelpTip>
+            </div>
           </div>
 
           <fieldset className="settings-editable-fieldset" disabled={!canWrite}>
@@ -378,21 +417,30 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
                 </div>
                 <SettingsSwitch
                   checked={form.acceptOrders}
-                  description={form.supportEnabled
-                    ? copy(locale, "关闭后商品仍可浏览，但 API 和客户端都拒绝新订单。", "Products stay visible, but both API and storefront reject new orders.")
-                    : copy(locale, "请先显示客服入口，再开启真实接单。", "Show support access before enabling live orders.")}
+                  help={copy(
+                    locale,
+                    "开启后客户端和订单 API 才接受新订单；关闭后商品仍可浏览。",
+                    "When enabled, the storefront and order API can accept new orders. Products remain visible when it is disabled.",
+                  )}
+                  helpLabel={helpTriggerLabel(locale, copy(locale, "接受新订单", "Accept new orders"))}
                   disabled={!form.acceptOrders && (
                     configuredActiveContactChannels < 1
                     || !form.supportEnabled
                   )}
                   label={copy(locale, "接受新订单", "Accept new orders")}
                   onChange={(value) => setForm({ ...form, acceptOrders: value })}
+                  status={!form.supportEnabled
+                    ? copy(locale, "请先显示客服入口，再开启真实接单。", "Show support access before enabling live orders.")
+                    : undefined}
                 />
                 <SettingsSwitch
                   checked={form.supportEnabled}
-                  description={configuredActiveContactChannels > 0
-                    ? copy(locale, "控制页头和页脚的客服入口，不删除已配置渠道。", "Controls support entry points without deleting channels.")
-                    : copy(locale, "至少一个真实渠道完成配置后才能显示。", "Available after at least one real channel is configured.")}
+                  help={copy(
+                    locale,
+                    "控制客户端页头和页脚的客服入口。关闭入口不会删除已经配置的联系方式。",
+                    "Controls support entry points in the storefront header and footer. Disabling access does not delete configured channels.",
+                  )}
+                  helpLabel={helpTriggerLabel(locale, copy(locale, "显示客服入口", "Show support access"))}
                   disabled={!form.supportEnabled && configuredActiveContactChannels < 1}
                   label={copy(locale, "显示客服入口", "Show support access")}
                   onChange={(value) => setForm({
@@ -400,15 +448,32 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
                     supportEnabled: value,
                     acceptOrders: value ? form.acceptOrders : false,
                   })}
+                  status={configuredActiveContactChannels < 1
+                    ? copy(locale, "至少一个真实渠道完成配置后才能显示。", "Available after at least one real channel is configured.")
+                    : undefined}
                 />
                 <SettingsSwitch
                   checked={form.transitServiceEnabled}
-                  description={copy(locale, "只有明确关闭时才隐藏中转站入口。", "The transit entry hides only when explicitly disabled.")}
+                  help={copy(
+                    locale,
+                    "控制独立的中转站服务入口。只有明确关闭时客户端才隐藏该入口；它不会替代客服渠道。",
+                    "Controls the separate transit-service entry. The storefront hides it only when explicitly disabled, and it never replaces support channels.",
+                  )}
+                  helpLabel={helpTriggerLabel(locale, copy(locale, "显示中转站服务", "Show transit service"))}
                   label={copy(locale, "显示中转站服务", "Show transit service")}
                   onChange={(value) => setForm({ ...form, transitServiceEnabled: value })}
                 />
                 <label>
-                  <span>{copy(locale, "中转站 HTTPS 地址（可留空）", "Transit HTTPS URL (optional)")}</span>
+                  <span className="admin-field-title">
+                    {copy(locale, "中转站 HTTPS 地址（可留空）", "Transit HTTPS URL (optional)")}
+                    <HelpTip label={helpTriggerLabel(locale, copy(locale, "中转站 HTTPS 地址", "Transit HTTPS URL"))}>
+                      {copy(
+                        locale,
+                        "只接受完整的 HTTPS 地址。留空时入口仍可显示，但点击后只展示本地化的未配置提示。",
+                        "Use a complete HTTPS URL. When left blank, the entry may remain visible but clicking it shows a localized not-configured notice.",
+                      )}
+                    </HelpTip>
+                  </span>
                   <input
                     type="url"
                     value={form.transitServiceUrl ?? ""}
@@ -424,7 +489,19 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
               <>
                 <label><span>{copy(locale, "中文 SEO 描述", "Chinese SEO description")}</span><textarea rows={4} value={form.seoDescription.zh} onChange={(event) => setForm({ ...form, seoDescription: { ...form.seoDescription, zh: event.target.value } })} maxLength={500} required /></label>
                 <label><span>{copy(locale, "英文 SEO 描述", "English SEO description")}</span><textarea rows={4} value={form.seoDescription.en} onChange={(event) => setForm({ ...form, seoDescription: { ...form.seoDescription, en: event.target.value } })} maxLength={500} required /></label>
-                <label><span>{copy(locale, "当前政策版本", "Current policy version")}</span><input value={form.policyVersion} onChange={(event) => setForm({ ...form, policyVersion: event.target.value })} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}" maxLength={80} required /></label>
+                <label>
+                  <span className="admin-field-title">
+                    {copy(locale, "当前政策版本", "Current policy version")}
+                    <HelpTip label={helpTriggerLabel(locale, copy(locale, "当前政策版本", "Current policy version"))}>
+                      {copy(
+                        locale,
+                        "使用字母或数字开头的稳定版本标识，可包含字母、数字、点、下划线和连字符，最长 80 个字符。",
+                        "Use a stable identifier beginning with a letter or number. Letters, numbers, periods, underscores, and hyphens are allowed, up to 80 characters.",
+                      )}
+                    </HelpTip>
+                  </span>
+                  <input value={form.policyVersion} onChange={(event) => setForm({ ...form, policyVersion: event.target.value })} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}" maxLength={80} required />
+                </label>
               </>
             )}
 
@@ -444,7 +521,16 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
                   </div>
                 </div>
                 <label>
-                  <span>{copy(locale, "低库存风险阈值", "Low-stock risk threshold")}</span>
+                  <span className="admin-field-title">
+                    {copy(locale, "低库存风险阈值", "Low-stock risk threshold")}
+                    <HelpTip label={helpTriggerLabel(locale, copy(locale, "低库存风险阈值", "Low-stock risk threshold"))}>
+                      {copy(
+                        locale,
+                        `有限库存为 1–${form.inventoryRiskThreshold} 时进入工作台低库存风险队列；0 始终归为售罄。`,
+                        `Finite stock from 1–${form.inventoryRiskThreshold} enters the workspace low-stock queue; 0 always remains sold out.`,
+                      )}
+                    </HelpTip>
+                  </span>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -458,13 +544,6 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
                     })}
                     required
                   />
-                  <small>
-                    {copy(
-                      locale,
-                      `有限库存为 1–${form.inventoryRiskThreshold} 时进入工作台低库存风险队列；0 始终归为售罄。`,
-                      `Finite stock from 1–${form.inventoryRiskThreshold} enters the workspace low-stock queue; 0 always remains sold out.`,
-                    )}
-                  </small>
                 </label>
               </>
             )}
@@ -501,20 +580,30 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
 
 function SettingsSwitch({
   checked,
-  description,
   disabled = false,
+  help,
+  helpLabel,
   label,
   onChange,
+  status,
 }: {
   checked: boolean;
-  description: string;
   disabled?: boolean;
+  help: string;
+  helpLabel: string;
   label: string;
   onChange: (value: boolean) => void;
+  status?: string;
 }) {
   return (
     <div className="design-setting-row">
-      <div><strong>{label}</strong><small>{description}</small></div>
+      <div>
+        <span className="admin-field-title">
+          <strong>{label}</strong>
+          <HelpTip label={helpLabel}>{help}</HelpTip>
+        </span>
+        {status && <small>{status}</small>}
+      </div>
       <button
         aria-label={label}
         aria-checked={checked}

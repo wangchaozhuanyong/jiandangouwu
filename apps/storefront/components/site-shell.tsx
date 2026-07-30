@@ -9,7 +9,7 @@ import type { Locale } from "@cloudbridge/contracts";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getConfig, type StorefrontConfig } from "../lib/api";
 import { copy } from "../lib/copy";
 import { UX_TIMINGS } from "../lib/experience";
@@ -32,10 +32,10 @@ export function SiteShell({
   const [supportOpen, setSupportOpen] = useState(false);
   const [transitNotice, setTransitNotice] = useState("");
   const [config, setConfig] = useState<StorefrontConfig | null>(initialConfig);
+  const hasConsumedInitialConfig = useRef(false);
   const closeSupport = useCallback(() => setSupportOpen(false), []);
   const isProductDetail = pathname.startsWith(`/${locale}/products/`);
   const settings = config?.settings;
-  const supportEnabled = settings?.supportEnabled === true;
   const transitEnabled = settings?.transitServiceEnabled === true;
   const transitUrl = settings?.transitServiceUrl ?? null;
   const siteName = settings?.siteName[locale] ?? t.brandPrimary;
@@ -47,6 +47,12 @@ export function SiteShell({
   }, [locale, pathname, searchParams]);
 
   useEffect(() => {
+    if (!hasConsumedInitialConfig.current && initialConfig) {
+      hasConsumedInitialConfig.current = true;
+      setConfig(initialConfig);
+      return undefined;
+    }
+    hasConsumedInitialConfig.current = true;
     const controller = new AbortController();
     void getConfig(locale, controller.signal)
       .then((nextConfig) => setConfig(nextConfig))
@@ -55,7 +61,7 @@ export function SiteShell({
         setConfig(null);
       });
     return () => controller.abort();
-  }, [locale, pathname]);
+  }, [initialConfig, locale, pathname]);
 
   useEffect(() => {
     if (!transitNotice) return undefined;
@@ -174,12 +180,6 @@ export function SiteShell({
               <span>{t.navServices}</span>
               <ArrowRight size={16} aria-hidden="true" />
             </Link>
-            {supportEnabled && (
-              <button onClick={() => setSupportOpen(true)} type="button">
-                <span>{t.navSupport}</span>
-                <ArrowRight size={16} aria-hidden="true" />
-              </button>
-            )}
             <Link href={`/${locale}/policies/terms`} onClick={() => setNavigating(true)}>
               <span>{t.terms}</span>
               <ArrowRight size={16} aria-hidden="true" />
@@ -188,6 +188,10 @@ export function SiteShell({
               <span>{t.privacy}</span>
               <ArrowRight size={16} aria-hidden="true" />
             </Link>
+            <button onClick={() => setSupportOpen(true)} type="button">
+              <span>{t.navSupport}</span>
+              <ArrowRight size={16} aria-hidden="true" />
+            </button>
           </nav>
           <p className="footer-legal">{t.footerNote}</p>
         </footer>

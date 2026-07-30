@@ -48,6 +48,35 @@ test("D1 data migration restores line breaks and the default transit entry", () 
   assert.equal(result.stdout.trim(), "8|0|1|2");
 });
 
+test("Sites local development uses one Vite runtime and prepares local bindings", () => {
+  const rootPackage = JSON.parse(read("../../package.json"));
+  const sitesPackage = JSON.parse(read("package.json"));
+  const sourceHosting = JSON.parse(read("../../.openai/hosting.json"));
+  const localWrangler = JSON.parse(read("wrangler.local.jsonc"));
+
+  assert.equal(rootPackage.dependencies.vite, sitesPackage.devDependencies.vite);
+  assert.equal(
+    rootPackage.dependencies["@vitejs/plugin-react"],
+    sitesPackage.devDependencies["@vitejs/plugin-react"],
+  );
+  assert.match(
+    sitesPackage.scripts.dev,
+    /npm run build --workspace @cloudbridge\/contracts/u,
+  );
+  assert.match(
+    sitesPackage.scripts.dev,
+    /npm run db:migrate:local/u,
+  );
+  assert.match(
+    sitesPackage.scripts["db:migrate:local"],
+    /--local --config wrangler\.local\.jsonc --persist-to \.wrangler\/state/u,
+  );
+  assert.doesNotMatch(sitesPackage.scripts["db:migrate:local"], /--remote/u);
+  assert.equal(localWrangler.d1_databases[0].binding, sourceHosting.d1);
+  assert.equal(localWrangler.r2_buckets[0].binding, sourceHosting.r2);
+  assert.equal(localWrangler.d1_databases[0].migrations_dir, "drizzle");
+});
+
 test("Sites build declares D1 and R2 and ships the migration", () => {
   const sourceHosting = JSON.parse(read("../../.openai/hosting.json"));
   const builtHosting = JSON.parse(read("dist/.openai/hosting.json"));
@@ -199,10 +228,13 @@ test("Sites separates v2 data-protection purposes while preserving legacy reads"
 test("Sites worker avoids createRequire with an undefined module URL", () => {
   const workerEntry = read("dist/server/index.js");
   assert.doesNotMatch(workerEntry, /createRequire\(import\.meta\.url\)/u);
-  assert.match(workerEntry, /id === "node:async_hooks"/u);
-  assert.match(workerEntry, /AsyncLocalStorage: AsyncLocalStorage\$1/u);
+  assert.doesNotMatch(workerEntry, /createRequire\(/u);
+  assert.match(
+    workerEntry,
+    /import \{ AsyncLocalStorage as AsyncLocalStorage\$1 \} from "node:async_hooks";/u,
+  );
   for (const file of collectJavaScriptFiles(new URL("../dist/server/", import.meta.url))) {
-    assert.doesNotMatch(readFileSync(file, "utf8"), /createRequire\(import\.meta\.url\)/u);
+    assert.doesNotMatch(readFileSync(file, "utf8"), /createRequire\(/u);
   }
 });
 

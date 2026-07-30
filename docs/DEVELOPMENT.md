@@ -4,7 +4,9 @@
 
 - Node.js 24.x，npm 11.x。
 - 安装：`npm ci`
-- 本地完整运行：`npm run dev:sites`
+- 本地完整运行：`npm run dev:sites`。该命令会先构建共享契约，并只对
+  `.wrangler/state` 中的本地 D1 自动应用待执行迁移。
+- 仅更新本地 D1：`npm run db:migrate:local --workspace @cloudbridge/sites`
 - 类型：`npm run typecheck:platform`
 - 完整门禁：`npm run check`
 - Sites 打包：`npm run build:sites`

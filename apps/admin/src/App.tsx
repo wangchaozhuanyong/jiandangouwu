@@ -56,7 +56,16 @@ import {
   type AdminNavigationGroupId,
   type Page,
 } from "./admin-model";
-import { AdminShellSkeleton, Dialog, PanelState } from "./admin-ui";
+import {
+  AdminShellSkeleton,
+  Dialog,
+  HelpTip,
+  PanelState,
+} from "./admin-ui";
+import {
+  adminPageHelp,
+  helpTriggerLabel,
+} from "./help-content";
 import { adminCopy } from "./i18n";
 
 const DashboardPage = lazy(() => import("./pages/dashboard-page"));
@@ -221,6 +230,7 @@ function AuthenticatedAdmin({
   const [announcement, setAnnouncement] = useState("");
   const headingRef = useRef<HTMLHeadingElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const workspaceRef = useRef<HTMLElement>(null);
 
   const go = useCallback((next: Page, historyMode: "push" | "replace" = "push") => {
     if (next !== page && !confirmNavigation(locale)) return;
@@ -253,8 +263,11 @@ function AuthenticatedAdmin({
     document.title = `${title} · CloudBridge`;
     setAnnouncement(locale === "zh" ? `已进入${title}` : `${title} page opened`);
     headingRef.current?.focus({ preventScroll: true });
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [locale, page, t]);
+
+  useLayoutEffect(() => {
+    workspaceRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [page]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -363,11 +376,14 @@ function AuthenticatedAdmin({
         </div>
       </aside>
       {menuOpen && <button className="nav-backdrop" onClick={() => { setMenuOpen(false); menuButtonRef.current?.focus(); }} aria-label={locale === "zh" ? "关闭导航" : "Close navigation"} />}
-      <section className="admin-main">
+      <section className="admin-main" ref={workspaceRef}>
         <header className="admin-topbar">
           <button ref={menuButtonRef} className="mobile-menu" onClick={() => setMenuOpen(true)} aria-expanded={menuOpen} aria-label={locale === "zh" ? "打开导航" : "Open navigation"}><List /></button>
-          <div>
+          <div className="admin-page-title">
             <h1 ref={headingRef} tabIndex={-1}>{t[page] as string}</h1>
+            <HelpTip label={helpTriggerLabel(locale, t[page] as string)}>
+              {adminPageHelp[page][locale]}
+            </HelpTip>
           </div>
           <div className="admin-language" aria-label={t.languageLabel as string}>
             <button className={locale === "zh" ? "is-active" : ""} onClick={() => setLocale("zh")}>{t.languageZh as string}</button>

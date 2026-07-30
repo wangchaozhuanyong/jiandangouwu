@@ -1,5 +1,6 @@
 import {
   ArrowsClockwise,
+  Question,
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
@@ -7,6 +8,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
 } from "react";
 import type { Locale } from "./api";
 import { adminCopy } from "./i18n";
@@ -103,18 +105,77 @@ export function RefreshNotice({
   );
 }
 
+export function HelpTip({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
+  const panelId = useId();
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeFromOutside = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeFromOutside);
+    document.addEventListener("keydown", closeFromKeyboard, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeFromOutside);
+      document.removeEventListener("keydown", closeFromKeyboard, true);
+    };
+  }, [open]);
+
+  return (
+    <span className={`admin-help-tip${open ? " is-open" : ""}`} ref={rootRef}>
+      <button
+        aria-controls={panelId}
+        aria-describedby={open ? panelId : undefined}
+        aria-expanded={open}
+        aria-label={label}
+        className="admin-help-trigger"
+        onClick={() => setOpen((current) => !current)}
+        ref={triggerRef}
+        type="button"
+      >
+        <Question aria-hidden="true" weight="bold" />
+      </button>
+      {open && (
+        <span className="admin-help-popover" id={panelId} role="tooltip">
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function Dialog({
   title,
   onClose,
   wide = false,
   children,
   closeLabel,
+  help,
+  helpLabel,
 }: {
   title: string;
   onClose: () => void;
   wide?: boolean;
   children: React.ReactNode;
   closeLabel: string;
+  help?: React.ReactNode;
+  helpLabel?: string;
 }) {
   const titleId = useId();
   const dialogRef = useRef<HTMLElement>(null);
@@ -162,7 +223,13 @@ export function Dialog({
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section ref={dialogRef} className={`admin-dialog ${wide ? "is-wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
-        <header><h2 id={titleId}>{title}</h2><button aria-label={closeLabel} onClick={onClose}><X /></button></header>
+        <header>
+          <div className="admin-dialog-title">
+            <h2 id={titleId}>{title}</h2>
+            {help && helpLabel && <HelpTip label={helpLabel}>{help}</HelpTip>}
+          </div>
+          <button aria-label={closeLabel} onClick={onClose}><X /></button>
+        </header>
         {children}
       </section>
     </div>

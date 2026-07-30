@@ -8,7 +8,8 @@
   },
   "scripts": {
     "prepare:assets": "node scripts/prepare-assets.mjs",
-    "dev": "npm run prepare:assets && WRANGLER_LOG_PATH=.wrangler/wrangler.log NEXT_PUBLIC_API_BASE_URL=/v1 VITE_ADMIN_API_BASE_URL=/v1 VITE_ADMIN_AUTH_PROVIDER=sites vinext dev",
+    "db:migrate:local": "CI=1 wrangler d1 migrations apply cloudbridge-sites-d1 --local --config wrangler.local.jsonc --persist-to .wrangler/state",
+    "dev": "npm run build --workspace @cloudbridge/contracts && npm run prepare:assets && npm run db:migrate:local && WRANGLER_LOG_PATH=.wrangler/wrangler.log NEXT_PUBLIC_API_BASE_URL=/v1 VITE_ADMIN_API_BASE_URL=/v1 VITE_ADMIN_AUTH_PROVIDER=sites vinext dev",
     "build": "npm run prepare:assets && WRANGLER_LOG_PATH=.wrangler/wrangler.log NEXT_PUBLIC_API_BASE_URL=/v1 VITE_ADMIN_API_BASE_URL=/v1 VITE_ADMIN_AUTH_PROVIDER=sites vinext build && node scripts/patch-worker-entry.mjs",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log NEXT_PUBLIC_API_BASE_URL=/v1 VITE_ADMIN_API_BASE_URL=/v1 VITE_ADMIN_AUTH_PROVIDER=sites vinext start",
     "test": "npm run build && node --import tsx --test tests/*.test.mjs",

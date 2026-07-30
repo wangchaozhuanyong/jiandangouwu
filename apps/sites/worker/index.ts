@@ -4,9 +4,16 @@ import {
   handleImageOptimization,
 } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import {
+  encodeStorefrontBootstrap,
+  STOREFRONT_BOOTSTRAP_HEADER,
+} from "../lib/storefront-bootstrap";
 import { ensureDailyBackup } from "../server/backup-api";
 import { ensureExchangeRatesFresh } from "../server/exchange-rates";
+import { scheduleExpiredOrderReconciliation } from "../server/public-api";
 import { handleCloudBridgeRequest } from "../server/router";
+import { serveStaticAsset } from "../server/static-assets";
+import { buildStorefrontBootstrap } from "../server/storefront-bootstrap";
 import { processTelegramDeliveries } from "../server/telegram";
 import type { SitesEnv, SitesExecutionContext } from "../server/types";
 
@@ -17,9 +24,19 @@ const worker = {
     context: SitesExecutionContext,
   ): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname.startsWith("/assets/")) {
+      return serveStaticAsset(request, env.ASSETS);
+    }
+    const isStorefrontPage = /^\/(?:zh|en)(?:\/?$|\/products\/[^/]+\/?$)/u
+      .test(url.pathname);
     if (
       request.method === "GET"
-      && ["/v1/storefront/config", "/v1/admin/sites-readiness"].includes(url.pathname)
+      && (
+        isStorefrontPage
+        || ["/v1/storefront/config", "/v1/admin/sites-readiness"].includes(
+          url.pathname,
+        )
+      )
     ) {
       context.waitUntil(ensureDailyBackup(env).catch((error: unknown) => {
         console.error("[cloudbridge] Automatic daily backup failed", error);
@@ -62,7 +79,28 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, context);
+    let pageRequest = request;
+    if (request.method === "GET") {
+      const headers = new Headers(request.headers);
+      headers.delete(STOREFRONT_BOOTSTRAP_HEADER);
+      if (isStorefrontPage) {
+        scheduleExpiredOrderReconciliation(env.DB, context);
+        try {
+          const bootstrap = await buildStorefrontBootstrap(env.DB, url);
+          if (bootstrap) {
+            headers.set(
+              STOREFRONT_BOOTSTRAP_HEADER,
+              encodeStorefrontBootstrap(bootstrap),
+            );
+          }
+        } catch (error: unknown) {
+          console.error("[cloudbridge] Storefront bootstrap failed", error);
+        }
+      }
+      pageRequest = new Request(request, { headers });
+    }
+
+    return handler.fetch(pageRequest, env, context);
   },
 };
 

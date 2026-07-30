@@ -20,10 +20,16 @@ const unsupportedRequireShim = [
 
 const javascriptFiles = await collectJavaScriptFiles(serverDirectory);
 let patchedFiles = 0;
+const unreviewedCreateRequireFiles = [];
 
 for (const file of javascriptFiles) {
   const source = await readFile(file, "utf8");
-  if (!source.includes(createRequireInitializer)) continue;
+  if (!source.includes(createRequireInitializer)) {
+    if (source.includes("createRequire(") || source.includes(createRequireImport.trim())) {
+      unreviewedCreateRequireFiles.push(file);
+    }
+    continue;
+  }
   if (!source.includes(createRequireImport)) {
     throw new Error(`The vinext module has an unreviewed createRequire shape: ${file}`);
   }
@@ -46,7 +52,12 @@ for (const file of javascriptFiles) {
 }
 
 if (patchedFiles === 0) {
-  throw new Error("The vinext build no longer contains the reviewed Sites compatibility issue.");
+  if (unreviewedCreateRequireFiles.length > 0) {
+    throw new Error(
+      `The vinext build contains an unreviewed createRequire shape: ${unreviewedCreateRequireFiles.join(", ")}`,
+    );
+  }
+  console.log("Sites worker compatibility patch not required.");
 }
 
 async function collectJavaScriptFiles(directory) {

@@ -92,7 +92,16 @@ export function isConfiguredContactChannel(
   channel: ContactChannelConfiguration,
 ): boolean {
   const account = channel.publicAccount.normalize("NFKC").trim().toLocaleLowerCase();
-  return account.length > 0
-    && !unconfiguredContactValues.has(account)
-    && isApprovedContactChannelTarget(channel.type, channel.mode, channel.directTarget);
+  if (
+    account.length === 0
+    || unconfiguredContactValues.has(account)
+    || !isApprovedContactChannelTarget(channel.type, channel.mode, channel.directTarget)
+  ) {
+    return false;
+  }
+  if (channel.type !== "QQ") return true;
+  const qqTarget = channel.directTarget?.trim().match(
+    /^mqqwpa:\/\/im\/chat\?chat_type=wpa&uin=(\d{5,15})$/u,
+  );
+  return /^\d{5,15}$/u.test(account) && qqTarget?.[1] === account;
 }

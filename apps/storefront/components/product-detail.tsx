@@ -22,6 +22,7 @@ import {
   type StorefrontConfig,
 } from "../lib/api";
 import { copy } from "../lib/copy";
+import { storefrontResponsiveImage } from "../lib/responsive-images";
 import {
   resolveAsyncViewState,
   UX_TIMINGS,
@@ -240,7 +241,16 @@ export function ProductDetailView({
       ) : (
         <div className={`detail-grid ${viewState === "refreshing" ? "is-refreshing" : ""}`} aria-busy={viewState === "refreshing"}>
           <section className="detail-visual">
-            <ResilientImage src={product.imageUrl} alt="" width={900} height={1100} loading="eager" fetchPriority="high" fallbackLabel={t.imageUnavailable} />
+            <ResilientImage
+              src={product.imageUrl}
+              alt=""
+              width={900}
+              height={1100}
+              loading="eager"
+              fetchPriority="high"
+              fallbackLabel={t.imageUnavailable}
+              {...storefrontResponsiveImage(product.imageUrl, "product")}
+            />
           </section>
           <section className="detail-copy">
             <h1>{product.name}</h1>

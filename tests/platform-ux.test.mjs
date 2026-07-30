@@ -74,9 +74,10 @@ test("正式客户端刷新公开配置、恢复订单冲突并保持移动端�
 
   assert.match(shell, /getConfig\(locale, controller\.signal\)/u);
   assert.match(shell, /setConfig\(null\)/u);
-  assert.match(shell, /settings\?\.supportEnabled === true/u);
   assert.match(shell, /settings\?\.transitServiceEnabled === true/u);
   assert.match(shell, /initialConfig=\{config\}/u);
+  assert.match(shell, /t\.navServices[\s\S]*?t\.terms[\s\S]*?t\.privacy[\s\S]*?<button[\s\S]*?t\.navSupport/u);
+  assert.doesNotMatch(shell, /\{supportEnabled && \([\s\S]*?t\.navSupport/u);
   assert.match(shell, /transit-service-notice\$\{isProductDetail \? " is-detail"/u);
   assert.match(shell, /\{children\}[\s\S]*?transit-service-entry[\s\S]*?\{!isProductDetail && \(/u);
   assert.match(detail, /resolveOrderAvailability\(config\) !== "available"/u);
@@ -193,7 +194,7 @@ test("正式后台使用舒适字号层级并让工作区铺满可用宽度", ()
   assert.match(css, /\.admin-topbar\s*\{[^}]*padding:\s*0 var\(--admin-content-gutter\);/u);
   assert.match(
     css,
-    /\.admin-content\s*\{[^}]*width:\s*auto;[^}]*margin:\s*clamp\(24px,\s*3\.5vw,\s*46px\) var\(--admin-content-gutter\) 70px;/u,
+    /\.admin-content\s*\{[^}]*width:\s*auto;[^}]*margin:\s*clamp\(24px,\s*3\.5vw,\s*46px\) var\(--admin-content-gutter\) max\(70px,\s*env\(safe-area-inset-bottom\)\);/u,
   );
   assert.doesNotMatch(css, /\.admin-content\s*\{[^}]*min\(1400px/u);
   assert.match(
@@ -213,9 +214,55 @@ test("正式后台使用舒适字号层级并让工作区铺满可用宽度", ()
   );
   assert.match(
     css,
-    /@media \(max-width: 760px\)[\s\S]*?\.admin-surface \{ --admin-content-gutter: 12px; \}[\s\S]*?\.admin-topbar h1 \{ font-size: var\(--admin-font-page-title-mobile\); \}[\s\S]*?\.admin-content \{ width: auto; margin: 18px var\(--admin-content-gutter\) 70px; \}/u,
+    /@media \(max-width: 760px\)[\s\S]*?\.admin-surface \{ --admin-content-gutter: 12px; \}[\s\S]*?\.admin-topbar h1 \{ font-size: var\(--admin-font-page-title-mobile\); \}[\s\S]*?\.admin-content \{ width: auto; margin: 18px var\(--admin-content-gutter\) max\(70px,\s*env\(safe-area-inset-bottom\)\); \}/u,
   );
   assert.doesNotMatch(css, /\.admin-topbar h1 \{[^}]*font-size:\s*20px;/u);
+});
+
+test("正式后台使用视口壳层、唯一工作区滚动和受控内容边界", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const telegram = read("apps/admin/src/features/notifications/telegram-new-order-page.tsx");
+  const css = read("apps/admin/src/styles.css");
+  const agents = read("AGENTS.md");
+  const interaction = read("docs/UX_INTERACTION_SYSTEM.md");
+  const roadmap = read("docs/ROADMAP.md");
+
+  assert.match(
+    css,
+    /\.admin-shell \{[^}]*height:\s*100vh;[^}]*height:\s*100dvh;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/u,
+  );
+  assert.match(
+    css,
+    /\.admin-shell > aside \{[^}]*min-height:\s*0;[^}]*height:\s*100%;[^}]*position:\s*relative;[^}]*overflow:\s*hidden;/u,
+  );
+  assert.match(
+    css,
+    /\.admin-main \{[^}]*min-width:\s*0;[^}]*min-height:\s*0;[^}]*height:\s*100%;[^}]*overflow-x:\s*clip;[^}]*overflow-y:\s*auto;/u,
+  );
+  assert.match(css, /\.admin-topbar \{[^}]*position:\s*sticky;[^}]*top:\s*0;/u);
+  assert.match(css, /\.admin-content > \* \{ min-width: 0; max-width: 100%; \}/u);
+  assert.match(css, /\.admin-panel \{ min-width: 0; max-width: 100%;/u);
+  assert.match(css, /\.admin-panel > \* \{ min-width: 0; max-width: 100%; \}/u);
+  assert.match(app, /const workspaceRef = useRef<HTMLElement>\(null\)/u);
+  assert.match(app, /workspaceRef\.current\?\.scrollTo\(\{ top: 0, left: 0, behavior: "auto" \}\)/u);
+  assert.match(app, /<section className="admin-main" ref=\{workspaceRef\}>/u);
+  assert.doesNotMatch(app, /window\.scrollTo/u);
+
+  assert.match(telegram, /className="admin-panel telegram-delivery-panel"/u);
+  assert.match(telegram, /className="admin-table-shell"[\s\S]*?tabIndex=\{0\}/u);
+  assert.match(css, /\.telegram-form-actions input \{[^}]*flex:\s*1 1 320px;/u);
+  assert.match(css, /\.admin-table-shell \{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;/u);
+  assert.match(css, /\.admin-table-shell table \{[^}]*width:\s*100%;[^}]*min-width:\s*820px;/u);
+  assert.match(
+    css,
+    /@media \(max-width: 760px\)[\s\S]*?\.admin-table-shell th:first-child,[\s\S]*?position:\s*sticky;[\s\S]*?\.admin-table-shell th:last-child,[\s\S]*?position:\s*sticky;/u,
+  );
+
+  assert.match(agents, /viewport-owned application shell/u);
+  assert.match(agents, /No route may create page-level horizontal overflow/u);
+  assert.match(interaction, /唯一纵向工作区滚动容器/u);
+  assert.match(interaction, /不得产生页面级横向溢出/u);
+  assert.match(roadmap, /管理后台采用视口级壳层与唯一工作区滚动/u);
 });
 
 test("正式后台页面按路由懒加载并使用三十秒会话缓存", () => {
@@ -248,6 +295,35 @@ test("正式后台弹窗具备焦点锁定、Escape 和焦点返回", () => {
   assert.match(ui, /document\.body\.style\.overflow = "hidden"/u);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/u);
   assert.match(css, /\.row-action\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
+});
+
+test("正式后台使用统一的标题问号说明并保留可见状态反馈", () => {
+  const app = read("apps/admin/src/App.tsx");
+  const ui = read("apps/admin/src/admin-ui.tsx");
+  const help = read("apps/admin/src/help-content.ts");
+  const settings = read("apps/admin/src/features/settings/settings-page.tsx");
+  const contacts = read("apps/admin/src/features/support/contacts-page.tsx");
+  const css = read("apps/admin/src/styles.css");
+
+  assert.match(app, /adminPageHelp\[page\]\[locale\]/u);
+  assert.match(app, /className="admin-page-title"/u);
+  assert.match(ui, /export function HelpTip/u);
+  assert.match(ui, /aria-controls=\{panelId\}/u);
+  assert.match(ui, /aria-expanded=\{open\}/u);
+  assert.match(ui, /role="tooltip"/u);
+  assert.match(ui, /document\.addEventListener\("keydown", closeFromKeyboard, true\)/u);
+  assert.match(help, /satisfies Record<Page, LocalizedHelp>/u);
+  assert.match(settings, /className="admin-section-title"/u);
+  assert.match(settings, /className="admin-field-title"/u);
+  assert.match(contacts, /mqqwpa:\/\/im\/chat\?chat_type=wpa&uin=/u);
+  assert.match(contacts, /aria-invalid=\{Boolean\(targetError\)\}/u);
+  assert.match(css, /\.admin-help-trigger \{ width: 44px; height: 44px;/u);
+  assert.match(
+    css,
+    /@media \(max-width: 760px\)[\s\S]*?\.admin-help-popover \{[^}]*position: fixed;[^}]*left: 12px;[^}]*right: 12px;/u,
+  );
+  assert.match(settings, /role="status"/u);
+  assert.match(contacts, /role="alert"/u);
 });
 
 test("正式后台只使用 Sites 的 ChatGPT 管理身份", () => {
@@ -284,7 +360,7 @@ test("正式后台使用可展开的任务分组并自动定位当前二级入�
   assert.match(css, /\.admin-nav-child\s*\{\s*min-height:\s*44px;/u);
 });
 
-test("正式后台24个页面均为真实或明确受限页面且不再保留独立设计预览", () => {
+test("正式后台当前路由均为真实或明确受限页面且不再保留独立设计预览", () => {
   const model = read("apps/admin/src/admin-model.ts");
   const app = read("apps/admin/src/App.tsx");
   const pagesBlock = model.match(/export const ADMIN_PAGES:[\s\S]*?= \[([\s\S]*?)\];/u)?.[1] ?? "";

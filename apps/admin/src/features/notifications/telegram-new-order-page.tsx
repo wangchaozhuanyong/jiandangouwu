@@ -405,7 +405,7 @@ export default function TelegramNewOrderPage({
         )}
       </section>
 
-      <section className="admin-panel">
+      <section className="admin-panel telegram-delivery-panel">
         <div className="telegram-panel-heading">
           <div>
             <small>DELIVERY OUTBOX</small>
@@ -418,7 +418,11 @@ export default function TelegramNewOrderPage({
         {!deliveryResource.data ? (
           <PanelState state={deliveryResource.state} locale={locale} retry={() => void deliveryResource.reload()} />
         ) : (
-          <div className="admin-table-shell">
+          <div
+            aria-label={copy(locale, "Telegram 投递记录表，可横向滚动", "Telegram delivery table, horizontally scrollable")}
+            className="admin-table-shell"
+            tabIndex={0}
+          >
             <table>
               <thead><tr>
                 <th>{copy(locale, "订单号", "Order")}</th>
