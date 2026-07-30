@@ -1,4 +1,9 @@
-import type { StorefrontSettings } from "@cloudbridge/contracts";
+import {
+  DEFAULT_INVENTORY_RISK_THRESHOLD,
+  INVENTORY_RISK_THRESHOLD_MAX,
+  INVENTORY_RISK_THRESHOLD_MIN,
+  type StorefrontSettings,
+} from "@cloudbridge/contracts";
 
 export const STOREFRONT_SETTINGS_KEY = "storefront.settings";
 export const POLICY_VERSION_KEY = "policy.currentVersion";
@@ -16,6 +21,7 @@ export const DEFAULT_STOREFRONT_SETTINGS: StorefrontSettings = {
   policyVersion: "2026-07-27",
   acceptOrders: true,
   supportEnabled: true,
+  inventoryRiskThreshold: DEFAULT_INVENTORY_RISK_THRESHOLD,
   transitServiceEnabled: true,
   transitServiceUrl: null,
 };
@@ -32,6 +38,13 @@ const nonEmptyString = (value: unknown, fallback: string, maxLength: number): st
 
 const booleanValue = (value: unknown, fallback: boolean): boolean =>
   typeof value === "boolean" ? value : fallback;
+
+const inventoryRiskThresholdValue = (value: unknown): number =>
+  Number.isSafeInteger(value)
+    && Number(value) >= INVENTORY_RISK_THRESHOLD_MIN
+    && Number(value) <= INVENTORY_RISK_THRESHOLD_MAX
+    ? Number(value)
+    : DEFAULT_INVENTORY_RISK_THRESHOLD;
 
 const policyVersionOrNull = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -82,6 +95,7 @@ export function parseStorefrontSettings(
     policyVersion: nonEmptyString(source.policyVersion, fallbackPolicyVersion, 80),
     acceptOrders: booleanValue(source.acceptOrders, DEFAULT_STOREFRONT_SETTINGS.acceptOrders),
     supportEnabled: booleanValue(source.supportEnabled, DEFAULT_STOREFRONT_SETTINGS.supportEnabled),
+    inventoryRiskThreshold: inventoryRiskThresholdValue(source.inventoryRiskThreshold),
     transitServiceEnabled: booleanValue(
       source.transitServiceEnabled,
       DEFAULT_STOREFRONT_SETTINGS.transitServiceEnabled,

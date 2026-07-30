@@ -10,6 +10,7 @@ const storedSettings = {
   policyVersion: "2026-07-29",
   acceptOrders: true,
   supportEnabled: true,
+  inventoryRiskThreshold: 3,
   transitServiceEnabled: true,
   transitServiceUrl: null,
 };
@@ -79,17 +80,26 @@ test("public settings retain live support and ordering with a configured channel
 
 function updateService(activeChannels: Array<typeof placeholderChannel>) {
   let wroteSettings = false;
+  let committedSettings = settingRow;
+  const auditRecords: Array<Record<string, unknown>> = [];
   const transaction = {
     siteSetting: {
       findUnique: async ({ where }: { where: { key: string } }) => (
         where.key === "storefront.settings"
-          ? settingRow
+          ? committedSettings
           : { key: where.key, value: "2026-07-29" }
       ),
-      updateMany: async () => {
+      updateMany: async ({ data }: { data: { value: typeof storedSettings } }) => {
         wroteSettings = true;
+        committedSettings = {
+          ...settingRow,
+          value: data.value,
+          version: settingRow.version + 1,
+        };
         return { count: 1 };
       },
+      upsert: async () => undefined,
+      findUniqueOrThrow: async () => committedSettings,
     },
     merchantChannel: {
       findMany: async () => activeChannels,
@@ -101,9 +111,12 @@ function updateService(activeChannels: Array<typeof placeholderChannel>) {
   return {
     service: new SettingsService(
       prisma as never,
-      { record: async () => undefined } as never,
+      { record: async (record: Record<string, unknown>) => {
+        auditRecords.push(record);
+      } } as never,
     ),
     wroteSettings: () => wroteSettings,
+    auditRecords,
   };
 }
 
@@ -115,6 +128,7 @@ const updateInput = {
   policyVersion: storedSettings.policyVersion,
   acceptOrders: true,
   supportEnabled: true,
+  inventoryRiskThreshold: 3,
   transitServiceEnabled: true,
   transitServiceUrl: null,
   reason: "Enable launch after contact review",
@@ -139,4 +153,21 @@ test("settings reject support and ordering when no configured channel exists", a
     BadRequestException,
   );
   assert.equal(wroteSettings(), false);
+});
+
+test("settings persist the inventory risk threshold through CAS and audit", async () => {
+  const { service, wroteSettings, auditRecords } = updateService([configuredChannel]);
+  const settings = await service.update(
+    { ...updateInput, inventoryRiskThreshold: 7 },
+    { userId: "admin", requestId: "request" },
+  );
+
+  assert.equal(wroteSettings(), true);
+  assert.equal(settings.inventoryRiskThreshold, 7);
+  assert.equal(settings.version, 4);
+  assert.equal(auditRecords.length, 1);
+  assert.deepEqual(
+    (auditRecords[0]?.afterData as { inventoryRiskThreshold?: number }).inventoryRiskThreshold,
+    7,
+  );
 });

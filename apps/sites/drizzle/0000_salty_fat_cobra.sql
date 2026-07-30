@@ -302,5 +302,5 @@ INSERT INTO `merchant_channels` (`id`,`type`,`mode`,`label_zh`,`label_en`,`publi
 --> statement-breakpoint
 INSERT INTO `site_settings` (`key`,`value_json`,`version`,`updated_at`,`updated_by_email`) VALUES
 ('policy.currentVersion','"2026-07-29"',1,'2026-07-29T00:00:00.000Z',NULL),
-('storefront.settings','{"siteName":{"zh":"云桥","en":"CloudBridge"},"defaultLocale":"zh","seoDescription":{"zh":"精选全球 AI 工具，以清楚的价格、库存与人工服务连接需求。","en":"Global AI services with clear pricing, availability, and human support."},"policyVersion":"2026-07-29","acceptOrders":false,"supportEnabled":false,"transitServiceEnabled":false,"transitServiceUrl":null}',1,'2026-07-29T00:00:00.000Z',NULL),
+('storefront.settings','{"siteName":{"zh":"云桥","en":"CloudBridge"},"defaultLocale":"zh","seoDescription":{"zh":"精选全球 AI 工具，以清楚的价格、库存与人工服务连接需求。","en":"Global AI services with clear pricing, availability, and human support."},"policyVersion":"2026-07-29","acceptOrders":false,"supportEnabled":false,"inventoryRiskThreshold":3,"transitServiceEnabled":false,"transitServiceUrl":null}',1,'2026-07-29T00:00:00.000Z',NULL),
 ('notifications.telegram.new-order','{"requestedEnabled":false,"recipientGroupLabel":"","includedFields":["ORDER_NUMBER","PRODUCT","AMOUNT","CURRENCY","STATUS","CREATED_AT","CONTACT_CHANNEL","MASKED_CONTACT"],"version":1}',1,'2026-07-29T00:00:00.000Z',NULL);

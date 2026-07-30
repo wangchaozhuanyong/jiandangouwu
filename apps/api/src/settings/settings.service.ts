@@ -88,6 +88,7 @@ export class SettingsService {
       policyVersion: input.policyVersion,
       acceptOrders: input.acceptOrders,
       supportEnabled: input.supportEnabled,
+      inventoryRiskThreshold: input.inventoryRiskThreshold,
       transitServiceEnabled: input.transitServiceEnabled,
       transitServiceUrl: parsedTransitServiceUrl,
     });

@@ -1,7 +1,9 @@
-import type {
-  AdminStorefrontSettings,
-  Locale,
-  UpdateStorefrontSettingsInput,
+import {
+  INVENTORY_RISK_THRESHOLD_MAX,
+  INVENTORY_RISK_THRESHOLD_MIN,
+  type AdminStorefrontSettings,
+  type Locale,
+  type UpdateStorefrontSettingsInput,
 } from "@cloudbridge/contracts";
 import {
   Check,
@@ -30,12 +32,12 @@ import {
 } from "../../admin-ui";
 import { getSiteSettings, updateSiteSettings } from "./api";
 
-type SettingsSection = "brand" | "access" | "seo";
+type SettingsSection = "brand" | "access" | "inventory" | "seo";
 
 const copy = (locale: Locale, zh: string, en: string) => locale === "zh" ? zh : en;
 const policyVersionPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/u;
 
-const editableSettings = (
+export const editableSettings = (
   settings: AdminStorefrontSettings,
 ): UpdateStorefrontSettingsInput => ({
   version: settings.version,
@@ -45,6 +47,7 @@ const editableSettings = (
   policyVersion: settings.policyVersion,
   acceptOrders: settings.acceptOrders,
   supportEnabled: settings.supportEnabled,
+  inventoryRiskThreshold: settings.inventoryRiskThreshold,
   transitServiceEnabled: settings.transitServiceEnabled,
   transitServiceUrl: settings.transitServiceUrl,
   reason: "",
@@ -57,6 +60,7 @@ const comparableSettings = (settings: UpdateStorefrontSettingsInput) => ({
   policyVersion: settings.policyVersion,
   acceptOrders: settings.acceptOrders,
   supportEnabled: settings.supportEnabled,
+  inventoryRiskThreshold: settings.inventoryRiskThreshold,
   transitServiceEnabled: settings.transitServiceEnabled,
   transitServiceUrl: settings.transitServiceUrl,
 });
@@ -65,7 +69,7 @@ type SettingsValidationResult =
   | { ok: true; value: UpdateStorefrontSettingsInput }
   | { ok: false; section: SettingsSection; message: string };
 
-const validateSettings = (
+export const validateSettings = (
   form: UpdateStorefrontSettingsInput,
   locale: Locale,
   configuredActiveContactChannels: number,
@@ -161,6 +165,21 @@ const validateSettings = (
       ),
     };
   }
+  if (
+    !Number.isSafeInteger(normalized.inventoryRiskThreshold)
+    || normalized.inventoryRiskThreshold < INVENTORY_RISK_THRESHOLD_MIN
+    || normalized.inventoryRiskThreshold > INVENTORY_RISK_THRESHOLD_MAX
+  ) {
+    return {
+      ok: false,
+      section: "inventory",
+      message: copy(
+        locale,
+        `库存风险阈值必须是 ${INVENTORY_RISK_THRESHOLD_MIN}–${INVENTORY_RISK_THRESHOLD_MAX} 的整数。`,
+        `Inventory risk threshold must be an integer from ${INVENTORY_RISK_THRESHOLD_MIN} to ${INVENTORY_RISK_THRESHOLD_MAX}.`,
+      ),
+    };
+  }
   if (normalized.reason.length < 8 || normalized.reason.length > 500) {
     return {
       ok: false,
@@ -198,6 +217,7 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
   const sections: Array<{ id: SettingsSection; label: string }> = [
     { id: "brand", label: copy(locale, "品牌与语言", "Brand & language") },
     { id: "access", label: copy(locale, "订单与入口", "Orders & access") },
+    { id: "inventory", label: copy(locale, "库存风险", "Inventory risk") },
     { id: "seo", label: copy(locale, "SEO 与政策", "SEO & policy") },
   ];
 
@@ -218,13 +238,14 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
     const normalized = validation.value;
     const sensitiveChange = data.acceptOrders !== normalized.acceptOrders
       || data.supportEnabled !== normalized.supportEnabled
+      || data.inventoryRiskThreshold !== normalized.inventoryRiskThreshold
       || data.transitServiceEnabled !== normalized.transitServiceEnabled
       || data.transitServiceUrl !== normalized.transitServiceUrl
       || data.policyVersion !== normalized.policyVersion;
     if (sensitiveChange && !window.confirm(copy(
       locale,
-      "这些修改会直接影响客户端入口或新订单。确认保存并记录审计日志吗？",
-      "These changes affect storefront access or new orders. Save and audit them?",
+      "这些修改会直接影响客户端入口、新订单或库存风险判断。确认保存并记录审计日志吗？",
+      "These changes affect storefront access, new orders, or inventory risk evaluation. Save and audit them?",
     ))) return;
 
     setBusy(true);
@@ -309,7 +330,7 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
           <div>
             <small>{sections.find((item) => item.id === section)?.label}</small>
             <h2>{copy(locale, "真实网站配置", "Live site configuration")}</h2>
-            <p>{copy(locale, "保存后，客户端在下次读取公开配置时生效。", "Changes apply when the storefront next reads public configuration.")}</p>
+            <p>{copy(locale, "保存后，客户端配置与后台风险查询会在下次读取时生效。", "Changes apply when storefront configuration or admin risk data is next read.")}</p>
           </div>
 
           <fieldset className="settings-editable-fieldset" disabled={!canWrite}>
@@ -407,6 +428,47 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
               </>
             )}
 
+            {section === "inventory" && (
+              <>
+                <div className="order-readiness-note is-ready" role="note">
+                  <SlidersHorizontal size={18} aria-hidden="true" />
+                  <div>
+                    <strong>{copy(locale, "仅影响运营风险摘要", "Operations summary only")}</strong>
+                    <small>
+                      {copy(
+                        locale,
+                        "该数值不会修改商品库存、前台购买提示、接单开关或预留返库规则。",
+                        "This value does not change product stock, storefront purchase guidance, ordering, or reservation release.",
+                      )}
+                    </small>
+                  </div>
+                </div>
+                <label>
+                  <span>{copy(locale, "低库存风险阈值", "Low-stock risk threshold")}</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={INVENTORY_RISK_THRESHOLD_MIN}
+                    max={INVENTORY_RISK_THRESHOLD_MAX}
+                    step={1}
+                    value={form.inventoryRiskThreshold}
+                    onChange={(event) => setForm({
+                      ...form,
+                      inventoryRiskThreshold: Number(event.target.value),
+                    })}
+                    required
+                  />
+                  <small>
+                    {copy(
+                      locale,
+                      `有限库存为 1–${form.inventoryRiskThreshold} 时进入工作台低库存风险队列；0 始终归为售罄。`,
+                      `Finite stock from 1–${form.inventoryRiskThreshold} enters the workspace low-stock queue; 0 always remains sold out.`,
+                    )}
+                  </small>
+                </label>
+              </>
+            )}
+
             <label className="settings-reason">
               <span>{copy(locale, "修改原因（至少 8 个字符，会写入审计）", "Change reason (at least 8 characters, written to audit)")}</span>
               <textarea value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} minLength={8} maxLength={500} rows={3} required />
@@ -423,6 +485,7 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
             <div><dt>{copy(locale, "默认语言", "Default locale")}</dt><dd>{form.defaultLocale.toUpperCase()}</dd></div>
             <div><dt>{copy(locale, "新订单", "New orders")}</dt><dd>{form.acceptOrders ? copy(locale, "接受", "Accepted") : copy(locale, "暂停", "Paused")}</dd></div>
             <div><dt>{copy(locale, "客服入口", "Support access")}</dt><dd>{form.supportEnabled ? copy(locale, "显示", "Visible") : copy(locale, "隐藏", "Hidden")}</dd></div>
+            <div><dt>{copy(locale, "库存风险阈值", "Inventory risk threshold")}</dt><dd>1–{form.inventoryRiskThreshold}</dd></div>
             <div><dt>{copy(locale, "中转站", "Transit service")}</dt><dd>{form.transitServiceEnabled ? copy(locale, "显示", "Visible") : copy(locale, "隐藏", "Hidden")}</dd></div>
             <div><dt>{copy(locale, "政策版本", "Policy version")}</dt><dd>{form.policyVersion}</dd></div>
           </dl>

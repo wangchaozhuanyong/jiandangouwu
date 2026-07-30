@@ -19,6 +19,7 @@ import {
   buildDashboardSnapshot,
   type DashboardCapabilityCode,
   type DashboardCapabilityState,
+  liveInventoryRiskCapabilityBody,
 } from "../features/dashboard/model";
 import { adminCopy } from "../i18n";
 import { OrdersTable } from "./orders-table";
@@ -46,8 +47,8 @@ const capabilityCopy: Record<
   LOW_STOCK_ALERT: {
     title: { zh: "库存风险实时摘要", en: "Live inventory risk summary" },
     body: {
-      zh: "工作台会实时查询全部在售商品，区分库存数据冲突、售罄和 1–3 件低库存；它不是通知投递或历史告警。",
-      en: "The workspace queries every active product and separates invalid stock, sold-out items, and low stock from 1–3. This is not notification delivery or alert history.",
+      zh: "工作台会实时查询全部在售商品，并按本次已保存阈值区分库存数据冲突、售罄和低库存；它不是通知投递或历史告警。",
+      en: "The workspace queries every active product and uses the saved threshold to separate invalid stock, sold-out items, and low stock. This is not notification delivery or alert history.",
     },
     action: { zh: "查看商品", en: "View products" },
     icon: Cube,
@@ -195,7 +196,14 @@ export default function DashboardPage({
                 <span className="dashboard-capability-icon"><Icon aria-hidden="true" size={19} /></span>
                 <div>
                   <strong>{content.title[locale]}</strong>
-                  <p>{content.body[locale]}</p>
+                  <p>
+                    {capability.code === "LOW_STOCK_ALERT"
+                      ? liveInventoryRiskCapabilityBody(
+                          locale,
+                          snapshot.inventoryRisk.threshold,
+                        )
+                      : content.body[locale]}
+                  </p>
                 </div>
                 <span className={`dashboard-capability-state is-${capability.state.toLowerCase()}`}>
                   {capabilityStateCopy[capability.state][locale]}

@@ -75,7 +75,14 @@ test("admin overview queries the complete active catalog for live inventory risk
     currency: {
       findMany: async () => [{ code: "MYR", digits: 2 }],
     },
-    $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations),
+    siteSetting: {
+      findUnique: async () => ({ value: { inventoryRiskThreshold: 7 } }),
+    },
+    $transaction: async (input: unknown) => (
+      typeof input === "function"
+        ? (input as (client: typeof prisma) => Promise<unknown>)(prisma)
+        : Promise.all(input as Array<Promise<unknown>>)
+    ),
   };
   const service = new AdminService(
     prisma as never,
@@ -93,7 +100,7 @@ test("admin overview queries the complete active catalog for live inventory risk
   });
   assert.deepEqual(result.inventoryRisk, {
     source: "LIVE_DATABASE_QUERY",
-    threshold: 3,
+    threshold: 7,
     evaluatedProductCount: 5,
     affectedProductCount: 3,
     soldOutCount: 1,
@@ -133,7 +140,7 @@ test("admin overview queries the complete active catalog for live inventory risk
     (productListQueries[2]?.where as {
       stockQuantity?: { gt?: number; lte?: number };
     }).stockQuantity?.lte,
-    3,
+    7,
   );
   assert.deepEqual(
     productListQueries.map((query) => query.take),

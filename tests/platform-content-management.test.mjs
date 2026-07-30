@@ -38,6 +38,31 @@ test("共享契约按领域拆分并由客户端复用公开配置", () => {
   assert.doesNotMatch(storefrontApi, /export type HeroStory\s*=/u);
 });
 
+test("库存风险阈值复用网站设置并保持 MySQL 与 Sites 一致", () => {
+  const catalogContract = read("packages/contracts/src/catalog.ts");
+  const settingsContract = read("packages/contracts/src/settings.ts");
+  const schema = read("apps/api/prisma/schema.prisma");
+  const settingsModel = read("apps/api/src/settings/settings.model.ts");
+  const adminService = read("apps/api/src/admin/admin.service.ts");
+  const sitesAdmin = read("apps/sites/server/admin-api.ts");
+  const settingsPage = read("apps/admin/src/features/settings/settings-page.tsx");
+  const storefront = read("apps/storefront/components/storefront-home.tsx");
+
+  assert.match(catalogContract, /INVENTORY_RISK_THRESHOLD_MIN = 1/u);
+  assert.match(catalogContract, /INVENTORY_RISK_THRESHOLD_MAX = 99/u);
+  assert.match(settingsContract, /inventoryRiskThreshold:\s*number/u);
+  assert.doesNotMatch(schema, /inventoryRiskThreshold/u);
+  assert.match(settingsModel, /inventoryRiskThresholdValue\(source\.inventoryRiskThreshold\)/u);
+  assert.match(adminService, /parseStorefrontSettings\(settingsRow\?\.value\)\.inventoryRiskThreshold/u);
+  assert.match(adminService, /stockQuantity:\s*\{ gt: 0, lte: threshold \}/u);
+  assert.match(sitesAdmin, /\.bind\(threshold\)/u);
+  assert.match(sitesAdmin, /boundedInteger\([\s\S]*?INVENTORY_RISK_THRESHOLD_MAX/u);
+  assert.match(settingsPage, /type="number"[\s\S]*?inventoryRiskThreshold/u);
+  assert.match(settingsPage, /settings-editable-fieldset" disabled=\{!canWrite\}/u);
+  assert.match(storefront, /STOREFRONT_LOW_STOCK_MAX/u);
+  assert.doesNotMatch(storefront, /inventoryRiskThreshold/u);
+});
+
 test("订单服务在扣库存前执行接单、政策与渠道门禁", () => {
   const orders = read("apps/api/src/orders/orders.service.ts");
   const gateIndex = orders.indexOf("if (!settings.acceptOrders)");

@@ -84,6 +84,7 @@ const settingsInput = () => ({
   policyVersion: " 2026-08-01 ",
   acceptOrders: true,
   supportEnabled: true,
+  inventoryRiskThreshold: 3,
   transitServiceEnabled: true,
   transitServiceUrl: " https://transit.example.com/path ",
   reason: " 更新客户端基础设置 ",
@@ -219,6 +220,20 @@ test("settings DTO rejects missing nested values and whitespace-only copy", asyn
     validateBody(UpdateStorefrontSettingsDto, {
       ...settingsInput(),
       reason: "        ",
+    }),
+    BadRequestException,
+  );
+  await assert.rejects(
+    validateBody(UpdateStorefrontSettingsDto, {
+      ...settingsInput(),
+      inventoryRiskThreshold: 0,
+    }),
+    BadRequestException,
+  );
+  await assert.rejects(
+    validateBody(UpdateStorefrontSettingsDto, {
+      ...settingsInput(),
+      inventoryRiskThreshold: 100,
     }),
     BadRequestException,
   );

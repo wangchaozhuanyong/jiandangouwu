@@ -1,8 +1,10 @@
 import {
   AUDIT_CSV_EXPORT_CONFIRMATION,
   AUDIT_CSV_EXPORT_LIMIT,
+  DEFAULT_INVENTORY_RISK_THRESHOLD,
+  INVENTORY_RISK_THRESHOLD_MAX,
+  INVENTORY_RISK_THRESHOLD_MIN,
   isConfiguredContactChannel,
-  STOREFRONT_LOW_STOCK_MAX,
   auditCsvFilename,
   serializeAuditCsv,
   type AdminInventoryRiskLevel,
@@ -702,6 +704,12 @@ async function overview(db: D1Database) {
 }
 
 async function inventoryRiskSummary(db: D1Database): Promise<AdminInventoryRiskSummary> {
+  const settingsRow = await db.prepare(
+    "SELECT value_json AS valueJson FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
+  ).first<{ valueJson: string }>();
+  const threshold = inventoryRiskThresholdValue(
+    parseJsonRecord(settingsRow?.valueJson).inventoryRiskThreshold,
+  );
   const counts = await db.prepare(
     `SELECT
       COUNT(*) AS evaluatedProductCount,
@@ -720,7 +728,7 @@ async function inventoryRiskSummary(db: D1Database): Promise<AdminInventoryRiskS
       END) AS invalidStockCount
      FROM products
      WHERE status = 'ACTIVE'`,
-  ).bind(STOREFRONT_LOW_STOCK_MAX).first<{
+  ).bind(threshold).first<{
     evaluatedProductCount: number | null;
     soldOutCount: number | null;
     lowStockCount: number | null;
@@ -770,7 +778,7 @@ async function inventoryRiskSummary(db: D1Database): Promise<AdminInventoryRiskS
        p.updated_at DESC,
        p.id ASC
      LIMIT 6`,
-  ).bind(STOREFRONT_LOW_STOCK_MAX).all<{
+  ).bind(threshold).all<{
     id: string;
     slug: string;
     stockQuantity: number | null;
@@ -785,7 +793,7 @@ async function inventoryRiskSummary(db: D1Database): Promise<AdminInventoryRiskS
 
   return {
     source: "LIVE_DATABASE_QUERY",
-    threshold: STOREFRONT_LOW_STOCK_MAX,
+    threshold,
     evaluatedProductCount: Number(counts?.evaluatedProductCount ?? 0),
     affectedProductCount: soldOutCount + lowStockCount + invalidStockCount,
     soldOutCount,
@@ -1320,9 +1328,11 @@ async function adminSettings(db: D1Database) {
     adminChannels(db),
   ]);
   if (!row) throw new ApiInputError("SETTINGS_NOT_FOUND", "Storefront settings were not found.", 404);
+  const settings = parseJsonRecord(row.valueJson);
   const activeChannels = channels.filter((channel) => channel.active);
   return {
-    ...parseJsonRecord(row.valueJson),
+    ...settings,
+    inventoryRiskThreshold: inventoryRiskThresholdValue(settings.inventoryRiskThreshold),
     version: row.version,
     updatedAt: row.updatedAt,
     orderReadiness: {
@@ -1343,6 +1353,12 @@ async function updateSettings(db: D1Database, request: Request, actor: AdminIden
     policyVersion: requiredString(body.policyVersion, "policyVersion", 1, 80),
     acceptOrders: Boolean(body.acceptOrders),
     supportEnabled: Boolean(body.supportEnabled),
+    inventoryRiskThreshold: boundedInteger(
+      body.inventoryRiskThreshold,
+      "inventoryRiskThreshold",
+      INVENTORY_RISK_THRESHOLD_MIN,
+      INVENTORY_RISK_THRESHOLD_MAX,
+    ),
     transitServiceEnabled: Boolean(body.transitServiceEnabled),
     transitServiceUrl: nullableHttpsUrl(body.transitServiceUrl, "transitServiceUrl"),
   };
@@ -2360,6 +2376,25 @@ function nullableHttpsUrl(value: unknown, field: string): string | null {
 function safeInteger(value: unknown, field: string, minimum: number): number {
   if (!Number.isSafeInteger(value) || Number(value) < minimum) throw fieldError(field);
   return Number(value);
+}
+
+function boundedInteger(
+  value: unknown,
+  field: string,
+  minimum: number,
+  maximum: number,
+): number {
+  const parsed = safeInteger(value, field, minimum);
+  if (parsed > maximum) throw fieldError(field);
+  return parsed;
+}
+
+function inventoryRiskThresholdValue(value: unknown): number {
+  return Number.isSafeInteger(value)
+    && Number(value) >= INVENTORY_RISK_THRESHOLD_MIN
+    && Number(value) <= INVENTORY_RISK_THRESHOLD_MAX
+    ? Number(value)
+    : DEFAULT_INVENTORY_RISK_THRESHOLD;
 }
 
 function decimalString(value: unknown, field: string, maxDigits: number): string {

@@ -147,6 +147,7 @@ export async function saveTranslationEntry(
     policyVersion: source.policyVersion,
     acceptOrders: source.acceptOrders,
     supportEnabled: source.supportEnabled,
+    inventoryRiskThreshold: source.inventoryRiskThreshold,
     transitServiceEnabled: source.transitServiceEnabled,
     transitServiceUrl: source.transitServiceUrl,
     reason,

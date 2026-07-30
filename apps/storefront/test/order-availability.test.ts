@@ -32,6 +32,7 @@ const config = (
     policyVersion: "2026-07-27",
     acceptOrders,
     supportEnabled: true,
+    inventoryRiskThreshold: 3,
     transitServiceEnabled: true,
     transitServiceUrl: null,
   },
