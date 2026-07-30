@@ -1,3 +1,9 @@
+import {
+  securityEventCategories,
+  securityEventSeverities,
+  type SecurityEventCategory,
+  type SecurityEventSeverity,
+} from "@cloudbridge/contracts";
 import { Transform } from "class-transformer";
 import {
   Equals,
@@ -84,6 +90,18 @@ export class AdminAuditQueryDto {
   @IsOptional()
   @IsIn(["24h", "7d", "30d", "all"])
   timeRange?: "24h" | "7d" | "30d" | "all";
+
+  @IsOptional()
+  @IsIn(["security"])
+  scope?: "security";
+
+  @IsOptional()
+  @IsIn(securityEventCategories)
+  category?: SecurityEventCategory;
+
+  @IsOptional()
+  @IsIn(securityEventSeverities)
+  severity?: SecurityEventSeverity;
 }
 
 export class AdminAuditExportDto {

@@ -131,6 +131,117 @@ test("Sites audit history applies server filters, pagination, facets, and a safe
   }
 });
 
+test("Sites security audit scope recognizes both runtime aliases before paging and returns a full summary", async () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(migration);
+  seedAdministrator(sqlite);
+  const now = Date.now();
+  for (const [index, input] of [
+    {
+      id: "sites-setting",
+      action: "settings.storefront.updated",
+      result: "SUCCEEDED",
+      targetType: "SETTINGS",
+    },
+    {
+      id: "mysql-setting",
+      action: "site_setting.update",
+      result: "SUCCEEDED",
+      targetType: "SiteSetting",
+    },
+    {
+      id: "unknown-denied",
+      action: "custom.restricted.operation",
+      result: "DENIED",
+      targetType: "SYSTEM",
+    },
+    {
+      id: "login-failed",
+      action: "auth.login.failed",
+      result: "FAILED",
+      targetType: "AdminUser",
+    },
+    {
+      id: "ordinary-success",
+      action: "product.update",
+      result: "SUCCEEDED",
+      targetType: "PRODUCT",
+    },
+  ].entries()) {
+    seedAudit(sqlite, {
+      ...input,
+      traceId: `trace-${input.id}`,
+      actorEmail: "operator@example.test",
+      actorName: "Operator",
+      targetId: input.id,
+      reason: "Security scope fixture",
+      createdAt: new Date(now - index * 1_000).toISOString(),
+    });
+  }
+
+  try {
+    const response = await handleAdminApi(
+      auditRequest(
+        "/v1/admin/audit?page=1&pageSize=1&scope=security"
+        + "&category=configuration&severity=medium&timeRange=all",
+      ),
+      { DB: d1Adapter(sqlite), MEDIA: {} },
+      "/v1/admin/audit",
+    );
+    assert.ok(response);
+    const payload = await response.json();
+    assert.deepEqual(payload.meta, {
+      page: 1,
+      pageSize: 1,
+      total: 2,
+      pageCount: 2,
+    });
+    assert.equal(payload.data.items.length, 1);
+    assert.equal(payload.data.items[0].id, "sites-setting");
+    assert.deepEqual(payload.data.facets.securitySummary, {
+      total: 4,
+      last24Hours: 4,
+      needsReview: 2,
+      deniedOrFailed: 2,
+    });
+    const serialized = JSON.stringify(payload.data.items[0]);
+    assert.equal(serialized.includes("beforeData"), false);
+    assert.equal(serialized.includes("afterData"), false);
+    assert.equal(serialized.includes("ipHash"), false);
+
+    const highResponse = await handleAdminApi(
+      auditRequest(
+        "/v1/admin/audit?scope=security&severity=high&timeRange=all",
+      ),
+      { DB: d1Adapter(sqlite), MEDIA: {} },
+      "/v1/admin/audit",
+    );
+    assert.ok(highResponse);
+    const highPayload = await highResponse.json();
+    assert.equal(highPayload.meta.total, 2);
+    assert.deepEqual(
+      highPayload.data.items.map((item) => item.id),
+      ["unknown-denied", "login-failed"],
+    );
+
+    const authorizationResponse = await handleAdminApi(
+      auditRequest(
+        "/v1/admin/audit?scope=security&category=authorization&timeRange=all",
+      ),
+      { DB: d1Adapter(sqlite), MEDIA: {} },
+      "/v1/admin/audit",
+    );
+    assert.ok(authorizationResponse);
+    const authorizationPayload = await authorizationResponse.json();
+    assert.deepEqual(
+      authorizationPayload.data.items.map((item) => item.id),
+      ["unknown-denied"],
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("Sites audit history rejects invalid pagination and filter values", async () => {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(migration);
@@ -156,6 +267,22 @@ test("Sites audit history rejects invalid pagination and filter values", async (
         && error.code === "VALIDATION_FAILED"
         && error.details?.[0]?.field === "result",
     );
+    for (const [field, value] of [
+      ["scope", "operations"],
+      ["category", "network"],
+      ["severity", "critical"],
+    ]) {
+      await assert.rejects(
+        handleAdminApi(
+          auditRequest(`/v1/admin/audit?${field}=${value}`),
+          { DB: d1Adapter(sqlite), MEDIA: {} },
+          "/v1/admin/audit",
+        ),
+        (error) => error instanceof ApiInputError
+          && error.code === "VALIDATION_FAILED"
+          && error.details?.[0]?.field === field,
+      );
+    }
   } finally {
     sqlite.close();
   }
