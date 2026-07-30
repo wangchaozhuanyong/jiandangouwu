@@ -3,6 +3,8 @@ export * from "./audit.js";
 export * from "./catalog.js";
 export * from "./common.js";
 export * from "./content.js";
+export * from "./data-governance.js";
+export * from "./exchange-rates.js";
 export * from "./finance.js";
 export * from "./health.js";
 export * from "./media.js";

@@ -14,6 +14,8 @@ import {
   importLegacySitesHmacKey,
   requireSitesDataKey,
   sitesDataAdditionalData,
+  sitesDataAdditionalDataV3,
+  sitesDataKeyId,
 } from "./data-protection";
 import type { D1Database, D1Result, SitesEnv } from "./types";
 
@@ -53,9 +55,10 @@ type SnapshotPayload = {
 
 type BackupEnvelope = {
   format: "cloudbridge-encrypted-backup";
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   algorithm: "AES-256-GCM";
   createdAt: string;
+  keyId?: string;
   iv: string;
   ciphertext: string;
 };
@@ -111,14 +114,14 @@ type RestoreDrillResult = {
   completedAt: string;
 };
 
-const schemaVersion = 2;
+const schemaVersion = 3;
 const maximumBackupBytes = 20 * 1024 * 1024;
 const recentBackupWindowMs = 26 * 60 * 60_000;
 const recentIsolatedRestoreDrillWindowMs = 30 * 24 * 60 * 60_000;
 const recentFailureWindowMs = 7 * 24 * 60 * 60_000;
 const staleCreatingWindowMs = 15 * 60_000;
 const restoreDrillTransferWindowMs = 30 * 60_000;
-const snapshotTables = [
+const snapshotTablesV2 = [
   "admin_members",
   "audit_events",
   "categories",
@@ -134,6 +137,13 @@ const snapshotTables = [
   "product_translations",
   "products",
   "site_settings",
+] as const;
+const snapshotTables = [
+  ...snapshotTablesV2,
+  "data_key_versions",
+  "exchange_rate_sync_runs",
+  "privacy_requests",
+  "telegram_deliveries",
 ] as const;
 
 export async function listBackupSnapshots(db: D1Database) {
@@ -172,6 +182,24 @@ export async function createManualBackup(
   });
   if (!backup) {
     throw new ApiInputError("BACKUP_CREATE_CONFLICT", "The backup could not be started.", 409);
+  }
+  return backup;
+}
+
+export async function createPreRotationBackup(
+  env: SitesEnv,
+  actor: AdminIdentity,
+  reason: string,
+) {
+  const backup = await createBackup(env, {
+    mode: "MANUAL",
+    scheduleKey: `pre-rotation:${crypto.randomUUID()}`,
+    actor,
+    reason,
+    useCurrentKey: true,
+  });
+  if (!backup) {
+    throw new ApiInputError("BACKUP_CREATE_CONFLICT", "The pre-rotation backup could not be started.", 409);
   }
   return backup;
 }
@@ -328,7 +356,11 @@ export async function validateBackupRestorePackage(
   }
   try {
     const payload = await readVerifiedSnapshot(env, row);
-    const details = await validateRestorePayload(payload, env.CLOUDBRIDGE_DATA_KEY);
+    const details = await validateRestorePayload(
+      payload,
+      env.CLOUDBRIDGE_DATA_KEY,
+      env.CLOUDBRIDGE_DATA_KEY_NEXT,
+    );
     const validatedAt = new Date().toISOString();
     await env.DB.prepare(
       `UPDATE backup_snapshots
@@ -410,6 +442,7 @@ export async function createBackupRestoreDrillTransfer(
   const logicalValidation = await validateRestorePayload(
     payload,
     env.CLOUDBRIDGE_DATA_KEY,
+    env.CLOUDBRIDGE_DATA_KEY_NEXT,
   );
   if (logicalValidation.kind !== "LOGICAL_PACKAGE") {
     throw restoreValidationError("BACKUP_RESTORE_STRUCTURE_INVALID");
@@ -559,6 +592,7 @@ export async function completeBackupRestoreDrill(
   const logicalValidation = await validateRestorePayload(
     payload,
     env.CLOUDBRIDGE_DATA_KEY,
+    env.CLOUDBRIDGE_DATA_KEY_NEXT,
   );
   if (logicalValidation.kind !== "LOGICAL_PACKAGE") {
     throw restoreValidationError("BACKUP_RESTORE_STRUCTURE_INVALID");
@@ -624,6 +658,75 @@ export async function downloadBackupSnapshot(
   return new Response(object.body, { headers });
 }
 
+export async function reencryptVerifiedBackupsForRotation(
+  env: SitesEnv,
+): Promise<number> {
+  requireSitesDataKey(env.CLOUDBRIDGE_DATA_KEY, "BACKUP");
+  requireSitesDataKey(env.CLOUDBRIDGE_DATA_KEY_NEXT, "BACKUP");
+  const currentKeyId = await sitesDataKeyId(env.CLOUDBRIDGE_DATA_KEY, "BACKUP");
+  const nextKeyId = await sitesDataKeyId(env.CLOUDBRIDGE_DATA_KEY_NEXT, "BACKUP");
+  if (currentKeyId === nextKeyId) {
+    throw new ApiInputError("DATA_KEY_UNCHANGED", "The next data key must differ from the active key.", 409);
+  }
+  const rows = await env.DB.prepare(
+    `SELECT id, schedule_key AS scheduleKey, mode, status,
+      object_key AS objectKey, schema_version AS schemaVersion,
+      record_counts_json AS recordCountsJson, byte_size AS byteSize,
+      checksum_sha256 AS checksumSha256, created_by_email AS createdByEmail,
+      reason, error_code AS errorCode, created_at AS createdAt,
+      verified_at AS verifiedAt, restore_validation_status AS restoreValidationStatus,
+      restore_validation_json AS restoreValidationJson,
+      restore_validated_at AS restoreValidatedAt,
+      restore_validated_by_email AS restoreValidatedByEmail,
+      restore_validation_reason AS restoreValidationReason,
+      restore_validation_error_code AS restoreValidationErrorCode
+     FROM backup_snapshots WHERE status = 'VERIFIED' ORDER BY created_at ASC`,
+  ).all<BackupRow>();
+  let migrated = 0;
+  for (const row of rows.results ?? []) {
+    const object = await env.MEDIA.get(row.objectKey);
+    if (!object) {
+      throw new ApiInputError("BACKUP_OBJECT_MISSING", "A verified backup object is missing.", 409);
+    }
+    const currentText = await new Response(object.body).text();
+    const payload = await decryptSnapshot(
+      currentText,
+      env.CLOUDBRIDGE_DATA_KEY,
+      env.CLOUDBRIDGE_DATA_KEY_NEXT,
+    );
+    const nextText = await encryptSnapshot(
+      payload,
+      env.CLOUDBRIDGE_DATA_KEY,
+      env.CLOUDBRIDGE_DATA_KEY_NEXT,
+    );
+    const checksum = await sha256Hex(nextText);
+    const byteSize = new TextEncoder().encode(nextText).byteLength;
+    await env.MEDIA.put(row.objectKey, nextText, {
+      httpMetadata: { contentType: "application/vnd.cloudbridge.backup+json" },
+    });
+    const verifyObject = await env.MEDIA.get(row.objectKey);
+    if (!verifyObject) throw new ApiInputError("BACKUP_ROTATION_VERIFY_FAILED", "A rotated backup could not be read.", 500);
+    const verifyText = await new Response(verifyObject.body).text();
+    if (await sha256Hex(verifyText) !== checksum) {
+      throw new ApiInputError("BACKUP_ROTATION_VERIFY_FAILED", "A rotated backup checksum did not match.", 500);
+    }
+    validateSnapshot(
+      await decryptSnapshot(
+        verifyText,
+        env.CLOUDBRIDGE_DATA_KEY,
+        env.CLOUDBRIDGE_DATA_KEY_NEXT,
+      ),
+      safeRecordCounts(row.recordCountsJson),
+    );
+    await env.DB.prepare(
+      `UPDATE backup_snapshots SET checksum_sha256 = ?, byte_size = ?,
+        verified_at = ?, error_code = NULL WHERE id = ?`,
+    ).bind(checksum, byteSize, new Date().toISOString(), row.id).run();
+    migrated += 1;
+  }
+  return migrated;
+}
+
 async function createBackup(
   env: SitesEnv,
   input: {
@@ -631,9 +734,13 @@ async function createBackup(
     scheduleKey: string;
     actor: AdminIdentity | null;
     reason: string;
+    useCurrentKey?: boolean;
   },
 ) {
-  requireSitesDataKey(env.CLOUDBRIDGE_DATA_KEY, "BACKUP");
+  requireSitesDataKey(
+    env.CLOUDBRIDGE_DATA_KEY_NEXT ?? env.CLOUDBRIDGE_DATA_KEY,
+    "BACKUP",
+  );
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
   const objectKey = `backups/${createdAt.slice(0, 10)}/${id}.cbk`;
@@ -673,7 +780,11 @@ async function createBackup(
       createdAt,
       tables,
     };
-    const envelopeText = await encryptSnapshot(payload, env.CLOUDBRIDGE_DATA_KEY);
+    const envelopeText = await encryptSnapshot(
+      payload,
+      env.CLOUDBRIDGE_DATA_KEY,
+      input.useCurrentKey ? undefined : env.CLOUDBRIDGE_DATA_KEY_NEXT,
+    );
     const byteSize = new TextEncoder().encode(envelopeText).byteLength;
     if (byteSize > maximumBackupBytes) {
       throw new ApiInputError("BACKUP_TOO_LARGE", "The backup exceeds the safe worker limit.", 413);
@@ -690,7 +801,11 @@ async function createBackup(
       throw new Error("R2 verification checksum failed");
     }
     validateSnapshot(
-      await decryptSnapshot(storedText, env.CLOUDBRIDGE_DATA_KEY),
+      await decryptSnapshot(
+        storedText,
+        env.CLOUDBRIDGE_DATA_KEY,
+        env.CLOUDBRIDGE_DATA_KEY_NEXT,
+      ),
       recordCounts,
     );
     const verifiedAt = new Date().toISOString();
@@ -748,7 +863,11 @@ async function readVerifiedSnapshot(
   if (!row.checksumSha256 || checksum !== row.checksumSha256) {
     throw new ApiInputError("BACKUP_CHECKSUM_MISMATCH", "The backup checksum does not match.", 409);
   }
-  const payload = await decryptSnapshot(envelopeText, env.CLOUDBRIDGE_DATA_KEY);
+  const payload = await decryptSnapshot(
+    envelopeText,
+    env.CLOUDBRIDGE_DATA_KEY,
+    env.CLOUDBRIDGE_DATA_KEY_NEXT,
+  );
   validateSnapshot(payload, safeRecordCounts(row.recordCountsJson));
   return payload;
 }
@@ -800,9 +919,12 @@ function backupItem(row: BackupRow) {
 async function encryptSnapshot(
   payload: SnapshotPayload,
   encodedKey: string | undefined,
+  nextEncodedKey?: string,
 ): Promise<string> {
+  const activeKey = nextEncodedKey ?? encodedKey;
+  const keyId = await sitesDataKeyId(activeKey, "BACKUP");
   const key = await deriveSitesAesKey(
-    encodedKey,
+    activeKey,
     "BACKUP_SNAPSHOT",
     "BACKUP",
     ["encrypt"],
@@ -812,16 +934,17 @@ async function encryptSnapshot(
     {
       name: "AES-GCM",
       iv,
-      additionalData: sitesDataAdditionalData("BACKUP_SNAPSHOT"),
+      additionalData: sitesDataAdditionalDataV3("BACKUP_SNAPSHOT", keyId),
     },
     key,
     new TextEncoder().encode(JSON.stringify(payload)),
   );
   const envelope: BackupEnvelope = {
     format: "cloudbridge-encrypted-backup",
-    version: 2,
+    version: 3,
     algorithm: "AES-256-GCM",
     createdAt: payload.createdAt,
+    keyId,
     iv: encodeBase64Url(iv),
     ciphertext: encodeBase64Url(new Uint8Array(encrypted)),
   };
@@ -831,6 +954,7 @@ async function encryptSnapshot(
 async function decryptSnapshot(
   envelopeText: string,
   encodedKey: string | undefined,
+  nextEncodedKey?: string,
 ): Promise<SnapshotPayload> {
   let envelope: BackupEnvelope;
   try {
@@ -840,30 +964,54 @@ async function decryptSnapshot(
   }
   if (
     envelope.format !== "cloudbridge-encrypted-backup"
-    || (envelope.version !== 1 && envelope.version !== 2)
+    || (envelope.version !== 1 && envelope.version !== 2 && envelope.version !== 3)
     || envelope.algorithm !== "AES-256-GCM"
     || !envelope.iv
     || !envelope.ciphertext
   ) {
     throw new ApiInputError("BACKUP_FORMAT_INVALID", "The backup envelope is invalid.", 409);
   }
-  const key = envelope.version === 2
-    ? await deriveSitesAesKey(
-        encodedKey,
-        "BACKUP_SNAPSHOT",
-        "BACKUP",
-        ["decrypt"],
-      )
-    : await importLegacySitesAesKey(encodedKey, "BACKUP", ["decrypt"]);
+  let key: CryptoKey;
+  if (envelope.version === 3) {
+    if (!envelope.keyId) {
+      throw new ApiInputError("BACKUP_FORMAT_INVALID", "The backup key identifier is missing.", 409);
+    }
+    let matching: string | null = null;
+    for (const candidate of [nextEncodedKey, encodedKey]) {
+      if (candidate && await sitesDataKeyId(candidate, "BACKUP") === envelope.keyId) {
+        matching = candidate;
+        break;
+      }
+    }
+    if (!matching) {
+      throw new ApiInputError("BACKUP_KEY_UNAVAILABLE", "The backup encryption key is unavailable.", 409);
+    }
+    key = await deriveSitesAesKey(matching, "BACKUP_SNAPSHOT", "BACKUP", ["decrypt"]);
+  } else {
+    key = envelope.version === 2
+      ? await deriveSitesAesKey(
+          encodedKey,
+          "BACKUP_SNAPSHOT",
+          "BACKUP",
+          ["decrypt"],
+        )
+      : await importLegacySitesAesKey(encodedKey, "BACKUP", ["decrypt"]);
+  }
   try {
     const decrypted = await crypto.subtle.decrypt(
-      envelope.version === 2
+      envelope.version === 3
         ? {
+            name: "AES-GCM",
+            iv: decodeBase64Url(envelope.iv),
+            additionalData: sitesDataAdditionalDataV3("BACKUP_SNAPSHOT", envelope.keyId!),
+          }
+        : envelope.version === 2
+          ? {
             name: "AES-GCM",
             iv: decodeBase64Url(envelope.iv),
             additionalData: sitesDataAdditionalData("BACKUP_SNAPSHOT"),
           }
-        : {
+          : {
             name: "AES-GCM",
             iv: decodeBase64Url(envelope.iv),
           },
@@ -882,12 +1030,13 @@ function validateSnapshot(
 ): void {
   if (
     payload.format !== "cloudbridge-d1-snapshot"
-    || payload.schemaVersion !== schemaVersion
+    || ![2, schemaVersion].includes(payload.schemaVersion)
     || !payload.tables
   ) {
     throw new ApiInputError("BACKUP_PAYLOAD_INVALID", "The backup payload is invalid.", 409);
   }
-  for (const table of snapshotTables) {
+  const requiredTables = payload.schemaVersion === 2 ? snapshotTablesV2 : snapshotTables;
+  for (const table of requiredTables) {
     const rows = payload.tables[table];
     if (!Array.isArray(rows) || rows.length !== expectedCounts[table]) {
       throw new ApiInputError("BACKUP_RECORD_COUNT_MISMATCH", "The backup record counts do not match.", 409);
@@ -898,6 +1047,7 @@ function validateSnapshot(
 async function validateRestorePayload(
   payload: SnapshotPayload,
   encodedKey: string | undefined,
+  nextEncodedKey?: string,
 ): Promise<RestoreValidationDetails> {
   const rows = Object.fromEntries(snapshotTables.map((table) => [
     table,
@@ -906,6 +1056,8 @@ async function validateRestorePayload(
 
   const administrators = uniqueIndex(rows.admin_members, ["id"]);
   uniqueIndex(rows.audit_events, ["id"]);
+  uniqueIndex(rows.data_key_versions, ["key_id"]);
+  uniqueIndex(rows.exchange_rate_sync_runs, ["id"]);
   const categories = uniqueIndex(rows.categories, ["id"]);
   uniqueIndex(rows.category_translations, ["category_id", "locale"]);
   const currencies = uniqueIndex(rows.currencies, ["code"]);
@@ -916,9 +1068,11 @@ async function validateRestorePayload(
   uniqueIndex(rows.merchant_channels, ["id"]);
   uniqueIndex(rows.order_status_history, ["id"]);
   const orders = uniqueIndex(rows.orders, ["id"]);
+  uniqueIndex(rows.privacy_requests, ["id"]);
   uniqueIndex(rows.product_translations, ["product_id", "locale"]);
   const products = uniqueIndex(rows.products, ["id"]);
   uniqueIndex(rows.site_settings, ["key"]);
+  uniqueIndex(rows.telegram_deliveries, ["id"]);
 
   let relationshipChecks = 0;
   relationshipChecks += assertReferences(
@@ -954,6 +1108,12 @@ async function validateRestorePayload(
     "order_id",
     orders,
   );
+  relationshipChecks += assertReferences(
+    rows.telegram_deliveries,
+    "order_id",
+    orders,
+    true,
+  );
   const orderHistory = new Set(rows.order_status_history.map(
     (row) => requiredString(row, "order_id"),
   ));
@@ -983,9 +1143,11 @@ async function validateRestorePayload(
   let encryptedContactChecks = 0;
   if (rows.orders.length > 0) {
     for (const order of rows.orders) {
+      if (order.contact_erased_at) continue;
       await validateEncryptedContact(
         requiredString(order, "contact_encrypted"),
         encodedKey,
+        nextEncodedKey,
       );
       encryptedContactChecks += 1;
     }
@@ -1009,6 +1171,12 @@ function snapshotRows(
   table: (typeof snapshotTables)[number],
 ): ReadonlyArray<Record<string, unknown>> {
   const rows = payload.tables[table];
+  if (
+    payload.schemaVersion === 2
+    && !snapshotTablesV2.includes(table as (typeof snapshotTablesV2)[number])
+  ) {
+    return [];
+  }
   if (!Array.isArray(rows)) throw restoreValidationError("BACKUP_RESTORE_STRUCTURE_INVALID");
   return rows;
 }
@@ -1078,9 +1246,15 @@ function requireJson(
 async function validateEncryptedContact(
   value: string,
   encodedKey: string | undefined,
+  nextEncodedKey?: string,
 ): Promise<void> {
   try {
-    const decrypted = await decryptOrderContact(value, encodedKey, "BACKUP");
+    const decrypted = await decryptOrderContact(
+      value,
+      encodedKey,
+      "BACKUP",
+      nextEncodedKey,
+    );
     if (decrypted.trim().length === 0) {
       throw new Error("empty contact");
     }

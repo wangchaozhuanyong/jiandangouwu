@@ -26,6 +26,7 @@ import {
   StatusPill,
 } from "../admin-ui";
 import { adminCopy } from "../i18n";
+import ExchangeRateSyncPanel from "../features/exchange-rates/exchange-rate-sync-panel";
 
 export default function CurrenciesPage({
   canWrite,
@@ -68,6 +69,7 @@ export default function CurrenciesPage({
             : "Current quotes and history come from the Sites database. Updating appends a timestamped record without overwriting earlier values."}
         </span>
       </div>
+      <ExchangeRateSyncPanel canWrite={canWrite} locale={locale} />
       <section className="admin-panel">
         <RefreshNotice state={state} locale={locale} retry={() => void reload()} slow={slow} />
         {!data ? <PanelState state={state} locale={locale} retry={() => void reload()} /> : (

@@ -2,14 +2,8 @@ import type {
   AdminManagedMediaObject,
   AdminMediaReplacement,
   AdminInventoryRiskSummary,
-  AdminMemberLifecycleAction,
-  AdminMemberLifecycleResult,
   AdminOrderListItem,
-  AdminRoleDeletionResult,
-  AdminRoleDetail,
   AdminRolesOverview,
-  AdminSessionOverview,
-  AdminTeamMember,
   AdminTeamOverview,
   SecurityAuditSummary,
   SecurityEventCategory,
@@ -24,14 +18,7 @@ import {
 export type {
   AdminAccessRoleSummary,
   AdminPermissionSummary,
-  AdminRoleDetail,
-  AdminRoleDeletionResult,
   AdminRolesOverview,
-  AdminSessionOverview,
-  AdminSessionSummary,
-  AdminMemberLifecycleAction,
-  AdminMemberLifecycleResult,
-  AdminTeamMember,
   AdminTeamOverview,
 } from "@cloudbridge/contracts";
 
@@ -53,8 +40,7 @@ export type AdminUser = {
   displayName: string;
   roles: Array<{ key: string; name: Record<Locale, string> }>;
   permissions: string[];
-  totpEnabled: boolean;
-  authProvider?: "PASSWORD" | "SITES";
+  authProvider?: "SITES";
 };
 export type SessionPayload = { user: AdminUser; csrfToken: string };
 export type HealthStatus = SystemHealthStatus;
@@ -73,10 +59,6 @@ export type SitesReadiness = {
   };
   checkedAt: string;
 };
-export type TotpEnrollment = { flowId: string; secret: string; uri: string };
-export type PasswordLoginResult =
-  | { requiresTotp: true; flowId: string }
-  | { requiresTotp: false; csrfToken: string };
 export type Overview = {
   metrics: { productCount: number; activeProducts: number; openOrders: number; categoryCount: number };
   inventoryRisk: AdminInventoryRiskSummary;
@@ -180,7 +162,7 @@ export type AuditEventExport = {
   recordCount: number | null;
 };
 
-const baseUrl = import.meta.env?.VITE_ADMIN_API_BASE_URL ?? "http://localhost:3001/v1";
+const baseUrl = import.meta.env?.VITE_ADMIN_API_BASE_URL ?? "/v1";
 let csrfToken = "";
 let unauthorizedHandler: (() => void) | null = null;
 
@@ -235,22 +217,6 @@ export async function getSession(): Promise<SessionPayload> {
   return data;
 }
 
-export const getAdminSessions = async (signal?: AbortSignal): Promise<AdminSessionOverview> => (
-  await request<AdminSessionOverview>("/admin/auth/sessions", { signal })
-).data;
-
-export const revokeAdminSession = async (sessionId: string): Promise<{ revoked: true }> => (
-  await request<{ revoked: true }>(`/admin/auth/sessions/${encodeURIComponent(sessionId)}`, {
-    method: "DELETE",
-  })
-).data;
-
-export const revokeOtherAdminSessions = async (): Promise<{ revokedCount: number }> => (
-  await request<{ revokedCount: number }>("/admin/auth/sessions/revoke-others", {
-    method: "POST",
-  })
-).data;
-
 const isNonNegativeSafeInteger = (value: unknown): value is number =>
   Number.isSafeInteger(value) && Number(value) >= 0;
 
@@ -258,14 +224,10 @@ export const getHealth = async (signal?: AbortSignal): Promise<HealthStatus> => 
   const health = (await request<HealthStatus>("/health", { signal })).data;
   if (
     health.status !== "healthy"
+    || health.runtime !== "sites"
     || health.database !== "connected"
-    || (
-      health.runtime === "sites"
-        ? health.valkey !== "not_required"
-        : health.valkey !== "connected"
-    )
+    || !["bound", "missing"].includes(health.objectStorage)
     || !isNonNegativeSafeInteger(health.latencyMs?.database)
-    || !isNonNegativeSafeInteger(health.latencyMs?.valkey)
     || !Number.isFinite(Date.parse(health.timestamp))
   ) {
     throw new Error("Health response failed the runtime contract.");
@@ -275,45 +237,12 @@ export const getHealth = async (signal?: AbortSignal): Promise<HealthStatus> => 
 export const getSitesReadiness = async (signal?: AbortSignal): Promise<SitesReadiness> =>
   (await request<SitesReadiness>("/admin/sites-readiness", { signal })).data;
 
-export async function getFirstAdminSetupStatus(): Promise<{ available: boolean }> {
-  return (await request<{ available: boolean }>("/admin/auth/setup/status")).data;
-}
-
-export async function setupFirstAdmin(input: {
-  email: string;
-  displayName: string;
-  password: string;
-}): Promise<void> {
-  const { data } = await request<{ csrfToken: string }>("/admin/auth/setup", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-  setCsrfToken(data.csrfToken);
-}
-
-export async function loginWithPassword(email: string, password: string): Promise<PasswordLoginResult> {
-  const { data } = await request<PasswordLoginResult>("/admin/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-  if (!data.requiresTotp) setCsrfToken(data.csrfToken);
-  return data;
-}
-
-export async function completeTotpLogin(flowId: string, token: string): Promise<void> {
-  const { data } = await request<{ csrfToken: string }>("/admin/auth/login/totp", {
-    method: "POST",
-    body: JSON.stringify({ flowId, token }),
-  });
-  setCsrfToken(data.csrfToken);
-}
-
 export const logout = () => {
-  if (baseUrl.startsWith("/") && typeof window !== "undefined") {
+  if (typeof window !== "undefined") {
     window.location.assign("/signout-with-chatgpt?return_to=%2Fadmin");
     return Promise.resolve({ data: undefined });
   }
-  return request<void>("/admin/auth/logout", { method: "POST" });
+  return Promise.resolve({ data: undefined });
 };
 export const getOverview = async (signal?: AbortSignal) => (await request<Overview>("/admin/overview", { signal })).data;
 export const getCategories = async (signal?: AbortSignal) => (await request<AdminCategory[]>("/admin/categories", { signal })).data;
@@ -497,85 +426,9 @@ export const exportAuditCsv = async (
 export const getTeamOverview = async (signal?: AbortSignal) => (
   await request<AdminTeamOverview>("/admin/access/members", { signal })
 ).data;
-export const updateMemberRoles = async (
-  memberId: string,
-  input: { roleIds: string[]; expectedUpdatedAt: string; reason: string },
-) => (
-  await request<AdminTeamMember>(`/admin/access/members/${memberId}/roles`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  })
-).data;
-export const updateMemberLifecycle = async (
-  memberId: string,
-  input: {
-    action: AdminMemberLifecycleAction;
-    expectedUpdatedAt: string;
-    reason: string;
-  },
-) => (
-  await request<AdminMemberLifecycleResult>(
-    `/admin/access/members/${memberId}/lifecycle`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(input),
-    },
-  )
-).data;
 export const getRolesOverview = async (signal?: AbortSignal) => (
   await request<AdminRolesOverview>("/admin/access/roles", { signal })
 ).data;
-export const createRole = async (
-  input: {
-    key: string;
-    nameZh: string;
-    nameEn: string;
-    description: string;
-    permissionKeys: string[];
-    reason: string;
-  },
-) => (
-  await request<AdminRoleDetail>("/admin/access/roles", {
-    method: "POST",
-    body: JSON.stringify(input),
-  })
-).data;
-export const updateRoleMetadata = async (
-  roleId: string,
-  input: {
-    nameZh: string;
-    nameEn: string;
-    description: string;
-    expectedUpdatedAt: string;
-    reason: string;
-  },
-) => (
-  await request<AdminRoleDetail>(`/admin/access/roles/${roleId}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  })
-).data;
-export const updateRolePermissions = async (
-  roleId: string,
-  input: { permissionKeys: string[]; expectedUpdatedAt: string; reason: string },
-) => (
-  await request<AdminRoleDetail>(`/admin/access/roles/${roleId}/permissions`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  })
-).data;
-export const deleteRole = async (
-  roleId: string,
-  input: { expectedUpdatedAt: string; reason: string },
-) => (
-  await request<AdminRoleDeletionResult>(`/admin/access/roles/${roleId}`, {
-    method: "DELETE",
-    body: JSON.stringify(input),
-  })
-).data;
-export const beginTotpEnrollment = async () => (await request<{ flowId: string; secret: string; uri: string }>("/admin/auth/totp/enrollment", { method: "POST" })).data;
-export const verifyTotpEnrollment = async (flowId: string, token: string) => (await request<{ enabled: true }>("/admin/auth/totp/verify", { method: "POST", body: JSON.stringify({ flowId, token }) })).data;
-export const disableTotp = async (password: string) => (await request<{ enabled: false }>("/admin/auth/totp/disable", { method: "POST", body: JSON.stringify({ password }) })).data;
 
 export const getManagedMedia = async (
   signal?: AbortSignal,

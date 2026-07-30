@@ -107,6 +107,11 @@ export function SiteShell({
           <Link href={`/${locale}#catalog`} onClick={() => pathname !== `/${locale}` && setNavigating(true)}>{t.navServices}</Link>
         </nav>
         <div className="header-utilities">
+          <LanguagePicker
+            ariaLabel={t.languageLabel}
+            onChange={changeLocale}
+            value={locale}
+          />
           <button
             aria-label={t.customerSupport}
             className="support-trigger"
@@ -116,11 +121,6 @@ export function SiteShell({
             <Headset aria-hidden="true" size={18} />
             <span>{t.customerSupport}</span>
           </button>
-          <LanguagePicker
-            ariaLabel={t.languageLabel}
-            onChange={changeLocale}
-            value={locale}
-          />
         </div>
       </header>
       {children}

@@ -163,6 +163,61 @@ test("正式客户端恢复可访问币种菜单、客服抽屉、旧版编辑�
   assert.match(storefrontCss, /\.route-frame \{ animation: route-enter 180ms cubic-bezier\(\.2,0,0,1\); \}/u);
 });
 
+test("正式后台使用舒适字号层级并让工作区铺满可用宽度", () => {
+  const css = read("apps/admin/src/styles.css");
+
+  assert.match(css, /--admin-font-caption:\s*12px;/u);
+  assert.match(css, /--admin-font-meta:\s*13px;/u);
+  assert.match(css, /--admin-font-body:\s*14px;/u);
+  assert.match(css, /--admin-font-nav:\s*14px;/u);
+  assert.match(css, /--admin-font-nav-child:\s*13px;/u);
+  assert.match(css, /--admin-font-table:\s*13px;/u);
+  assert.match(css, /--admin-font-section-title:\s*20px;/u);
+  assert.match(css, /--admin-font-page-title:\s*28px;/u);
+  assert.match(css, /--admin-font-page-title-mobile:\s*22px;/u);
+  assert.doesNotMatch(css, /font-size:\s*(?:[0-9](?:\.\d+)?|1[01](?:\.\d+)?)px;/u);
+  assert.match(
+    css,
+    /\.admin-surface\.admin-surface button,[\s\S]*?\.admin-surface\.admin-surface textarea \{\s*font-size: var\(--admin-font-body\);\s*\}/u,
+  );
+  assert.match(
+    css,
+    /\.editor-form input, \.editor-form select, \.editor-form textarea \{[^}]*min-height:\s*44px;/u,
+  );
+  assert.match(css, /\.admin-surface\.admin-surface h2 \{\s*font-size: var\(--admin-font-section-title\);/u);
+  assert.match(
+    css,
+    /\.admin-surface\.admin-surface table th,[\s\S]*?\.admin-surface\.admin-surface table td \{\s*font-size: var\(--admin-font-table\);/u,
+  );
+  assert.match(css, /\.admin-shell\s*\{[^}]*grid-template-columns:\s*264px minmax\(0,\s*1fr\);/u);
+  assert.match(css, /\.admin-topbar\s*\{[^}]*padding:\s*0 var\(--admin-content-gutter\);/u);
+  assert.match(
+    css,
+    /\.admin-content\s*\{[^}]*width:\s*auto;[^}]*margin:\s*clamp\(24px,\s*3\.5vw,\s*46px\) var\(--admin-content-gutter\) 70px;/u,
+  );
+  assert.doesNotMatch(css, /\.admin-content\s*\{[^}]*min\(1400px/u);
+  assert.match(
+    css,
+    /@media \(max-width: 1500px\)\s*\{\s*\.product-admin-grid \{ grid-template-columns: repeat\(2,1fr\); \}\s*\}/u,
+  );
+  assert.match(css, /\.order-record-table \{[^}]*min-width:\s*2100px;/u);
+  assert.match(css, /\.audit-log-table \{[^}]*min-width:\s*1960px;/u);
+  assert.match(css, /\.audit-log-table-wrap \{[^}]*overflow-x:\s*auto;/u);
+  assert.match(
+    css,
+    /\.audit-log-table th:first-child, \.audit-log-table td:first-child \{[^}]*position:\s*sticky;/u,
+  );
+  assert.match(
+    css,
+    /\.audit-log-table th:last-child, \.audit-log-table td:last-child \{[^}]*position:\s*sticky;/u,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 760px\)[\s\S]*?\.admin-surface \{ --admin-content-gutter: 12px; \}[\s\S]*?\.admin-topbar h1 \{ font-size: var\(--admin-font-page-title-mobile\); \}[\s\S]*?\.admin-content \{ width: auto; margin: 18px var\(--admin-content-gutter\) 70px; \}/u,
+  );
+  assert.doesNotMatch(css, /\.admin-topbar h1 \{[^}]*font-size:\s*20px;/u);
+});
+
 test("正式后台页面按路由懒加载并使用三十秒会话缓存", () => {
   const app = read("apps/admin/src/App.tsx");
   const model = read("apps/admin/src/admin-model.ts");
@@ -172,7 +227,7 @@ test("正式后台页面按路由懒加载并使用三十秒会话缓存", () =>
     assert.match(app, new RegExp(`lazy\\(\\(\\) => import\\("\\./pages/${page}-page"\\)\\)`, "u"));
   }
   assert.match(app, /lazy\(\(\) => import\("\.\/pages\/audit-page"\)\)/u);
-  assert.match(app, /lazy\(\(\) => import\("\.\/features\/integrations\/integration-readiness-page"\)\)/u);
+  assert.match(app, /lazy\(\(\) => import\("\.\/features\/sites\/sites-platform-page"\)\)/u);
   assert.doesNotMatch(app, /design-preview-page|DesignPreviewPage/u);
   assert.match(app, /window\.history\[[^\]]+\]\(\{ page: next \}, "", pagePath\(next\)\)/u);
   assert.match(app, /popstate/u);
@@ -195,21 +250,19 @@ test("正式后台弹窗具备焦点锁定、Escape 和焦点返回", () => {
   assert.match(css, /\.row-action\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
 });
 
-test("正式后台只保留密码登录和可开关的 TOTP 双重验证", () => {
+test("正式后台只使用 Sites 的 ChatGPT 管理身份", () => {
   const app = read("apps/admin/src/App.tsx");
   const api = read("apps/admin/src/api.ts");
   const security = read("apps/admin/src/pages/security-page.tsx");
 
-  assert.match(app, /loginWithPassword\(email, password\)/u);
-  assert.match(app, /completeTotpLogin\(flowId, token\)/u);
-  assert.match(app, /"current-password"/u);
+  assert.match(app, /<SitesAuthScreen/u);
   assert.match(app, /className="auth-brand"[\s\S]*?src="\/assets\/cloudbridge-logo\.png"/u);
-  assert.match(api, /\/admin\/auth\/totp\/disable/u);
-  assert.match(security, /user\.totpEnabled/u);
-  assert.match(security, /disableTotp\(password\)/u);
+  assert.match(app, /\/signin-with-chatgpt\?return_to=%2Fadmin/u);
+  assert.match(api, /\/signout-with-chatgpt\?return_to=%2Fadmin/u);
+  assert.match(security, /ChatGPT administrator sign-in/u);
   assert.doesNotMatch(
     `${app}\n${api}\n${security}`,
-    /Passkey|<Fingerprint|WebAuthn|recoveryCodes|bootstrapToken/iu,
+    /loginWithPassword|completeTotpLogin|getFirstAdminSetupStatus|setupFirstAdmin|PasswordSecurityPage|auth\/totp|auth\/sessions/iu,
   );
 });
 
@@ -241,7 +294,7 @@ test("正式后台24个页面均为真实或明确受限页面且不再保留独
   assert.equal(new Set(pageIds).size, 24);
   assert.equal(existsSync(new URL("../apps/admin/src/pages/design-preview-page.tsx", import.meta.url)), false);
   assert.doesNotMatch(app, /design-preview-page|DesignPreviewPage/u);
-  assert.match(app, /page === "integrations"[\s\S]*?<IntegrationReadinessPage/u);
+  assert.match(app, /page === "integrations"[\s\S]*?<SitesPlatformPage/u);
   assert.match(app, /const unhandledPage:\s*never = page/u);
 });
 

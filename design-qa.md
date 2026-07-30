@@ -1,5 +1,57 @@
 # CloudBridge 完整设计补全 QA
 
+## 2026-07-29 正式客户端语言与客服按钮顺序
+
+### 视觉真值与实现范围
+
+- 用户参考图：`/var/folders/y2/73zzsdhn3d78m_qqhkb2lrq80000gn/T/codex-clipboard-bd8d37cf-0a53-463f-ab4e-7924103c5874.png`，原始像素为 216 × 57。
+- 用户文字要求是本轮顺序真值：语言切换在左，客服按钮在右；参考图只用于确认现有控件造型和同组关系。
+- 实现范围：正式 `apps/storefront` 头部 `header-utilities`；只调整两个既有控件的 DOM 顺序，不改造型、文案、事件、API、数据库或遗留 `src/` 原型。
+- 状态：中文首页，语言菜单与客服抽屉默认关闭；另复核语言菜单展开/关闭和客服抽屉打开/关闭。
+
+### 浏览器证据
+
+- 实现聚焦截图：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-header-390-zh.png`。
+- 同屏对比图：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-header-source-vs-390-implementation.png`。
+- 全视图截图：
+  - 1440 × 1024 CSS：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-home-1440-zh.jpg`。
+  - 390 × 844 CSS：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-home-390-zh.jpg`。
+  - 320 × 844 CSS：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-home-320-zh.jpg` 与 `cloudbridge-home-320-en.jpg`。
+- 内置浏览器截图使用设备像素比 1；390 × 844 CSS 视口的内容截图为 375 × 812 像素，聚焦比较保留控件原始比例，并按近似相同的 57/58px 高度比较顺序，不把浏览器滚动条或外壳差异计为产品偏差。
+
+### 全视图、聚焦区域与五项视觉表面
+
+- 全视图：1440、390、320 中文以及 320 英文均显示 `language-picker` 后接 `support-trigger`；页面横向溢出为 0，320px 仍保留完整“云桥”品牌。
+- 聚焦比较：参考图中的客服在左、语言在右；实现按用户文字要求反转为语言在左、客服在右。390px 下语言控件为 94 × 44px，客服按钮为 44 × 44px，间距 4px，没有重叠。
+- 字体与排版：继续复用原有字体、字号和语言标签；中文与 `English` 均完整可读。
+- 间距与布局：未改 CSS；桌面保持 10px 间距，390/320px 保持既有 4px 间距和 44px 操作高度。
+- 颜色与视觉变量：继续复用深海军蓝、青色边框和现有悬停/展开状态，没有新增视觉变量。
+- 图片与素材：未新增、替换或伪造图片、Logo 或图标；客服继续使用既有 Phosphor `Headset`。
+- 文案与内容：中英文文案、ARIA 名称和客服真实性边界未改变。
+
+### 交互、控制台与比较历史
+
+- 语言切换在 320px 下可展开，显示“中文 / English”，按 Escape 后关闭并恢复 `aria-expanded="false"`。
+- 客服按钮可打开“联系客服”对话框，关闭按钮可正常关闭；本地 API 未启动时继续显示既有真实错误状态，没有伪造渠道可用。
+- 浏览器控制台 warning/error 为 0。
+- 初次同屏比较未发现 P0/P1/P2；本轮没有视觉修复迭代。
+
+### Findings
+
+- P0：0。
+- P1：0。
+- P2：0。
+- P3：0。
+
+### 自动检查
+
+- `npm run test --workspace @cloudbridge/storefront`：13/13 通过。
+- `npm run typecheck --workspace @cloudbridge/storefront`：通过。
+- `npm run check`：完整通过，覆盖遗留与正式平台测试、五个工作区类型检查和生产构建。
+- `git diff --check`：通过。
+
+final result: passed
+
 ## 2026-07-28 商品卡片辅助标签移除
 
 ### 实现范围

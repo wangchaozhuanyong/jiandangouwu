@@ -1,11 +1,10 @@
 export type SystemHealthStatus = {
   status: "healthy";
+  runtime: "sites";
   database: "connected";
-  valkey: "connected" | "not_required";
-  runtime?: "node" | "sites";
+  objectStorage: "bound" | "missing";
   latencyMs: {
     database: number;
-    valkey: number;
   };
   timestamp: string;
 };

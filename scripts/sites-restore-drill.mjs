@@ -35,6 +35,10 @@ const snapshotTables = [
   "product_translations",
   "products",
   "site_settings",
+  "data_key_versions",
+  "exchange_rate_sync_runs",
+  "privacy_requests",
+  "telegram_deliveries",
 ];
 
 const insertOrder = [
@@ -46,17 +50,22 @@ const insertOrder = [
   "media_objects",
   "merchant_channels",
   "site_settings",
+  "data_key_versions",
+  "exchange_rate_sync_runs",
+  "privacy_requests",
   "category_translations",
   "exchange_rates",
   "hero_translations",
   "products",
   "product_translations",
   "orders",
+  "telegram_deliveries",
   "order_status_history",
 ];
 
 const deleteOrder = [
   "order_status_history",
+  "telegram_deliveries",
   "orders",
   "product_translations",
   "products",
@@ -71,6 +80,9 @@ const deleteOrder = [
   "categories",
   "currencies",
   "admin_members",
+  "privacy_requests",
+  "exchange_rate_sync_runs",
+  "data_key_versions",
 ];
 
 const scriptPath = fileURLToPath(import.meta.url);

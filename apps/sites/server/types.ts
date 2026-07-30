@@ -57,6 +57,9 @@ export interface SitesEnv {
   MEDIA: R2Bucket;
   IMAGES?: ImagesBinding;
   CLOUDBRIDGE_DATA_KEY?: string;
+  CLOUDBRIDGE_DATA_KEY_NEXT?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_ORDER_CHAT_ID?: string;
 }
 
 export interface SitesExecutionContext {

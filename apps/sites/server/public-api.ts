@@ -13,11 +13,17 @@ import {
   readJson,
   success,
 } from "./http";
-import { encryptOrderContact } from "./data-protection";
+import { encryptOrderContact, hashOrderContact } from "./data-protection";
+import { assertOrderRatesFresh } from "./exchange-rates";
 import { multiplyDecimal, normalizeMoney } from "./money";
 import { reconcileExpiredOrders } from "./order-expiry";
 import { normalizeLegacyLineBreaks } from "./text";
-import type { D1Database, SitesEnv } from "./types";
+import {
+  getTelegramSettings,
+  processTelegramDeliveries,
+  telegramDeliveryInsert,
+} from "./telegram";
+import type { D1Database, SitesEnv, SitesExecutionContext } from "./types";
 
 type Locale = "zh" | "en";
 type Money = { amount: string; currency: string };
@@ -54,6 +60,7 @@ export async function handlePublicApi(
   request: Request,
   env: SitesEnv,
   pathname: string,
+  context?: SitesExecutionContext,
 ): Promise<Response | null> {
   const url = new URL(request.url);
   if (request.method === "GET" && pathname === "/v1/storefront/config") {
@@ -93,7 +100,7 @@ export async function handlePublicApi(
   }
   if (request.method === "POST" && pathname === "/v1/orders") {
     await reconcileExpiredOrders(env.DB);
-    return createOrder(request, env);
+    return createOrder(request, env, context);
   }
   return null;
 }
@@ -271,7 +278,11 @@ async function storefrontProduct(
   };
 }
 
-async function createOrder(request: Request, env: SitesEnv): Promise<Response> {
+async function createOrder(
+  request: Request,
+  env: SitesEnv,
+  context?: SitesExecutionContext,
+): Promise<Response> {
   const idempotencyKey = request.headers.get("idempotency-key")?.trim();
   if (!idempotencyKey || idempotencyKey.length > 120) {
     throw new ApiInputError("IDEMPOTENCY_KEY_REQUIRED", "A valid idempotency key is required.", 400);
@@ -348,6 +359,7 @@ async function createOrder(request: Request, env: SitesEnv): Promise<Response> {
     throw new ApiInputError("OUT_OF_STOCK", "The selected product is sold out.", 409);
   }
 
+  await assertOrderRatesFresh(env.DB, currency);
   const pricing = await pricingContext(env.DB, currency);
   const amount = multiplyDecimal(product.basePrice, pricing.rate, pricing.digits);
   if (
@@ -358,8 +370,16 @@ async function createOrder(request: Request, env: SitesEnv): Promise<Response> {
     throw new ApiInputError("PRICE_CHANGED", "The current price changed. Review and try again.", 409);
   }
 
-  const contactEncrypted = await encryptOrderContact(contactValue, env.CLOUDBRIDGE_DATA_KEY);
-  const contactHash = await sha256(contactValue.toLocaleLowerCase());
+  const contactEncrypted = await encryptOrderContact(
+    contactValue,
+    env.CLOUDBRIDGE_DATA_KEY,
+    env.CLOUDBRIDGE_DATA_KEY_NEXT,
+  );
+  const contactHash = await hashOrderContact(
+    contactValue,
+    env.CLOUDBRIDGE_DATA_KEY,
+    env.CLOUDBRIDGE_DATA_KEY_NEXT,
+  );
   const maskedContact = maskContact(contactValue);
   const now = new Date();
   const reservedUntil = new Date(now.getTime() + 30 * 60_000).toISOString();
@@ -416,13 +436,35 @@ async function createOrder(request: Request, env: SitesEnv): Promise<Response> {
      SET stock_quantity = stock_quantity - 1, version = version + 1, updated_at = ?
      WHERE id = ? AND stock_mode = 'FINITE' AND stock_quantity > 0`,
   ).bind(now.toISOString(), product.id);
+  const telegramSettings = await getTelegramSettings(env);
+  const queueTelegram = telegramDeliveryInsert(env.DB, telegramSettings, {
+    orderId: id,
+    orderNumber,
+    product: product.name,
+    amount,
+    currency,
+    status: "MANUAL_PENDING",
+    createdAt: now.toISOString(),
+    contactChannel,
+    maskedContact,
+  });
 
   try {
-    await env.DB.batch([insertOrder, insertHistory, decrementStock]);
+    await env.DB.batch([
+      insertOrder,
+      insertHistory,
+      decrementStock,
+      ...(queueTelegram ? [queueTelegram] : []),
+    ]);
   } catch (error) {
     const concurrent = await orderReceiptByIdempotency(env.DB, idempotencyKey);
     if (concurrent) return success(concurrent);
     throw new ApiInputError("ORDER_CONFLICT", "The order could not be reserved. Refresh and try again.", 409);
+  }
+  if (queueTelegram) {
+    const delivery = processTelegramDeliveries(env).catch(() => undefined);
+    if (context) context.waitUntil(delivery);
+    else await delivery;
   }
 
   return success({
@@ -589,11 +631,6 @@ function parseSettings(value: string | undefined) {
   } catch {
     return fallback;
   }
-}
-
-async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function maskContact(value: string): string {

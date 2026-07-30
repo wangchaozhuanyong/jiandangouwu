@@ -16,6 +16,8 @@ const requiredSourceFiles = [
   path.join(source, "server", "index.js"),
   path.join(source, ".openai", "hosting.json"),
   path.join(source, ".openai", "drizzle", "0003_chunky_tattoo.sql"),
+  path.join(source, ".openai", "drizzle", "0004_sweet_adam_warlock.sql"),
+  path.join(source, ".openai", "drizzle", "0005_concerned_war_machine.sql"),
 ];
 
 for (const file of requiredSourceFiles) {

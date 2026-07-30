@@ -20,15 +20,6 @@ export const dataSecurityBoundaryCodes = [
 ] as const;
 export type DataSecurityBoundaryCode = (typeof dataSecurityBoundaryCodes)[number];
 
-export const dataGovernanceGateCodes = [
-  "CLASSIFICATION_POLICY",
-  "RETENTION_SCHEDULE",
-  "DELETION_AND_ANONYMIZATION",
-  "PRIVACY_REQUESTS",
-  "PRODUCTION_KEY_MANAGEMENT",
-] as const;
-export type DataGovernanceGateCode = (typeof dataGovernanceGateCodes)[number];
-
 export type DataSecurityControl = {
   code: DataSecurityControlCode;
   state: "IMPLEMENTED_CODE";
@@ -37,12 +28,7 @@ export type DataSecurityControl = {
 export type DataSecurityBoundary = {
   code: DataSecurityBoundaryCode;
   access: "PUBLIC" | "INTERNAL" | "PERSONAL" | "RESTRICTED";
-  retentionState: "NOT_DEFINED";
-};
-
-export type DataGovernanceGate = {
-  code: DataGovernanceGateCode;
-  state: "NOT_DEFINED" | "NOT_IMPLEMENTED" | "NOT_CONNECTED";
+  retentionState: "DRAFT_DISABLED";
 };
 
 export type DataSecurityReadiness = {
@@ -50,7 +36,6 @@ export type DataSecurityReadiness = {
     roleCount: number;
     roleKeys: ReadonlyArray<string>;
     permissionCount: number;
-    totpEnabled: boolean;
     auditReadGranted: boolean;
   };
   auditEvidence: {
@@ -63,7 +48,6 @@ export type DataSecurityReadiness = {
   };
   controls: ReadonlyArray<DataSecurityControl>;
   boundaries: ReadonlyArray<DataSecurityBoundary>;
-  gates: ReadonlyArray<DataGovernanceGate>;
 };
 
 const auditTimestamp = (event: Pick<AuditEvent, "createdAt">): number => {
@@ -98,7 +82,6 @@ export function buildDataSecurityReadiness({
       roleCount: user.roles.length,
       roleKeys: user.roles.map((role) => role.key).sort(),
       permissionCount: user.permissions.length,
-      totpEnabled: user.totpEnabled,
       auditReadGranted: canReadAudit,
     },
     auditEvidence: {
@@ -118,17 +101,10 @@ export function buildDataSecurityReadiness({
       state: "IMPLEMENTED_CODE",
     })),
     boundaries: [
-      { code: "PUBLIC_CATALOG", access: "PUBLIC", retentionState: "NOT_DEFINED" },
-      { code: "ORDER_CONTACT", access: "PERSONAL", retentionState: "NOT_DEFINED" },
-      { code: "ADMIN_IDENTITY", access: "RESTRICTED", retentionState: "NOT_DEFINED" },
-      { code: "AUDIT_EVIDENCE", access: "INTERNAL", retentionState: "NOT_DEFINED" },
-    ],
-    gates: [
-      { code: "CLASSIFICATION_POLICY", state: "NOT_DEFINED" },
-      { code: "RETENTION_SCHEDULE", state: "NOT_DEFINED" },
-      { code: "DELETION_AND_ANONYMIZATION", state: "NOT_IMPLEMENTED" },
-      { code: "PRIVACY_REQUESTS", state: "NOT_IMPLEMENTED" },
-      { code: "PRODUCTION_KEY_MANAGEMENT", state: "NOT_CONNECTED" },
+      { code: "PUBLIC_CATALOG", access: "PUBLIC", retentionState: "DRAFT_DISABLED" },
+      { code: "ORDER_CONTACT", access: "PERSONAL", retentionState: "DRAFT_DISABLED" },
+      { code: "ADMIN_IDENTITY", access: "RESTRICTED", retentionState: "DRAFT_DISABLED" },
+      { code: "AUDIT_EVIDENCE", access: "INTERNAL", retentionState: "DRAFT_DISABLED" },
     ],
   };
 }

@@ -92,29 +92,27 @@ const filterLabels: Record<MediaAssetFilter["kind"], Record<Locale, string>> = {
 export default function MediaPage({
   locale,
   permissions,
-  sitesRuntime,
 }: {
   locale: Locale;
   permissions: string[];
-  sitesRuntime: boolean;
 }) {
   const canReadCatalog = permissions.includes("catalog.read");
   const canReadContent = permissions.includes("content.read");
   const canWriteCatalog = permissions.includes("catalog.write");
   const canWriteContent = permissions.includes("content.write");
-  const canUpload = sitesRuntime && (canWriteCatalog || canWriteContent);
-  const canReplace = sitesRuntime && canWriteCatalog && canWriteContent;
+  const canUpload = canWriteCatalog || canWriteContent;
+  const canReplace = canWriteCatalog && canWriteContent;
   const canDelete = canUpload;
   const loader = useCallback(async (signal: AbortSignal): Promise<MediaResourceData> => {
     const [products, heroes, managedObjects] = await Promise.all([
       canReadCatalog ? getAllProducts(signal) : Promise.resolve([]),
       canReadContent ? getHeroes(signal) : Promise.resolve([]),
-      sitesRuntime ? getManagedMedia(signal) : Promise.resolve([]),
+      getManagedMedia(signal),
     ]);
     return { products, heroes, managedObjects };
-  }, [canReadCatalog, canReadContent, sitesRuntime]);
+  }, [canReadCatalog, canReadContent]);
   const resource = useCachedAdminResource<MediaResourceData>(
-    `media-inventory:${sitesRuntime ? "sites" : "platform"}:${canReadCatalog ? "catalog" : "none"}:${canReadContent ? "content" : "none"}`,
+    `media-inventory:sites:${canReadCatalog ? "catalog" : "none"}:${canReadContent ? "content" : "none"}`,
     loader,
   );
   const slow = useSlowAdminRequest(resource.state);
@@ -195,21 +193,13 @@ export default function MediaPage({
         <ImageIcon size={20} aria-hidden="true" />
         <span>
           <strong>
-            {sitesRuntime
-              ? copy(locale, "Sites 媒体库与真实引用", "Sites media library and live references")
-              : copy(locale, "真实引用清单", "Live reference inventory")}
+            {copy(locale, "Sites 媒体库与真实引用", "Sites media library and live references")}
           </strong>
-          {sitesRuntime
-            ? copy(
-                locale,
-                "本页读取 R2 上传对象及当前账号有权查看的商品、首页轮播数据库引用。打包在网站中的静态图片只在被引用时显示；删除始终要求图片未被任何记录使用。",
-                "This page reads R2 uploads plus product and hero database references visible to this account. Bundled static images appear only while referenced, and deletion always requires zero database references.",
-              )
-            : copy(
-                locale,
-                "本地 MySQL 运行时只聚合当前账号有权读取的商品与首页轮播图片引用；上传、替换和对象存储管理只在 Sites 运行时提供。",
-                "The local MySQL runtime only aggregates product and hero references visible to this account. Upload, replacement, and object-storage management are available only in the Sites runtime.",
-              )}
+          {copy(
+            locale,
+            "本页读取 R2 上传对象及当前账号有权查看的商品、首页轮播 D1 引用。打包在网站中的静态图片只在被引用时显示；删除始终要求图片未被任何记录使用。",
+            "This page reads R2 uploads plus product and hero D1 references visible to this account. Bundled static images appear only while referenced, and deletion always requires zero database references.",
+          )}
         </span>
       </div>
 
@@ -276,7 +266,8 @@ export default function MediaPage({
             <div className="media-kind-filter" role="group" aria-label={copy(locale, "媒体类型", "Media type")}>
               {([
                 "all",
-                ...(sitesRuntime ? ["managed", "unreferenced"] as const : []),
+                "managed",
+                "unreferenced",
                 "hero",
                 "product",
               ] as MediaAssetFilter["kind"][]).map((item) => (

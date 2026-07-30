@@ -37,10 +37,10 @@ import {
 import { securityActionLabel } from "../security-events/model";
 import {
   buildDataSecurityReadiness,
-  type DataGovernanceGateCode,
   type DataSecurityBoundaryCode,
   type DataSecurityControlCode,
 } from "./model";
+import DataGovernancePanel from "./data-governance-panel";
 
 const copy = (locale: Locale, zh: string, en: string): string =>
   locale === "zh" ? zh : en;
@@ -62,43 +62,43 @@ const controlCopy: Record<
       zh: "写入前使用认证加密，列表默认只返回脱敏值；完整值需要独立权限、近期认证、原因和审计。",
       en: "Authenticated encryption is applied before storage. Lists return masked values; full reveal requires a separate permission, recent authentication, a reason, and audit.",
     },
-    evidence: "AES-256-GCM · SHA-256 lookup hash",
+    evidence: "AES-256-GCM v3 · derived HMAC lookup",
     icon: Fingerprint,
   },
   CREDENTIAL_PROTECTION: {
     title: { zh: "管理员凭据保护", en: "Administrator credential protection" },
     body: {
-      zh: "密码只保存 scrypt 派生值；TOTP 密钥使用服务器保护服务加密，安全投影不返回认证内部字段。",
-      en: "Passwords are stored only as scrypt derivations. TOTP secrets use server-side protection, and safe projections exclude authentication internals.",
+      zh: "管理员身份由 ChatGPT 托管登录保护；应用只接收 Sites 注入的安全身份投影，不保存管理员密码。",
+      en: "ChatGPT-managed sign-in protects administrator identity. The app receives only a safe Sites identity projection and stores no administrator passwords.",
     },
-    evidence: "scrypt · protected TOTP secret",
+    evidence: "ChatGPT identity · safe projection",
     icon: Key,
   },
   SERVER_SESSION: {
     title: { zh: "服务端会话与请求保护", en: "Server session and request protection" },
     body: {
-      zh: "管理员会话保存在 Valkey；Cookie 使用 HttpOnly、Secure、SameSite=Strict，写请求同时校验 CSRF。",
-      en: "Administrator sessions live in Valkey. Cookies use HttpOnly, Secure, and SameSite=Strict, while writes also require CSRF validation.",
+      zh: "管理员会话由 Sites 与 ChatGPT 托管；写请求仍要求受保护身份和明确权限。",
+      en: "Sites and ChatGPT manage administrator sessions; writes still require a protected identity and explicit permissions.",
     },
-    evidence: "Valkey · HttpOnly · CSRF",
+    evidence: "Sites session · ChatGPT authentication",
     icon: LockKey,
   },
   DATABASE_RBAC: {
     title: { zh: "数据库权限实时校验", en: "Database-backed authorization" },
     body: {
-      zh: "受保护请求重新读取 MySQL 中的账号状态与有效权限，撤销授权后不能继续依赖旧会话快照。",
-      en: "Protected requests re-read account status and effective permissions from MySQL, so revoked access cannot continue from a stale session snapshot.",
+      zh: "受保护请求使用 Sites 注入的管理员身份与应用权限映射，D1 业务接口默认拒绝未授权访问。",
+      en: "Protected requests use the Sites-injected administrator identity and application permission mapping; D1 business APIs deny unauthorized access by default.",
     },
-    evidence: "MySQL RBAC · fail closed",
+    evidence: "Sites identity · D1 fail closed",
     icon: IdentificationBadge,
   },
   AUDIT_RECORDING: {
     title: { zh: "敏感操作审计", en: "Sensitive-operation audit" },
     body: {
-      zh: "登录、权限、联系方式查看与关键配置操作写入 MySQL 审计事件；IP 只保存 SHA-256 哈希。",
-      en: "Authentication, access, contact reveal, and critical configuration actions write MySQL audit events. IP values are stored only as SHA-256 hashes.",
+      zh: "联系方式查看、隐私请求、汇率、通知与关键配置操作写入 D1 审计事件；敏感密钥不进入响应或日志。",
+      en: "Contact reveal, privacy requests, rates, notifications, and critical configuration changes write D1 audit events; secrets never enter responses or logs.",
     },
-    evidence: "AuditEvent · SHA-256 IP hash",
+    evidence: "D1 audit_events · secret redaction",
     icon: FileMagnifyingGlass,
   },
 };
@@ -133,10 +133,10 @@ const boundaryCopy: Record<
   ADMIN_IDENTITY: {
     title: { zh: "管理员身份与权限", en: "Administrator identity and access" },
     body: {
-      zh: "属于受限数据；页面只读取安全白名单字段、角色、权限和 TOTP 开关状态。",
-      en: "Restricted data; pages receive only allowlisted identity fields, roles, permissions, and TOTP enabled state.",
+      zh: "属于受限数据；页面只读取 ChatGPT 提供的安全白名单身份、角色和权限字段。",
+      en: "Restricted data; pages receive only the allowlisted identity, role, and permission fields provided by ChatGPT.",
     },
-    protection: { zh: "安全投影 + 服务端会话", en: "Safe projection + server session" },
+    protection: { zh: "ChatGPT 身份 + 安全投影", en: "ChatGPT identity + safe projection" },
     icon: UserCircle,
   },
   AUDIT_EVIDENCE: {
@@ -147,50 +147,6 @@ const boundaryCopy: Record<
     },
     protection: { zh: "audit.read + 白名单字段", en: "audit.read + allowlisted fields" },
     icon: ListMagnifyingGlass,
-  },
-};
-
-const gateCopy: Record<
-  DataGovernanceGateCode,
-  {
-    title: Record<Locale, string>;
-    body: Record<Locale, string>;
-  }
-> = {
-  CLASSIFICATION_POLICY: {
-    title: { zh: "正式数据分类政策", en: "Approved data-classification policy" },
-    body: {
-      zh: "当前卡片是代码边界说明，不是已经审批并持久化的治理政策。",
-      en: "The current cards describe code boundaries, not an approved and persisted governance policy.",
-    },
-  },
-  RETENTION_SCHEDULE: {
-    title: { zh: "保留期限与调度器", en: "Retention periods and scheduler" },
-    body: {
-      zh: "订单、管理员、审计和运行数据尚无已批准期限，也没有自动到期任务。",
-      en: "Orders, administrators, audit, and runtime data have no approved periods or automated expiry job.",
-    },
-  },
-  DELETION_AND_ANONYMIZATION: {
-    title: { zh: "删除与匿名化工作流", en: "Deletion and anonymization workflow" },
-    body: {
-      zh: "尚未实现暂停、复核、级联影响、执行证据或不可逆确认。",
-      en: "Hold, review, dependency impact, execution evidence, and irreversible confirmation are not implemented.",
-    },
-  },
-  PRIVACY_REQUESTS: {
-    title: { zh: "隐私权请求处理", en: "Privacy-rights request handling" },
-    body: {
-      zh: "尚未实现访问、更正、导出、删除请求的时限、负责人和结果证据。",
-      en: "Access, correction, export, and deletion requests have no deadlines, owners, or outcome evidence.",
-    },
-  },
-  PRODUCTION_KEY_MANAGEMENT: {
-    title: { zh: "生产密钥管理", en: "Production key management" },
-    body: {
-      zh: "本地环境变量不等于 AWS Secrets Manager、KMS、轮换或生产访问证据。",
-      en: "Local environment variables do not prove AWS Secrets Manager, KMS, rotation, or production access.",
-    },
   },
 };
 
@@ -211,6 +167,7 @@ export default function DataSecurityPage({
   user: AdminUser;
 }) {
   const canReadAudit = user.permissions.includes("audit.read");
+  const canWriteGovernance = user.permissions.includes("settings.write");
   const loader = useCallback(
     (signal: AbortSignal) => canReadAudit
       ? getAudit(signal)
@@ -242,14 +199,15 @@ export default function DataSecurityPage({
 
   return (
     <section className="data-security-page">
+      <DataGovernancePanel canWrite={canWriteGovernance} locale={locale} />
       <div className="data-security-truth-note" role="note">
         <WarningCircle size={20} aria-hidden="true" />
         <span>
           <strong>{copy(locale, "当前是代码控制与运行证据，不是合规认证", "Current code controls and runtime evidence; not a compliance certification")}</strong>
           {copy(
             locale,
-            "本页只展示当前仓库已实现的保护边界、当前管理员会话和有权读取的最近 MySQL 审计记录。保留期限、删除、匿名化、隐私请求、KMS 与生产认证没有证据时明确标为未定义、未开发或未连接。",
-            "This page only shows protection boundaries implemented in the current repository, the current administrator session, and authorized recent MySQL audit records. Retention, deletion, anonymization, privacy requests, KMS, and production certification remain not defined, not implemented, or not connected when evidence is absent.",
+            "本页展示当前 Sites、D1 与 ChatGPT 身份边界、最近审计记录，以及只预览不删除的保留策略。它不是合规认证。",
+            "This page shows the current Sites, D1, and ChatGPT identity boundaries, recent audit records, and the preview-only retention policy. It is not a compliance certification.",
           )}
         </span>
       </div>
@@ -276,9 +234,9 @@ export default function DataSecurityPage({
         />
         <SecurityStat
           icon={ShieldWarning}
-          label={copy(locale, "正式保留策略", "Approved retention policy")}
-          value={copy(locale, "未定义", "Not defined")}
-          detail="NOT_DEFINED"
+          label={copy(locale, "保留策略", "Retention policy")}
+          value={copy(locale, "草案", "Draft")}
+          detail="PREVIEW_ONLY"
           tone="neutral"
         />
       </div>
@@ -288,8 +246,8 @@ export default function DataSecurityPage({
           <Database size={17} aria-hidden="true" />
           {copy(
             locale,
-            "代码控制与治理政策保持分开；刷新只重新读取审计证据，不会扫描、移动或删除数据。",
-            "Code controls and governance policy remain separate. Refresh only re-reads audit evidence; it never scans, moves, or deletes data.",
+            "刷新只重新读取 D1 审计证据，不会移动或删除数据；清理预览由上方治理面板独立生成。",
+            "Refresh only re-reads D1 audit evidence and never moves or deletes data; the governance panel above generates cleanup previews separately.",
           )}
         </p>
         <button
@@ -330,7 +288,7 @@ export default function DataSecurityPage({
                   {accessLabels[boundary.access][locale]}
                 </span>
                 <span className="data-security-retention">
-                  {copy(locale, "保留期未定义", "Retention not defined")}
+                  {copy(locale, "草案未启用", "Draft disabled")}
                 </span>
               </div>
             </article>
@@ -344,7 +302,7 @@ export default function DataSecurityPage({
             <div>
               <small>{copy(locale, "仓库实现", "REPOSITORY IMPLEMENTATION")}</small>
               <h2>{copy(locale, "当前已经执行的保护控制", "Protection controls currently enforced")}</h2>
-              <p>{copy(locale, "这些结论来自当前正式主平台代码与自动测试。", "These statements come from the current formal-platform code and automated tests.")}</p>
+              <p>{copy(locale, "这些结论来自当前 Sites Worker、D1 接口与自动测试。", "These statements come from the current Sites Worker, D1 APIs, and automated tests.")}</p>
             </div>
             <span className="data-security-state is-code">IMPLEMENTED_CODE</span>
           </div>
@@ -387,8 +345,8 @@ export default function DataSecurityPage({
               <dd>{readiness.currentSession.permissionCount}</dd>
             </div>
             <div>
-              <dt>{copy(locale, "TOTP 双重验证", "TOTP two-factor authentication")}</dt>
-              <dd>{readiness.currentSession.totpEnabled ? copy(locale, "已开启", "Enabled") : copy(locale, "未开启", "Not enabled")}</dd>
+              <dt>{copy(locale, "双重验证", "Two-step verification")}</dt>
+              <dd>{copy(locale, "由 ChatGPT 管理", "Managed by ChatGPT")}</dd>
             </div>
             <div>
               <dt><code>audit.read</code></dt>
@@ -425,7 +383,7 @@ export default function DataSecurityPage({
       <section className="admin-panel data-security-audit">
         <div className="data-security-records-heading">
           <div>
-            <small>{copy(locale, "真实 MySQL 证据", "LIVE MYSQL EVIDENCE")}</small>
+            <small>{copy(locale, "真实 D1 证据", "LIVE D1 EVIDENCE")}</small>
             <h2>{copy(locale, "最近审计记录样本", "Recent audit record sample")}</h2>
             <p>{copy(locale, "最多展示六条；事件 ID、请求 ID、时间、操作、结果、操作者和目标保持独立列。", "Up to six records; event ID, request ID, time, action, result, actor, and target remain separate columns.")}</p>
           </div>
@@ -487,39 +445,6 @@ export default function DataSecurityPage({
         )}
       </section>
 
-      <section className="admin-panel data-security-gates">
-        <div className="data-security-panel-heading">
-          <div>
-            <small>{copy(locale, "治理上线门槛", "GOVERNANCE LAUNCH GATES")}</small>
-            <h2>{copy(locale, "仍需业务与技术共同完成", "Business and engineering work still required")}</h2>
-            <p>{copy(locale, "未定义、未开发和未连接保持为不同状态。", "Not defined, not implemented, and not connected remain distinct states.")}</p>
-          </div>
-        </div>
-        <ol>
-          {readiness.gates.map((gate) => (
-            <li key={gate.code}>
-              <span className={`data-security-gate-icon is-${gate.state.toLocaleLowerCase().replaceAll("_", "-")}`}>
-                {gate.state === "NOT_CONNECTED"
-                  ? <LockKey size={18} aria-hidden="true" />
-                  : gate.state === "NOT_IMPLEMENTED"
-                    ? <Database size={18} aria-hidden="true" />
-                    : <FileMagnifyingGlass size={18} aria-hidden="true" />}
-              </span>
-              <div>
-                <strong>{gateCopy[gate.code].title[locale]}</strong>
-                <p>{gateCopy[gate.code].body[locale]}</p>
-              </div>
-              <span className={`data-security-state is-${gate.state.toLocaleLowerCase().replaceAll("_", "-")}`}>
-                {gate.state === "NOT_DEFINED"
-                  ? copy(locale, "未定义", "Not defined")
-                  : gate.state === "NOT_IMPLEMENTED"
-                    ? copy(locale, "未开发", "Not implemented")
-                    : copy(locale, "未连接", "Not connected")}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </section>
     </section>
   );
 }

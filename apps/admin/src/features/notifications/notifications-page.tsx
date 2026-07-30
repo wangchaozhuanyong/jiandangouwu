@@ -58,8 +58,8 @@ const gateCopy: Record<
   DELIVERY_RUNTIME: {
     title: { zh: "投递运行时", en: "Delivery runtime" },
     body: {
-      zh: "尚未连接 Telegram Bot 与订单事件。",
-      en: "The Telegram bot and order event are not connected.",
+      zh: "只有真实连接核验且管理员请求启用后才会生效。",
+      en: "Effective delivery requires real connection verification and administrator activation.",
     },
   },
   BOT_CREDENTIAL: {
@@ -79,15 +79,15 @@ const gateCopy: Record<
   DELIVERY_EVENT_STORE: {
     title: { zh: "投递事件存储", en: "Delivery event store" },
     body: {
-      zh: "尚未开发投递记录、已读状态与失败结果存储。",
-      en: "Delivery records, read states, and failure results are not implemented.",
+      zh: "D1 保存待发送、已送达、失败、尝试次数和 Telegram 回执。",
+      en: "D1 stores pending, delivered, failed, attempt counts, and Telegram receipts.",
     },
   },
   RETRY_QUEUE: {
     title: { zh: "幂等与重试队列", en: "Idempotency and retry queue" },
     body: {
-      zh: "尚未开发自动重试、去重与最终失败处理。",
-      en: "Retry, deduplication, and terminal failure handling are not implemented.",
+      zh: "同一订单事件去重，并按六档计划重试，最终失败支持人工重试。",
+      en: "Order events are deduplicated, retried on six intervals, and terminal failures support manual retry.",
     },
   },
 };
@@ -133,11 +133,11 @@ export default function NotificationsPage({
       <div className="notification-truth-note" role="note">
         <WarningCircle size={20} aria-hidden="true" />
         <span>
-          <strong>{copy(locale, "通知投递尚未接通", "Notification delivery is not connected")}</strong>
+          <strong>{copy(locale, "Telegram 通知真实状态", "Real Telegram notification status")}</strong>
           {copy(
             locale,
             "本页只读取平台数据库中已保存的 Telegram 新订单配置与真实接通状态；没有投递记录时显示“未采集”，不会用 0 或虚构通知冒充结果。",
-            "This page only reads the saved platform-database Telegram new-order configuration and its real connection state. Missing delivery records are shown as “not collected,” never as zero or fabricated notifications.",
+            "This page reads the saved D1 Telegram new-order configuration and its real connection state. Missing delivery records are shown as “not collected,” never as zero or fabricated notifications.",
           )}
         </span>
       </div>
@@ -162,23 +162,23 @@ export default function NotificationsPage({
             <NotificationStat
               icon={PaperPlaneTilt}
               label={copy(locale, "实际投递", "Actual delivery")}
-              value={copy(locale, "未接通", "Not connected")}
+              value={readiness.route.effectiveEnabled ? copy(locale, "已启用", "Enabled") : copy(locale, "未启用", "Disabled")}
               detail={readiness.route.connectionState}
-              tone="warning"
+              tone={readiness.route.effectiveEnabled ? "default" : "warning"}
             />
             <NotificationStat
               icon={Key}
               label={copy(locale, "服务端凭据", "Server credential")}
-              value={copy(locale, "未配置", "Not configured")}
-              detail={copy(locale, "Token configured · 否", "Token configured · No")}
-              tone="warning"
+              value={readiness.route.tokenConfigured ? copy(locale, "已配置", "Configured") : copy(locale, "未配置", "Not configured")}
+              detail={copy(locale, `Token configured · ${readiness.route.tokenConfigured ? "是" : "否"}`, `Token configured · ${readiness.route.tokenConfigured ? "Yes" : "No"}`)}
+              tone={readiness.route.tokenConfigured ? "default" : "warning"}
             />
             <NotificationStat
               icon={ClockCounterClockwise}
               label={copy(locale, "投递证据", "Delivery evidence")}
-              value={copy(locale, "未采集", "Not collected")}
+              value={readiness.deliveryEvidenceState === "VERIFIED" ? copy(locale, "已核验", "Verified") : copy(locale, "未采集", "Not collected")}
               detail={readiness.deliveryEvidenceState}
-              tone="neutral"
+              tone={readiness.deliveryEvidenceState === "VERIFIED" ? "default" : "neutral"}
             />
           </div>
 
@@ -232,11 +232,11 @@ export default function NotificationsPage({
                 </div>
                 <div>
                   <dt>{copy(locale, "实际启用", "Effective delivery")}</dt>
-                  <dd>{copy(locale, "否", "No")}</dd>
+                  <dd>{readiness.route.effectiveEnabled ? copy(locale, "是", "Yes") : copy(locale, "否", "No")}</dd>
                 </div>
                 <div>
                   <dt>{copy(locale, "外部核验", "External verification")}</dt>
-                  <dd>{copy(locale, "否", "No")}</dd>
+                  <dd>{readiness.route.externalDeliveryVerified ? copy(locale, "是", "Yes") : copy(locale, "否", "No")}</dd>
                 </div>
                 <div>
                   <dt>{copy(locale, "接收组显示名称", "Recipient display label")}</dt>
@@ -279,14 +279,14 @@ export default function NotificationsPage({
               <div className="notification-panel-heading">
                 <div>
                   <small>{copy(locale, "上线门槛", "LAUNCH GATES")}</small>
-                  <h2>{copy(locale, "仍需完成的通知基础设施", "Notification infrastructure still required")}</h2>
-                  <p>{copy(locale, "阻塞项与尚未开发项分开显示。", "Blocked and not-implemented items remain distinct.")}</p>
+                  <h2>{copy(locale, "通知上线门槛", "Notification launch gates")}</h2>
+                  <p>{copy(locale, "真实凭据和外部核验与已经实现的队列能力分开显示。", "Real credentials and external verification remain distinct from implemented queue capabilities.")}</p>
                 </div>
               </div>
               <ol>
                 {readiness.gates.map((gate) => (
                   <li key={gate.code}>
-                    <span className={`notification-gate-icon is-${gate.state === "BLOCKED" ? "blocked" : "missing"}`}>
+                    <span className={`notification-gate-icon is-${gate.state === "BLOCKED" ? "blocked" : "ready"}`}>
                       {gate.state === "BLOCKED"
                         ? <ShieldWarning size={18} aria-hidden="true" />
                         : <ClockCounterClockwise size={18} aria-hidden="true" />}
@@ -295,10 +295,10 @@ export default function NotificationsPage({
                       <strong>{gateCopy[gate.code].title[locale]}</strong>
                       <p>{gateCopy[gate.code].body[locale]}</p>
                     </div>
-                    <span className={`notification-state is-${gate.state === "BLOCKED" ? "blocked" : "missing"}`}>
+                    <span className={`notification-state is-${gate.state === "BLOCKED" ? "blocked" : "ready"}`}>
                       {gate.state === "BLOCKED"
                         ? copy(locale, "阻塞", "Blocked")
-                        : copy(locale, "未开发", "Not implemented")}
+                        : copy(locale, "就绪", "Ready")}
                     </span>
                   </li>
                 ))}
@@ -310,12 +310,14 @@ export default function NotificationsPage({
             <span><ClockCounterClockwise size={23} aria-hidden="true" /></span>
             <div>
               <small>{readiness.deliveryEvidenceState}</small>
-              <h2>{copy(locale, "当前没有可核验的投递历史", "No verifiable delivery history is available")}</h2>
+              <h2>{readiness.deliveryEvidenceState === "VERIFIED"
+                ? copy(locale, "真实 Telegram 连接已经核验", "Real Telegram connection is verified")
+                : copy(locale, "尚无真实 Telegram 投递回执", "No real Telegram delivery receipt yet")}</h2>
               <p>
                 {copy(
                   locale,
-                  "系统尚未建立投递事件存储，因此不能展示发送时间、接收结果、未读数量、失败次数或重试状态。这些数据是未采集，不是零。",
-                  "No delivery event store exists yet, so sent time, recipient result, unread count, failure count, and retry state cannot be shown. These values are not collected, not zero.",
+                  "投递记录、发送时间、失败次数和重试状态已在 Telegram 配置页按真实 D1 数据展示；本页只汇总连接门槛。",
+                  "The Telegram configuration page shows real D1 delivery records, timestamps, failure counts, and retry state. This page summarizes connection gates only.",
                 )}
               </p>
             </div>

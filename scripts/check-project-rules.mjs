@@ -17,7 +17,6 @@ const requiredRuleFiles = [
   "docs/DATA_API_SECURITY.md",
   "docs/INTERACTION_RULES.md",
   "docs/TESTING_AND_RELEASE.md",
-  "docs/AWS_STAGING.md",
   "docs/ROADMAP.md",
   ".env.example",
 ];
@@ -37,8 +36,7 @@ if (errors.length === 0) {
   const packageJson = JSON.parse(read("package.json"));
   const storefrontPackage = JSON.parse(read("apps/storefront/package.json"));
   const adminPackage = JSON.parse(read("apps/admin/package.json"));
-  const apiPackage = JSON.parse(read("apps/api/package.json"));
-  const infraPackage = JSON.parse(read("infra/package.json"));
+  const sitesPackage = JSON.parse(read("apps/sites/package.json"));
   const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
   const agents = read("AGENTS.md");
   const architecture = read("docs/ARCHITECTURE.md");
@@ -51,10 +49,12 @@ if (errors.length === 0) {
   assertRule(/^6\./u.test(String(dependencies.vite ?? "").replace(/^[^\d]*/u, "")), "Vite 主版本必须保持为 6");
   assertRule(/^16\./u.test(String(storefrontPackage.dependencies?.next ?? "").replace(/^[^\d]*/u, "")), "客户端 Next.js 主版本必须保持为 16");
   assertRule(/^8\./u.test(String(adminPackage.devDependencies?.vite ?? "").replace(/^[^\d]*/u, "")), "管理后台 Vite 主版本必须保持为 8");
-  assertRule(/^11\./u.test(String(apiPackage.dependencies?.["@nestjs/core"] ?? "").replace(/^[^\d]*/u, "")), "API NestJS 主版本必须保持为 11");
-  assertRule(/^7\./u.test(String(apiPackage.dependencies?.["@prisma/client"] ?? "").replace(/^[^\d]*/u, "")), "Prisma 主版本必须保持为 7");
-  assertRule(/^2\./u.test(String(infraPackage.devDependencies?.["aws-cdk-lib"] ?? "").replace(/^[^\d]*/u, "")), "AWS CDK 主版本必须保持为 2");
-  assertRule(infraPackage.dependencies?.["aws-cdk-lib"] === undefined, "AWS CDK 只能作为基础设施开发依赖");
+  assertRule(/^16\./u.test(String(sitesPackage.dependencies?.next ?? "").replace(/^[^\d]*/u, "")), "Sites Next.js 主版本必须保持为 16");
+  assertRule(/^8\./u.test(String(sitesPackage.devDependencies?.vite ?? "").replace(/^[^\d]*/u, "")), "Sites Vite 主版本必须保持为 8");
+  assertRule(sitesPackage.dependencies?.["drizzle-orm"] !== undefined, "Sites 必须保留 D1 Drizzle 数据层");
+  assertRule(!existsSync(path.join(root, "apps", "api")), "Sites-only 项目不应保留 apps/api");
+  assertRule(!existsSync(path.join(root, "infra")), "Sites-only 项目不应保留 infra");
+  assertRule(!existsSync(path.join(root, "compose.yaml")), "Sites-only 项目不应保留 compose.yaml");
 
   for (const dependency of ["vue", "element-plus", "tailwindcss"]) {
     assertRule(!(dependency in dependencies), `规则基线不允许引入未批准依赖：${dependency}`);
@@ -67,13 +67,13 @@ if (errors.length === 0) {
     assertRule(agents.includes(`(${doc})`), `AGENTS.md 未链接规则文档：${doc}`);
   }
 
-  for (const phrase of ["Next.js 16", "React 19", "Vite 8", "Vite 6", "TypeScript", "NestJS", "Prisma", "RDS MySQL Multi-AZ"]) {
+  for (const phrase of ["Sites Worker", "D1", "R2", "ChatGPT"]) {
     assertRule(architecture.includes(phrase), `架构文档缺少技术决策：${phrase}`);
   }
-  for (const phrase of ["当前已实现", "当前模拟", "未来规划"]) {
+  for (const phrase of ["已实现", "当前生产门禁", "暂缓"]) {
     assertRule(product.includes(phrase), `产品文档缺少能力状态：${phrase}`);
   }
-  for (const command of ["npm run check:rules", "npm run test:catalog", "npm run test:i18n", "npm run test:ux", "npm run test:security", "npm run build", "npm run test:sites", "npm run check"]) {
+  for (const command of ["npm ci", "npm run check", "npm run build:sites"]) {
     assertRule(testing.includes(command), `测试文档缺少命令：${command}`);
   }
 
@@ -112,12 +112,12 @@ const walk = (target) => {
     return;
   }
   for (const entry of readdirSync(target)) {
-    if (["node_modules", "dist", ".git", ".next", "cdk.out"].includes(entry)) continue;
+    if (["node_modules", "dist", ".git", ".next"].includes(entry)) continue;
     walk(path.join(target, entry));
   }
 };
 
-for (const entry of ["src", "scripts", "worker", "vite.config.mjs", "apps", "packages", "infra"]) {
+for (const entry of ["src", "scripts", "worker", "vite.config.mjs", "apps", "packages"]) {
   walk(path.join(root, entry));
 }
 
@@ -130,7 +130,7 @@ if (existsSync(path.join(root, ".env.example"))) {
   );
   const usedEnv = new Set();
   const builtInViteEnv = new Set(["BASE_URL", "DEV", "MODE", "PROD", "SSR"]);
-  const builtInNodeEnv = new Set(["CI", "NODE_ENV", "CDK_DEFAULT_ACCOUNT", "CDK_DEFAULT_REGION"]);
+  const builtInNodeEnv = new Set(["CI", "NODE_ENV"]);
 
   for (const file of sourceFiles) {
     const content = readFileSync(file, "utf8");
