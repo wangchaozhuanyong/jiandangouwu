@@ -13,6 +13,7 @@ import {
   readJson,
   success,
 } from "./http";
+import { encryptOrderContact } from "./data-protection";
 import { multiplyDecimal, normalizeMoney } from "./money";
 import { reconcileExpiredOrders } from "./order-expiry";
 import { normalizeLegacyLineBreaks } from "./text";
@@ -357,7 +358,7 @@ async function createOrder(request: Request, env: SitesEnv): Promise<Response> {
     throw new ApiInputError("PRICE_CHANGED", "The current price changed. Review and try again.", 409);
   }
 
-  const contactEncrypted = await encryptContact(contactValue, env.CLOUDBRIDGE_DATA_KEY);
+  const contactEncrypted = await encryptOrderContact(contactValue, env.CLOUDBRIDGE_DATA_KEY);
   const contactHash = await sha256(contactValue.toLocaleLowerCase());
   const maskedContact = maskContact(contactValue);
   const now = new Date();
@@ -590,28 +591,6 @@ function parseSettings(value: string | undefined) {
   }
 }
 
-async function encryptContact(value: string, encodedKey: string | undefined): Promise<string> {
-  if (!encodedKey) {
-    throw new ApiInputError(
-      "ORDER_ENCRYPTION_NOT_CONFIGURED",
-      "Order encryption is not configured. Orders remain paused.",
-      503,
-    );
-  }
-  const keyBytes = decodeBase64Url(encodedKey);
-  if (keyBytes.byteLength !== 32) {
-    throw new ApiInputError("ORDER_ENCRYPTION_INVALID", "Order encryption is unavailable.", 503);
-  }
-  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["encrypt"]);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    new TextEncoder().encode(value),
-  );
-  return `v1.${encodeBase64Url(iv)}.${encodeBase64Url(new Uint8Array(encrypted))}`;
-}
-
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -626,19 +605,4 @@ function maskContact(value: string): string {
   const compact = value.replace(/\s+/gu, "");
   if (compact.length <= 4) return "*".repeat(compact.length);
   return `${compact.slice(0, 2)}${"*".repeat(Math.max(3, compact.length - 4))}${compact.slice(-2)}`;
-}
-
-function decodeBase64Url(value: string): ArrayBuffer {
-  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
-  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-  const decoded = atob(padded);
-  return Uint8Array.from(decoded, (character) => character.charCodeAt(0)).buffer as ArrayBuffer;
-}
-
-function encodeBase64Url(value: Uint8Array): string {
-  let binary = "";
-  value.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
 }

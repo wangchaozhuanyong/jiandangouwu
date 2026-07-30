@@ -24,6 +24,11 @@ import {
   verifyBackupSnapshot,
 } from "../server/backup-api.ts";
 import {
+  decodeBase64Url,
+  deriveSitesAesKey,
+  sitesDataAdditionalData,
+} from "../server/data-protection.ts";
+import {
   prepareRestoreDrill,
   runIsolatedRestoreDrill,
 } from "../../../scripts/sites-restore-drill.mjs";
@@ -63,6 +68,7 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
   assert.match(backups[0].checksumSha256, /^[a-f0-9]{64}$/u);
   assert.equal(r2.size(), 1);
   assert.doesNotMatch(r2.firstValue(), /OpenAI Codex Professional/u);
+  assert.equal(JSON.parse(r2.firstValue()).version, 2);
 
   const verified = await verifyBackupSnapshot(
     env,
@@ -136,6 +142,11 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
       displayName: "Owner",
       permissions: ["settings.write"],
     },
+  );
+  const [tokenPayload] = drillTransfer.drillToken.split(".");
+  assert.equal(
+    JSON.parse(Buffer.from(tokenPayload, "base64url").toString("utf8")).version,
+    2,
   );
   assert.equal(drillTransfer.format, "cloudbridge-restore-drill-transfer");
   assert.doesNotMatch(JSON.stringify(drillTransfer), /OpenAI Codex Professional/u);
@@ -386,6 +397,52 @@ test("restore-package validation fails closed on broken table relationships", as
   assert.equal(failed.restoreValidationErrorCode, "BACKUP_RESTORE_RELATION_INVALID");
 });
 
+test("legacy v1 backup envelopes remain readable after purpose-separated v2 writes", async () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(migrations);
+  const r2 = memoryR2();
+  const dataKey = base64Url(new Uint8Array(32).fill(11));
+  const env = {
+    DB: d1Adapter(sqlite),
+    MEDIA: r2,
+    CLOUDBRIDGE_DATA_KEY: dataKey,
+  };
+
+  try {
+    await ensureDailyBackup(env);
+    const [backup] = await listBackupSnapshots(env.DB);
+    const legacyEnvelope = await convertBackupToLegacyV1(r2.firstValue(), dataKey);
+    r2.replaceFirstValue(legacyEnvelope);
+    sqlite.prepare(
+      "UPDATE backup_snapshots SET checksum_sha256 = ?, byte_size = ? WHERE id = ?",
+    ).run(
+      createHash("sha256").update(legacyEnvelope).digest("hex"),
+      Buffer.byteLength(legacyEnvelope),
+      backup.id,
+    );
+
+    const verified = await verifyBackupSnapshot(
+      env,
+      new Request("https://example.test/v1/admin/backups/verify", {
+        method: "POST",
+        body: JSON.stringify({ reason: "Verify a legacy compatible backup" }),
+      }),
+      backup.id,
+      {
+        id: "admin-test",
+        email: "owner@example.test",
+        displayName: "Owner",
+        permissions: ["settings.write"],
+      },
+    );
+
+    assert.equal(verified.status, "VERIFIED");
+    assert.equal(JSON.parse(r2.firstValue()).version, 1);
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("restore drill runner protects ephemeral private-key state from overwrite", () => {
   const stateDirectory = mkdtempSync(join(tmpdir(), "cloudbridge-restore-test-"));
   try {
@@ -488,6 +545,47 @@ async function encryptContact(value, dataKey) {
   return `v1.${Buffer.from(iv).toString("base64url")}.${Buffer.from(encrypted).toString("base64url")}`;
 }
 
+async function convertBackupToLegacyV1(envelopeText, dataKey) {
+  const envelope = JSON.parse(envelopeText);
+  assert.equal(envelope.version, 2);
+  const currentKey = await deriveSitesAesKey(
+    dataKey,
+    "BACKUP_SNAPSHOT",
+    "BACKUP",
+    ["decrypt"],
+  );
+  const plaintext = await crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv: decodeBase64Url(envelope.iv),
+      additionalData: sitesDataAdditionalData("BACKUP_SNAPSHOT"),
+    },
+    currentKey,
+    decodeBase64Url(envelope.ciphertext),
+  );
+  const legacyKey = await crypto.subtle.importKey(
+    "raw",
+    Buffer.from(dataKey, "base64url"),
+    { name: "AES-GCM" },
+    false,
+    ["encrypt"],
+  );
+  const iv = new Uint8Array(12).fill(5);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    legacyKey,
+    plaintext,
+  );
+  return JSON.stringify({
+    format: envelope.format,
+    version: 1,
+    algorithm: envelope.algorithm,
+    createdAt: envelope.createdAt,
+    iv: Buffer.from(iv).toString("base64url"),
+    ciphertext: Buffer.from(ciphertext).toString("base64url"),
+  });
+}
+
 function memoryR2() {
   const objects = new Map();
   return {
@@ -520,6 +618,16 @@ function memoryR2() {
     },
     firstValue() {
       return objects.values().next().value?.value ?? "";
+    },
+    replaceFirstValue(value) {
+      const first = objects.entries().next().value;
+      if (!first) throw new Error("No R2 object is available.");
+      const [key, object] = first;
+      objects.set(key, {
+        ...object,
+        value,
+        etag: `"${key.length}-${value.length}"`,
+      });
     },
   };
 }

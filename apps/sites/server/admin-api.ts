@@ -35,6 +35,10 @@ import {
   type AdminIdentity,
 } from "./http";
 import {
+  decryptOrderContact,
+  ProtectedDataInvalidError,
+} from "./data-protection";
+import {
   deleteManagedMedia,
   listManagedMedia,
   replaceMediaReferences,
@@ -1613,7 +1617,19 @@ async function revealOrderContact(
     "SELECT contact_encrypted AS contactEncrypted, contact_channel AS contactChannel FROM orders WHERE id = ? LIMIT 1",
   ).bind(id).first<{ contactEncrypted: string; contactChannel: string }>();
   if (!row) throw new ApiInputError("ORDER_NOT_FOUND", "Order was not found.", 404);
-  const contact = await decryptContact(row.contactEncrypted, env.CLOUDBRIDGE_DATA_KEY);
+  let contact: string;
+  try {
+    contact = await decryptOrderContact(row.contactEncrypted, env.CLOUDBRIDGE_DATA_KEY);
+  } catch (error) {
+    if (error instanceof ProtectedDataInvalidError) {
+      throw new ApiInputError(
+        "ORDER_CONTACT_INVALID",
+        "The encrypted contact cannot be read.",
+        500,
+      );
+    }
+    throw error;
+  }
   await writeAudit(env.DB, {
     action: "order.contact.revealed",
     result: "SUCCEEDED",
@@ -2435,34 +2451,6 @@ function auditQueryEnum<const T extends readonly string[]>(
   if (value === null || value === "") return null;
   if (!values.includes(value)) throw fieldError(field);
   return value as T[number];
-}
-
-async function decryptContact(value: string, encodedKey: string | undefined): Promise<string> {
-  if (!encodedKey) throw new ApiInputError("ORDER_ENCRYPTION_NOT_CONFIGURED", "Order encryption is unavailable.", 503);
-  const [version, ivValue, encryptedValue] = value.split(".");
-  if (version !== "v1" || !ivValue || !encryptedValue) {
-    throw new ApiInputError("ORDER_CONTACT_INVALID", "The encrypted contact cannot be read.", 500);
-  }
-  const keyBytes = decodeBase64Url(encodedKey);
-  if (keyBytes.byteLength !== 32) throw new ApiInputError("ORDER_ENCRYPTION_INVALID", "Order encryption is unavailable.", 503);
-  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
-  try {
-    const decrypted = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: decodeBase64Url(ivValue) },
-      key,
-      decodeBase64Url(encryptedValue),
-    );
-    return new TextDecoder().decode(decrypted);
-  } catch {
-    throw new ApiInputError("ORDER_CONTACT_INVALID", "The encrypted contact cannot be read.", 500);
-  }
-}
-
-function decodeBase64Url(value: string): ArrayBuffer {
-  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
-  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-  const decoded = atob(padded);
-  return Uint8Array.from(decoded, (character) => character.charCodeAt(0)).buffer as ArrayBuffer;
 }
 
 function parseJsonRecord(value: string | undefined): Record<string, unknown> {

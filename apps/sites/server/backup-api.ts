@@ -4,6 +4,17 @@ import {
   writeAudit,
   type AdminIdentity,
 } from "./http";
+import {
+  decodeBase64Url,
+  decryptOrderContact,
+  deriveSitesAesKey,
+  deriveSitesHmacKey,
+  encodeBase64Url,
+  importLegacySitesAesKey,
+  importLegacySitesHmacKey,
+  requireSitesDataKey,
+  sitesDataAdditionalData,
+} from "./data-protection";
 import type { D1Database, D1Result, SitesEnv } from "./types";
 
 type BackupMode = "AUTOMATIC" | "MANUAL";
@@ -42,7 +53,7 @@ type SnapshotPayload = {
 
 type BackupEnvelope = {
   format: "cloudbridge-encrypted-backup";
-  version: 1;
+  version: 1 | 2;
   algorithm: "AES-256-GCM";
   createdAt: string;
   iv: string;
@@ -75,7 +86,7 @@ type RestoreValidationDetails =
 
 type RestoreDrillTokenPayload = {
   format: "cloudbridge-restore-drill-token";
-  version: 1;
+  version: 1 | 2;
   backupId: string;
   drillId: string;
   requestedByEmail: string;
@@ -413,10 +424,11 @@ export async function createBackupRestoreDrillTransfer(
     env.CLOUDBRIDGE_DATA_KEY,
     drillId,
     challenge,
+    2,
   );
   const tokenPayload: RestoreDrillTokenPayload = {
     format: "cloudbridge-restore-drill-token",
-    version: 1,
+    version: 2,
     backupId: id,
     drillId,
     requestedByEmail: actor.email,
@@ -529,6 +541,7 @@ export async function completeBackupRestoreDrill(
     env.CLOUDBRIDGE_DATA_KEY,
     tokenPayload.drillId,
     tokenPayload.challenge,
+    tokenPayload.version,
   );
   if (!await verifyRestoreDrillProof(result, proof, proofKey)) {
     throw restoreValidationError("BACKUP_RESTORE_DRILL_PROOF_INVALID");
@@ -620,7 +633,7 @@ async function createBackup(
     reason: string;
   },
 ) {
-  requireBackupKey(env.CLOUDBRIDGE_DATA_KEY);
+  requireSitesDataKey(env.CLOUDBRIDGE_DATA_KEY, "BACKUP");
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
   const objectKey = `backups/${createdAt.slice(0, 10)}/${id}.cbk`;
@@ -788,16 +801,25 @@ async function encryptSnapshot(
   payload: SnapshotPayload,
   encodedKey: string | undefined,
 ): Promise<string> {
-  const key = await importBackupKey(encodedKey, ["encrypt"]);
+  const key = await deriveSitesAesKey(
+    encodedKey,
+    "BACKUP_SNAPSHOT",
+    "BACKUP",
+    ["encrypt"],
+  );
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
+    {
+      name: "AES-GCM",
+      iv,
+      additionalData: sitesDataAdditionalData("BACKUP_SNAPSHOT"),
+    },
     key,
     new TextEncoder().encode(JSON.stringify(payload)),
   );
   const envelope: BackupEnvelope = {
     format: "cloudbridge-encrypted-backup",
-    version: 1,
+    version: 2,
     algorithm: "AES-256-GCM",
     createdAt: payload.createdAt,
     iv: encodeBase64Url(iv),
@@ -818,17 +840,33 @@ async function decryptSnapshot(
   }
   if (
     envelope.format !== "cloudbridge-encrypted-backup"
-    || envelope.version !== 1
+    || (envelope.version !== 1 && envelope.version !== 2)
     || envelope.algorithm !== "AES-256-GCM"
     || !envelope.iv
     || !envelope.ciphertext
   ) {
     throw new ApiInputError("BACKUP_FORMAT_INVALID", "The backup envelope is invalid.", 409);
   }
-  const key = await importBackupKey(encodedKey, ["decrypt"]);
+  const key = envelope.version === 2
+    ? await deriveSitesAesKey(
+        encodedKey,
+        "BACKUP_SNAPSHOT",
+        "BACKUP",
+        ["decrypt"],
+      )
+    : await importLegacySitesAesKey(encodedKey, "BACKUP", ["decrypt"]);
   try {
     const decrypted = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: decodeBase64Url(envelope.iv) },
+      envelope.version === 2
+        ? {
+            name: "AES-GCM",
+            iv: decodeBase64Url(envelope.iv),
+            additionalData: sitesDataAdditionalData("BACKUP_SNAPSHOT"),
+          }
+        : {
+            name: "AES-GCM",
+            iv: decodeBase64Url(envelope.iv),
+          },
       key,
       decodeBase64Url(envelope.ciphertext),
     );
@@ -944,11 +982,10 @@ async function validateRestorePayload(
 
   let encryptedContactChecks = 0;
   if (rows.orders.length > 0) {
-    const contactKey = await importBackupKey(encodedKey, ["decrypt"]);
     for (const order of rows.orders) {
       await validateEncryptedContact(
         requiredString(order, "contact_encrypted"),
-        contactKey,
+        encodedKey,
       );
       encryptedContactChecks += 1;
     }
@@ -1040,22 +1077,20 @@ function requireJson(
 
 async function validateEncryptedContact(
   value: string,
-  key: CryptoKey,
+  encodedKey: string | undefined,
 ): Promise<void> {
-  const [version, ivValue, encryptedValue] = value.split(".");
-  if (version !== "v1" || !ivValue || !encryptedValue) {
-    throw restoreValidationError("BACKUP_RESTORE_CONTACT_INVALID");
-  }
   try {
-    const decrypted = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: decodeBase64Url(ivValue) },
-      key,
-      decodeBase64Url(encryptedValue),
-    );
-    if (new TextDecoder().decode(decrypted).trim().length === 0) {
+    const decrypted = await decryptOrderContact(value, encodedKey, "BACKUP");
+    if (decrypted.trim().length === 0) {
       throw new Error("empty contact");
     }
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof ApiInputError
+      && error.code.startsWith("BACKUP_ENCRYPTION_")
+    ) {
+      throw error;
+    }
     throw restoreValidationError("BACKUP_RESTORE_CONTACT_INVALID");
   }
 }
@@ -1103,7 +1138,13 @@ async function createRestoreDrillToken(
   encodedKey: string | undefined,
 ): Promise<string> {
   const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
-  const signature = await signHmac(payloadBytes, requireBackupKey(encodedKey));
+  const key = await deriveSitesHmacKey(
+    encodedKey,
+    "RESTORE_TOKEN",
+    "BACKUP",
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, payloadBytes);
   return `${encodeBase64Url(payloadBytes)}.${encodeBase64Url(new Uint8Array(signature))}`;
 }
 
@@ -1118,13 +1159,25 @@ async function verifyRestoreDrillToken(
     }
     const payloadBytes = decodeBase64Url(payloadValue);
     const signature = decodeBase64Url(signatureValue);
-    const key = await importHmacKey(requireBackupKey(encodedKey), ["verify"]);
+    const payload = JSON.parse(
+      new TextDecoder().decode(payloadBytes),
+    ) as RestoreDrillTokenPayload;
+    if (payload.version !== 1 && payload.version !== 2) {
+      throw new Error("unsupported token version");
+    }
+    const key = payload.version === 2
+      ? await deriveSitesHmacKey(
+          encodedKey,
+          "RESTORE_TOKEN",
+          "BACKUP",
+          ["verify"],
+        )
+      : await importLegacySitesHmacKey(encodedKey, "BACKUP", ["verify"]);
     const valid = await crypto.subtle.verify("HMAC", key, signature, payloadBytes);
     if (!valid) throw new Error("invalid token signature");
-    const payload = JSON.parse(new TextDecoder().decode(payloadBytes)) as RestoreDrillTokenPayload;
     if (
       payload.format !== "cloudbridge-restore-drill-token"
-      || payload.version !== 1
+      || (payload.version !== 1 && payload.version !== 2)
       || typeof payload.backupId !== "string"
       || typeof payload.drillId !== "string"
       || typeof payload.requestedByEmail !== "string"
@@ -1152,19 +1205,21 @@ async function deriveRestoreDrillProofKey(
   encodedKey: string | undefined,
   drillId: string,
   challenge: string,
+  version: 1 | 2,
 ): Promise<ArrayBuffer> {
-  return signHmac(
+  const key = version === 2
+    ? await deriveSitesHmacKey(
+        encodedKey,
+        "RESTORE_PROOF",
+        "BACKUP",
+        ["sign"],
+      )
+    : await importLegacySitesHmacKey(encodedKey, "BACKUP", ["sign"]);
+  return crypto.subtle.sign(
+    "HMAC",
+    key,
     new TextEncoder().encode(`restore-drill-proof:${drillId}:${challenge}`),
-    requireBackupKey(encodedKey),
   );
-}
-
-async function signHmac(
-  value: BufferSource,
-  rawKey: BufferSource,
-): Promise<ArrayBuffer> {
-  const key = await importHmacKey(rawKey, ["sign"]);
-  return crypto.subtle.sign("HMAC", key, value);
 }
 
 async function importHmacKey(
@@ -1245,25 +1300,6 @@ function restoreDrillResult(value: unknown): RestoreDrillResult {
 
 function isValidDate(value: string): boolean {
   return Number.isFinite(new Date(value).getTime());
-}
-
-async function importBackupKey(
-  encodedKey: string | undefined,
-  usages: KeyUsage[],
-): Promise<CryptoKey> {
-  const keyBytes = requireBackupKey(encodedKey);
-  return crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, usages);
-}
-
-function requireBackupKey(encodedKey: string | undefined): ArrayBuffer {
-  if (!encodedKey) {
-    throw new ApiInputError("BACKUP_ENCRYPTION_NOT_CONFIGURED", "Backup encryption is not configured.", 503);
-  }
-  const keyBytes = decodeBase64Url(encodedKey);
-  if (keyBytes.byteLength !== 32) {
-    throw new ApiInputError("BACKUP_ENCRYPTION_INVALID", "Backup encryption is unavailable.", 503);
-  }
-  return keyBytes;
 }
 
 function backupReason(value: unknown): string {
@@ -1347,21 +1383,6 @@ async function sha256Hex(value: string): Promise<string> {
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-}
-
-function decodeBase64Url(value: string): ArrayBuffer {
-  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
-  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-  const decoded = atob(padded);
-  return Uint8Array.from(decoded, (character) => character.charCodeAt(0)).buffer as ArrayBuffer;
-}
-
-function encodeBase64Url(value: Uint8Array): string {
-  let binary = "";
-  value.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
 }
 
 function changes(result: D1Result<unknown>): number {
