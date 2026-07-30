@@ -498,10 +498,38 @@
 .access-editor-actions > button { min-height: 44px; padding: 0 15px; border: 1px solid var(--line); border-radius: 9px; color: #617d8c; background: #fff; font-size: 9px; font-weight: 800; }
 .access-editor-actions > .admin-primary { border: 0; color: #fff; background: #258da4; }
 .access-role-layout { align-items: start; }
+.access-role-list-toolbar { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 15px; background: #f8fbfc; }
+.access-role-list-toolbar > span, .access-role-list-toolbar small, .access-role-list-toolbar strong { display: block; }
+.access-role-list-toolbar small { color: #8ca0aa; font-size: 8px; }
+.access-role-list-toolbar strong { margin-top: 4px; color: var(--ink); font-family: var(--serif); font-size: 19px; }
+.access-role-list-toolbar > .admin-primary { min-height: 44px; position: static; display: inline-flex; align-items: center; gap: 6px; padding: 0 13px; }
+.access-role-header { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-right: 0 !important; }
+.access-role-header > span { min-width: 0; }
+.access-role-header-actions { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.access-role-header-actions > button { min-height: 44px; position: static !important; display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin: 0 !important; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; color: #587585; background: #fff; font-size: 9px; font-weight: 800; }
+.access-role-header-actions > .admin-primary { border-color: transparent; color: #fff; background: #258da4; }
+.access-role-header-actions > .admin-danger { border-color: #e8c7cb; color: #9f4854; background: #fff8f8; }
+.access-role-header-actions > button:disabled { color: #aebbc2; border-color: var(--line-soft); background: #f5f7f8; cursor: not-allowed; }
 .access-permission-panel form { padding: 0; }
 .access-permission-panel fieldset:disabled { opacity: 1; }
 .access-permission-panel fieldset:disabled input { opacity: .55; }
 .access-permission-panel .form-error { margin-top: 2px; }
+.role-management-editor form { gap: 18px; }
+.role-management-editor fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.role-management-editor legend { margin-bottom: 9px; color: #587382; font-size: 9px; font-weight: 800; }
+.role-metadata-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.role-metadata-grid label { min-width: 0; display: grid; gap: 7px; color: #587382; font-size: 9px; font-weight: 800; }
+.role-metadata-grid label.is-wide { grid-column: 1 / -1; }
+.role-metadata-grid input, .role-metadata-grid textarea { width: 100%; min-height: 44px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; outline: 0; color: var(--ink); background: #f9fbfc; font-size: 10px; line-height: 1.5; }
+.role-metadata-grid textarea { min-height: 82px; resize: vertical; }
+.role-metadata-grid input:focus, .role-metadata-grid textarea:focus { border-color: #58b3c4; box-shadow: 0 0 0 3px rgba(52,167,190,.08); }
+.role-metadata-grid input:disabled { color: #78909d; background: #eef3f5; }
+.role-delete-impact { min-height: 88px; display: grid; grid-template-columns: 38px minmax(0,1fr); align-items: center; gap: 12px; padding: 14px; border: 1px solid #ebcbd0; border-radius: 11px; color: #99515b; background: #fff8f8; }
+.role-delete-impact > svg { width: 38px; height: 38px; padding: 8px; border-radius: 10px; color: #a84e5a; background: #f8e6e8; }
+.role-delete-impact span, .role-delete-impact strong, .role-delete-impact code, .role-delete-impact small { min-width: 0; display: block; }
+.role-delete-impact code { margin-top: 5px; color: #7c6165; font-size: 9px; }
+.role-delete-impact small { margin-top: 5px; color: #9b7379; font-size: 8px; }
+.role-management-editor .access-editor-actions > .admin-danger { border-color: #a94f5a; color: #fff; background: #a94f5a; }
 .account-lifecycle-body { display: grid; gap: 16px; padding: 20px; }
 .account-lifecycle-body dl { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1px; margin: 0; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--line-soft); }
 .account-lifecycle-body dl > div { min-width: 0; padding: 12px 13px; background: #fff; }
@@ -1759,6 +1787,9 @@
   .audit-log-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .security-event-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .design-banner-board, .design-role-layout { grid-template-columns: 1fr; }
+  .access-role-header { flex-direction: column; }
+  .access-role-header-actions { width: 100%; justify-content: stretch; }
+  .access-role-header-actions > button { flex: 1; }
   .order-operation-grid { grid-template-columns: 1fr 1fr; }
   .order-current-owner { grid-column: 1 / -1; }
   .telegram-settings-layout { grid-template-columns: 1fr; }
@@ -1888,6 +1919,11 @@
   .access-summary > div { min-height: 78px; border-right: 0; border-top: 1px solid var(--line-soft); }
   .access-summary > div:first-child { border-top: 0; }
   .access-choice-grid, .access-permission-grid { grid-template-columns: 1fr; }
+  .role-metadata-grid { grid-template-columns: 1fr; }
+  .role-metadata-grid label.is-wide { grid-column: auto; }
+  .access-role-header-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .access-role-header-actions > button { width: 100% !important; margin: 0 !important; }
+  .access-role-header-actions > .admin-danger { grid-column: 1 / -1; }
   .account-lifecycle-body { padding: 12px; }
   .account-lifecycle-body dl, .account-lifecycle-actions { grid-template-columns: 1fr; }
   .access-editor-actions { display: grid; grid-template-columns: 1fr 1fr; }

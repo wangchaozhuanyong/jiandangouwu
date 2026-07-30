@@ -9,8 +9,11 @@ import {
 
 const dtoPath = "../dist/src/access/access.dto.js";
 const {
+  CreateRoleDto,
+  DeleteRoleDto,
   UpdateMemberLifecycleDto,
   UpdateMemberRolesDto,
+  UpdateRoleMetadataDto,
   UpdateRolePermissionsDto,
 } = await import(dtoPath) as typeof import("../src/access/access.dto.js");
 
@@ -45,6 +48,34 @@ test("access DTOs trim reasons and accept unique access keys", async () => {
   });
   assert.equal(lifecycle.action, "RESET_TOTP");
   assert.equal(lifecycle.reason, "成员遗失了原双重验证设备");
+
+  const createdRole = await validateBody(CreateRoleDto, {
+    key: "  order_reviewer  ",
+    nameZh: "  订单复核员  ",
+    nameEn: "  Order reviewer  ",
+    description: "  复核人工订单  ",
+    permissionKeys: ["orders.read", "orders.write"],
+    reason: "  新增订单复核职责角色  ",
+  });
+  assert.equal(createdRole.key, "ORDER_REVIEWER");
+  assert.equal(createdRole.nameZh, "订单复核员");
+  assert.equal(createdRole.description, "复核人工订单");
+
+  const metadata = await validateBody(UpdateRoleMetadataDto, {
+    nameZh: "  订单审核员  ",
+    nameEn: "  Order auditor  ",
+    description: "  只负责复核  ",
+    expectedUpdatedAt: "2026-07-29T12:00:00.000Z",
+    reason: "  角色职责名称需要调整  ",
+  });
+  assert.equal(metadata.nameEn, "Order auditor");
+  assert.equal(metadata.reason, "角色职责名称需要调整");
+
+  const deletion = await validateBody(DeleteRoleDto, {
+    expectedUpdatedAt: "2026-07-29T12:00:00.000Z",
+    reason: "  该空角色已经停止使用  ",
+  });
+  assert.equal(deletion.reason, "该空角色已经停止使用");
 });
 
 test("access DTOs reject empty, duplicate, stale-shape, and unexplained changes", async () => {
@@ -78,6 +109,33 @@ test("access DTOs reject empty, duplicate, stale-shape, and unexplained changes"
       action: "DISABLE",
       expectedUpdatedAt: "yesterday",
       reason: "账号安全操作原因完整",
+    }],
+    [CreateRoleDto, {
+      key: "super-admin",
+      nameZh: "管理员",
+      nameEn: "Admin",
+      description: "",
+      permissionKeys: ["roles.manage"],
+      reason: "新增业务角色用于权限管理",
+    }],
+    [CreateRoleDto, {
+      key: "ORDER_REVIEWER",
+      nameZh: "订单复核员",
+      nameEn: "Order reviewer",
+      description: "",
+      permissionKeys: [],
+      reason: "新增业务角色用于订单复核",
+    }],
+    [UpdateRoleMetadataDto, {
+      nameZh: "员",
+      nameEn: "R",
+      description: "",
+      expectedUpdatedAt: "2026-07-29T12:00:00.000Z",
+      reason: "角色职责名称需要调整",
+    }],
+    [DeleteRoleDto, {
+      expectedUpdatedAt: "stale",
+      reason: "该空角色已经停止使用",
     }],
   ];
 
