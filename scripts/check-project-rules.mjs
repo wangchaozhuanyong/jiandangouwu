@@ -53,7 +53,8 @@ if (errors.length === 0) {
   assertRule(/^8\./u.test(String(adminPackage.devDependencies?.vite ?? "").replace(/^[^\d]*/u, "")), "管理后台 Vite 主版本必须保持为 8");
   assertRule(/^11\./u.test(String(apiPackage.dependencies?.["@nestjs/core"] ?? "").replace(/^[^\d]*/u, "")), "API NestJS 主版本必须保持为 11");
   assertRule(/^7\./u.test(String(apiPackage.dependencies?.["@prisma/client"] ?? "").replace(/^[^\d]*/u, "")), "Prisma 主版本必须保持为 7");
-  assertRule(/^2\./u.test(String(infraPackage.dependencies?.["aws-cdk-lib"] ?? "").replace(/^[^\d]*/u, "")), "AWS CDK 主版本必须保持为 2");
+  assertRule(/^2\./u.test(String(infraPackage.devDependencies?.["aws-cdk-lib"] ?? "").replace(/^[^\d]*/u, "")), "AWS CDK 主版本必须保持为 2");
+  assertRule(infraPackage.dependencies?.["aws-cdk-lib"] === undefined, "AWS CDK 只能作为基础设施开发依赖");
 
   for (const dependency of ["vue", "element-plus", "tailwindcss"]) {
     assertRule(!(dependency in dependencies), `规则基线不允许引入未批准依赖：${dependency}`);

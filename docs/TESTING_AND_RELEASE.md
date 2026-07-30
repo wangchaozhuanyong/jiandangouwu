@@ -31,18 +31,18 @@ npm run test:sites
 npm run typecheck:platform
 npm run build:platform
 npm run synth --workspace @cloudbridge/infra -- --no-lookups
-npm audit --omit=dev
+npm run audit:prod
 npm run check
 ```
 
 GitHub 上的 `.github/workflows/ci.yml` 对所有指向 `main` 的 PR、`main` 推送和手动触发执行以下门禁：
 
 - 使用 Node.js 24 和锁文件执行 `npm ci`、`npm run check` 与无查找的 CDK `synth`。
-- `npm audit --omit=dev --audit-level=critical` 阻止新增 critical 运行依赖漏洞，同时在日志中持续公开现有 high 公告。
+- `npm run audit:prod` 使用 `npm audit --omit=dev --audit-level=high`，阻止新增 high 或 critical 运行依赖漏洞。
 - 分别构建 API、管理后台和客户端的生产容器镜像，防止源码构建通过但 Dockerfile 已失效。
 - GitHub 官方 Actions 固定到已核对的提交 SHA，工作流权限保持为只读。
 
-CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 AWS staging 发布门禁阻断，不能因为 CI 只对 critical 设置自动失败阈值而被视为接受风险。
+CI 通过仍不表示可以直接上线。开发工具链公告、真实业务配置、外部集成、备份恢复和生产运行证据继续由各自发布门禁约束。
 
 - `check:rules`：检查规则文件、文档链接、技术栈约束和环境变量示例。
 - `test:catalog`：检查商品搜索、分类组合、顺序和浏览器存储容错。
@@ -61,7 +61,7 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 - `typecheck:platform`：检查共享契约、API、Next.js 客户端、Vite 后台和 CDK。
 - `build:platform`：构建全部主平台工作区。
 - `cdk synth`：只生成 CloudFormation 模板，不创建 AWS 资源。
-- `npm audit --omit=dev`：检查运行依赖安全公告；只要仍有 high/critical 就不得把本地通过描述为可直接上线。
+- `audit:prod`：检查运行依赖安全公告；只要出现 high/critical 就立即失败。完整 `npm audit` 另外用于跟踪开发工具链风险，不能把 `--omit=dev` 的 0 解释为全部开发依赖无公告。
 - `check`：按安全顺序执行遗留门禁、主平台架构测试、类型检查和主平台构建。
 
 ## 按改动选择测试
@@ -115,6 +115,8 @@ CI 通过仍不表示可以直接上线。现有 high 公告继续由下面的 A
 - 当前已有本地后端和 AWS staging 模板，但尚未创建云资源；本地检查与 `synth` 通过不构成上线批准。
 - Sites 生产 D1/R2 已创建并验证加密恢复点；恢复运行器可把真实生产快照导入一次性内存 SQLite，核对 15 张业务表、逐表记录数和外键，并用服务器验证的签名结果归档演练证据，也能生成面向新 D1 的受保护导入候选。候选仍不等于新 D1 已创建或远程导入，也不证明管理员登录、生产流量切换和回滚；开放真实订单前至少还要接通外部告警，并在执行覆盖恢复前完成独立 D1 切换演练。
 - 2026-07-29 生产验收使用最新已验证快照完成隔离恢复：15 张表、77 条记录全部回读，`PRAGMA foreign_key_check` 返回 0；管理页恢复演练门禁为通过，外部告警门禁仍为失败，整体保持 `ATTENTION`。验收后必须删除本机临时私钥、请求、转移和完成证明文件。
-- 2026-07-29 已升级 `@cloudflare/vite-plugin` 1.48.0、`wrangler` 4.115.0、`tsx` 4.23.1、根级 `esbuild` 0.28.1、`postcss` 8.5.25 与 `aws-cdk-lib` 2.262.2，消除了 Cloudflare 开发链中的 `ws`、`undici`、旧 `miniflare/sharp` 和错误 esbuild 去重；随后用受支持的 npm override 把 Nest Swagger 的 `js-yaml` 从 5.2.1 提升到 5.2.2。依赖审计现有 4 项 high：Next.js 16.2.12 稳定最新版内部锁定的 `postcss` 8.4.31 / `sharp` 0.34.5，以及 AWS CDK bundle 中的 `brace-expansion` 5.0.7。Next 与 CDK 当前均无可直接升级的稳定补丁，bundled 依赖也不能由 npm override 替换；不得破坏性降级或强制覆盖来伪造清零。Sites 已停用当前 Logo 的 Next 图片优化并只处理仓库自有 CSS，这属于暴露面缓解而不是漏洞修复；继续公开运营期间必须跟踪稳定上游补丁或完成逐项风险批准。
+- 2026-07-29 已升级 `@cloudflare/vite-plugin` 1.48.0、`wrangler` 4.115.0、`tsx` 4.23.1、根级 `esbuild` 0.28.1、`postcss` 8.5.25 与 `aws-cdk-lib` 2.262.2，消除了 Cloudflare 开发链中的 `ws`、`undici`、旧 `miniflare/sharp` 和错误 esbuild 去重；随后用受支持的 npm override 把 Nest Swagger 的 `js-yaml` 从 5.2.1 提升到 5.2.2。
+- 2026-07-29 进一步把 Next 16.2.12 的 PostCSS 与 Sharp 运行依赖分别覆盖到 8.5.25 和 0.35.3；根级 Next 声明与两个应用保持同一精确版本，确保 npm workspace 从根级应用覆盖，不代表新增第三个 Next 应用。只用于 CDK 构建和 `synth` 的 `aws-cdk-lib`、`constructs` 已改为 `infra` 开发依赖。`npm run audit:prod` 当前 0 项，并成为 GitHub CI 的 high/critical 门禁。
+- 完整开发依赖审计仍有 AWS CDK 2.262.2 内置且 npm override 无法替换的 `brace-expansion` 5.0.7 high，以及 Drizzle Kit 旧开发链的 4 项 moderate。它们不进入当前网站运行产物，但 AWS staging 前必须重新审计、等待稳定修复或完成逐项风险批准；不得通过 Next 降级、预览版升级、手工改锁文件或忽略审计来伪造消除。
 - AWS staging 创建前必须确认费用、域名、证书、迁移命令、删除保护和回滚；生产前再单独完成恢复、权限、安全、监控和真实集成验收。
 - 提交、推送、创建 PR、部署和生产变更只在用户明确授权后执行。

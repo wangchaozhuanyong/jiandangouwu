@@ -44,12 +44,14 @@
     "test:api": "npm run prepare:platform && npm run test --workspace @cloudbridge/api",
     "test:storefront": "npm run test --workspace @cloudbridge/storefront",
     "test:sites-platform": "npm run test --workspace @cloudbridge/sites",
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
     "check:legacy": "npm run check:rules && npm run test:catalog && npm run test:i18n && npm run test:ux && npm run test:security && npm run test:admin-tables && npm run test:admin-navigation && npm run test:brand && npm run test:transit-service && npm run build && npm run test:sites",
     "check": "npm run check:legacy && npm run test:platform && npm run test:admin && npm run test:api && npm run test:storefront && npm run test:sites-platform && npm run typecheck:platform && npm run build:platform"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@vitejs/plugin-react": "5.0.4",
+    "next": "16.2.12",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "vite": "6.4.3"
@@ -63,6 +65,10 @@
   "overrides": {
     "@nestjs/swagger": {
       "js-yaml": "5.2.2"
+    },
+    "next": {
+      "postcss": "8.5.25",
+      "sharp": "0.35.3"
     }
   }
 }

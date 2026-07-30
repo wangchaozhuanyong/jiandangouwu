@@ -22,6 +22,10 @@ test("主平台技术栈和 MySQL 数据约束保持一致", () => {
   assert.equal(root.dependencies.react, admin.dependencies.react);
   assert.equal(root.dependencies["react-dom"], storefront.dependencies["react-dom"]);
   assert.equal(root.dependencies["react-dom"], admin.dependencies["react-dom"]);
+  assert.equal(root.dependencies.next, storefront.dependencies.next);
+  assert.equal(root.dependencies.next, JSON.parse(read("apps/sites/package.json")).dependencies.next);
+  assert.equal(root.overrides.next.postcss, "8.5.25");
+  assert.equal(root.overrides.next.sharp, "0.35.3");
   assert.match(root.scripts["prepare:platform"], /build --workspace @cloudbridge\/contracts/u);
   assert.match(root.scripts["prepare:platform"], /db:generate --workspace @cloudbridge\/api/u);
   assert.match(admin.scripts.pretest, /build --workspace @cloudbridge\/contracts/u);
@@ -119,17 +123,22 @@ test("AWS 模板固定新加坡并保留高可用与部署授权边界", () => {
   assert.match(stack, /deletionProtection:\s*true/u);
   assert.match(stack, /CfnWebACL/u);
   assert.equal(infra.scripts.deploy, undefined);
+  assert.equal(infra.dependencies, undefined);
+  assert.equal(infra.devDependencies["aws-cdk-lib"], "2.262.2");
+  assert.equal(infra.devDependencies.constructs, "10.7.1");
 });
 
 test("GitHub CI 固定只读权限、完整检查和三个生产镜像门禁", () => {
   const workflow = read(".github/workflows/ci.yml");
+  const rootPackage = JSON.parse(read("package.json"));
 
   assert.match(workflow, /permissions:\s*\n\s*contents:\s*read/u);
   assert.match(workflow, /node-version:\s*"24"/u);
   assert.match(workflow, /run:\s*npm ci/u);
   assert.match(workflow, /run:\s*npm run check/u);
   assert.match(workflow, /synth --workspace @cloudbridge\/infra -- --no-lookups/u);
-  assert.match(workflow, /npm audit --omit=dev --audit-level=critical/u);
+  assert.match(rootPackage.scripts["audit:prod"], /npm audit --omit=dev --audit-level=high/u);
+  assert.match(workflow, /npm run audit:prod/u);
   assert.match(workflow, /actions\/checkout@[a-f0-9]{40}/u);
   assert.match(workflow, /actions\/setup-node@[a-f0-9]{40}/u);
   for (const target of ["apps/api/Dockerfile", "apps/admin/Dockerfile", "apps/storefront/Dockerfile"]) {

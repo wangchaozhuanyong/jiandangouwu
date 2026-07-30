@@ -40,8 +40,8 @@ jobs:
       - name: Synthesize the AWS template without lookups
         run: npm run synth --workspace @cloudbridge/infra -- --no-lookups
 
-      - name: Block newly disclosed critical runtime vulnerabilities
-        run: npm audit --omit=dev --audit-level=critical
+      - name: Block high or critical runtime vulnerabilities
+        run: npm run audit:prod
 
   container-images:
     name: Container image (${{ matrix.name }})
