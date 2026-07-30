@@ -53,11 +53,11 @@ test("security events use real audit signals and exclude ordinary successful con
   assert.equal(events[2]?.category, "sensitive-data");
 });
 
-test("MySQL and Sites action aliases share the same security classification", () => {
+test("Sites audit action aliases share the same security classification", () => {
   const events = buildSecurityEvents([
-    audit("mysql-contact", "order.contact.reveal", "SUCCEEDED", "2026-07-29T11:00:00.000Z"),
+    audit("sites-contact", "order.contact.reveal", "SUCCEEDED", "2026-07-29T11:00:00.000Z"),
     audit("sites-contact", "order.contact.revealed", "SUCCEEDED", "2026-07-29T10:00:00.000Z"),
-    audit("mysql-setting", "site_setting.update", "SUCCEEDED", "2026-07-29T09:00:00.000Z"),
+    audit("sites-setting", "site_setting.update", "SUCCEEDED", "2026-07-29T09:00:00.000Z"),
     audit("sites-setting", "settings.storefront.updated", "SUCCEEDED", "2026-07-29T08:00:00.000Z"),
     audit("sites-support", "support.channel.updated", "SUCCEEDED", "2026-07-29T07:00:00.000Z"),
     audit("sites-telegram", "notifications.telegram.intent.updated", "SUCCEEDED", "2026-07-29T06:00:00.000Z"),
@@ -68,9 +68,9 @@ test("MySQL and Sites action aliases share the same security classification", ()
     category,
     severity,
   })), [
-    { id: "mysql-contact", category: "sensitive-data", severity: "medium" },
     { id: "sites-contact", category: "sensitive-data", severity: "medium" },
-    { id: "mysql-setting", category: "configuration", severity: "medium" },
+    { id: "sites-contact", category: "sensitive-data", severity: "medium" },
+    { id: "sites-setting", category: "configuration", severity: "medium" },
     { id: "sites-setting", category: "configuration", severity: "medium" },
     { id: "sites-support", category: "configuration", severity: "medium" },
     { id: "sites-telegram", category: "configuration", severity: "medium" },

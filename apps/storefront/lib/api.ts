@@ -14,7 +14,7 @@ export type {
   StorefrontCurrency,
 } from "@cloudbridge/contracts";
 
-const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/v1";
+const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/v1";
 
 export class ApiRequestError extends Error {
   constructor(

@@ -138,13 +138,13 @@ test("Sites security audit scope recognizes both runtime aliases before paging a
   const now = Date.now();
   for (const [index, input] of [
     {
-      id: "sites-setting",
+      id: "sites-settings-updated",
       action: "settings.storefront.updated",
       result: "SUCCEEDED",
       targetType: "SETTINGS",
     },
     {
-      id: "mysql-setting",
+      id: "sites-setting",
       action: "site_setting.update",
       result: "SUCCEEDED",
       targetType: "SiteSetting",
@@ -197,7 +197,7 @@ test("Sites security audit scope recognizes both runtime aliases before paging a
       pageCount: 2,
     });
     assert.equal(payload.data.items.length, 1);
-    assert.equal(payload.data.items[0].id, "sites-setting");
+    assert.equal(payload.data.items[0].id, "sites-settings-updated");
     assert.deepEqual(payload.data.facets.securitySummary, {
       total: 4,
       last24Hours: 4,

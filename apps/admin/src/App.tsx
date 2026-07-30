@@ -35,14 +35,9 @@ import {
   useState,
 } from "react";
 import {
-  ApiError,
-  completeTotpLogin,
-  getFirstAdminSetupStatus,
   getSession,
-  loginWithPassword,
   logout,
   setUnauthorizedHandler,
-  setupFirstAdmin,
   type AdminUser,
   type Locale,
 } from "./api";
@@ -64,8 +59,6 @@ import {
 import { AdminShellSkeleton, Dialog, PanelState } from "./admin-ui";
 import { adminCopy } from "./i18n";
 
-const sitesAuthentication = import.meta.env?.VITE_ADMIN_AUTH_PROVIDER === "sites";
-
 const DashboardPage = lazy(() => import("./pages/dashboard-page"));
 const ProductsPage = lazy(() => import("./pages/products-page"));
 const CategoriesPage = lazy(() => import("./pages/categories-page"));
@@ -86,9 +79,6 @@ const RolesPage = lazy(() => import("./features/access/roles-page"));
 const TranslationsPage = lazy(() => import("./features/translations/translations-page"));
 const SecurityEventsPage = lazy(() => import("./features/security-events/security-events-page"));
 const DataSecurityPage = lazy(() => import("./features/data-security/data-security-page"));
-const SecretsReadinessPage = lazy(() => import("./features/secrets/secrets-readiness-page"));
-const BackupReadinessPage = lazy(() => import("./features/backups/backup-readiness-page"));
-const IntegrationReadinessPage = lazy(() => import("./features/integrations/integration-readiness-page"));
 const MediaPage = lazy(() => import("./features/media/media-page"));
 const SitesPlatformPage = lazy(() => import("./features/sites/sites-platform-page"));
 const SitesBackupsPage = lazy(() => import("./features/sites/sites-backups-page"));
@@ -182,9 +172,7 @@ export function App() {
 
   if (sessionLoading) return <AdminShellSkeleton label={adminCopy[locale].loading as string} locale={locale} />;
   if (!user) {
-    return sitesAuthentication
-      ? <SitesAuthScreen locale={locale} setLocale={setLocale} />
-      : <AuthScreen locale={locale} setLocale={setLocale} onAuthenticated={() => loadSession(false)} />;
+    return <SitesAuthScreen locale={locale} setLocale={setLocale} />;
   }
 
   return (
@@ -506,35 +494,17 @@ function PageOutlet({
     );
   }
   if (page === "logs") {
-    return (
-      <AuditPage
-        locale={locale}
-        sitesRuntime={user.authProvider === "SITES"}
-      />
-    );
+    return <AuditPage locale={locale} />;
   }
-  if (page === "security") return <SecurityPage locale={locale} user={user} onChanged={refreshSession} />;
+  if (page === "security") return <SecurityPage locale={locale} user={user} />;
   if (page === "banners") return <BannersPage canWrite={user.permissions.includes("content.write")} locale={locale} />;
   if (page === "contacts") return <ContactsPage canWrite={user.permissions.includes("support.write")} locale={locale} />;
   if (page === "settings") return <SettingsPage canWrite={user.permissions.includes("settings.write")} locale={locale} />;
   if (page === "team") {
-    return (
-      <TeamPage
-        canWrite={user.authProvider !== "SITES" && user.permissions.includes("team.manage")}
-        currentUserId={user.id}
-        locale={locale}
-        sitesRuntime={user.authProvider === "SITES"}
-      />
-    );
+    return <TeamPage locale={locale} />;
   }
   if (page === "roles") {
-    return (
-      <RolesPage
-        canWrite={user.authProvider !== "SITES" && user.permissions.includes("roles.manage")}
-        locale={locale}
-        sitesRuntime={user.authProvider === "SITES"}
-      />
-    );
+    return <RolesPage locale={locale} />;
   }
   if (page === "translations") {
     return <TranslationsPage locale={locale} permissions={user.permissions} />;
@@ -543,7 +513,6 @@ function PageOutlet({
     return <SecurityEventsPage locale={locale} />;
   }
   if (page === "data-security") {
-    if (user.authProvider === "SITES") return <SitesPlatformPage kind="data-security" locale={locale} />;
     return (
       <DataSecurityPage
         locale={locale}
@@ -553,50 +522,24 @@ function PageOutlet({
     );
   }
   if (page === "secrets") {
-    if (user.authProvider === "SITES") return <SitesPlatformPage kind="secrets" locale={locale} />;
-    return (
-      <SecretsReadinessPage
-        locale={locale}
-        onOpenDataSecurity={() => onNavigate("data-security")}
-        onOpenSecurity={() => onNavigate("security")}
-      />
-    );
+    return <SitesPlatformPage kind="secrets" locale={locale} />;
   }
   if (page === "backups") {
-    if (user.authProvider === "SITES") {
-      return (
-        <SitesBackupsPage
-          canWrite={user.permissions.includes("settings.write")}
-          locale={locale}
-        />
-      );
-    }
     return (
-      <BackupReadinessPage
+      <SitesBackupsPage
+        canWrite={user.permissions.includes("settings.write")}
         locale={locale}
-        onOpenDataSecurity={() => onNavigate("data-security")}
-        onOpenSettings={() => onNavigate("settings")}
       />
     );
   }
   if (page === "integrations") {
-    if (user.authProvider === "SITES") return <SitesPlatformPage kind="integrations" locale={locale} />;
-    return (
-      <IntegrationReadinessPage
-        locale={locale}
-        onOpenBackups={() => onNavigate("backups")}
-        onOpenCurrencies={() => onNavigate("currencies")}
-        onOpenNotifications={() => onNavigate("notifications")}
-        permissions={user.permissions}
-      />
-    );
+    return <SitesPlatformPage kind="integrations" locale={locale} />;
   }
   if (page === "media") {
     return (
       <MediaPage
         locale={locale}
         permissions={user.permissions}
-        sitesRuntime={user.authProvider === "SITES"}
       />
     );
   }
@@ -615,7 +558,6 @@ function AccountCenterDialog({
   onSignOut: () => void;
   user: AdminUser;
 }) {
-  const sites = user.authProvider === "SITES";
   return (
     <Dialog
       closeLabel={locale === "zh" ? "关闭账户信息" : "Close account information"}
@@ -630,7 +572,7 @@ function AccountCenterDialog({
         <dl>
           <div>
             <dt>{locale === "zh" ? "登录方式" : "Sign-in method"}</dt>
-            <dd>{sites ? "ChatGPT" : locale === "zh" ? "邮箱与密码" : "Email and password"}</dd>
+            <dd>ChatGPT</dd>
           </div>
           <div>
             <dt>{locale === "zh" ? "后台权限" : "Administration access"}</dt>
@@ -641,14 +583,12 @@ function AccountCenterDialog({
             <dd>{locale === "zh" ? "不需要" : "Not required"}</dd>
           </div>
         </dl>
-        {sites && (
-          <p role="note">
-            <ShieldCheck size={18} aria-hidden="true" />
-            {locale === "zh"
-              ? "登录身份由 Sites 的 ChatGPT 登录保护；本站不保存管理员密码。"
-              : "Sites protects this area with ChatGPT sign-in; this site stores no administrator password."}
-          </p>
-        )}
+        <p role="note">
+          <ShieldCheck size={18} aria-hidden="true" />
+          {locale === "zh"
+            ? "登录身份由 Sites 的 ChatGPT 登录保护；本站不保存管理员密码。"
+            : "Sites protects this area with ChatGPT sign-in; this site stores no administrator password."}
+        </p>
         <button className="admin-danger" onClick={onSignOut} type="button">
           <SignOut size={18} />
           {locale === "zh" ? "退出 ChatGPT 管理登录" : "Sign out of ChatGPT administration"}
@@ -690,173 +630,6 @@ function SitesAuthScreen({
           <LockKey size={19} />
           {locale === "zh" ? "使用 ChatGPT 重新登录" : "Sign in again with ChatGPT"}
         </a>
-      </section>
-    </main>
-  );
-}
-
-function AuthScreen({
-  locale,
-  setLocale,
-  onAuthenticated,
-}: {
-  locale: Locale;
-  setLocale: (locale: Locale) => void;
-  onAuthenticated: () => Promise<void>;
-}) {
-  const t = adminCopy[locale];
-  const [mode, setMode] = useState<"checking" | "login" | "totp" | "setup">("checking");
-  const [email, setEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [flowId, setFlowId] = useState("");
-  const [token, setToken] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    void getFirstAdminSetupStatus()
-      .then(({ available }) => {
-        if (active) setMode(available ? "setup" : "login");
-      })
-      .catch(() => {
-        if (active) setMode("login");
-      });
-    return () => { active = false; };
-  }, []);
-
-  const resetLogin = () => {
-    setMode("login");
-    setPassword("");
-    setToken("");
-    setFlowId("");
-    setError("");
-  };
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      if (mode === "login") {
-        const result = await loginWithPassword(email, password);
-        if (result.requiresTotp) {
-          setFlowId(result.flowId);
-          setToken("");
-          setMode("totp");
-          return;
-        }
-      } else if (mode === "setup") {
-        if (password !== confirmPassword) {
-          setError(t.passwordMismatch as string);
-          return;
-        }
-        await setupFirstAdmin({ email, displayName, password });
-      } else if (mode === "totp") {
-        await completeTotpLogin(flowId, token);
-      } else {
-        return;
-      }
-      await onAuthenticated();
-    } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : locale === "zh" ? "验证未完成，请重试。" : "Verification did not complete. Try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const title = mode === "setup"
-    ? t.firstSetup
-    : mode === "totp"
-      ? t.totpLoginTitle
-      : t.signInTitle;
-  const intro = mode === "setup"
-    ? t.firstSetupBody
-    : mode === "totp"
-      ? t.totpLoginBody
-      : t.signInBody;
-
-  return (
-    <main className="auth-page">
-      <div className="auth-orbit" aria-hidden="true" />
-      <div className="auth-language" aria-label={t.languageLabel as string}>
-        <button className={locale === "zh" ? "is-active" : ""} onClick={() => setLocale("zh")}>{t.languageZh as string}</button>
-        <span />
-        <button className={locale === "en" ? "is-active" : ""} onClick={() => setLocale("en")}>{t.languageEn as string}</button>
-      </div>
-      <section className="auth-card">
-        <div className="auth-brand">
-          <span><img src="/assets/cloudbridge-logo.png" alt="" width={349} height={176} /></span>
-          <strong>{t.brandName as string}</strong>
-        </div>
-        <div className="auth-mark">
-          {mode === "totp" ? <ShieldCheck size={30} weight="duotone" /> : <LockKey size={30} weight="duotone" />}
-        </div>
-        <h1>{title as string}</h1>
-        <p className="auth-intro">{intro as string}</p>
-        {mode === "checking" ? (
-          <div className="auth-checking" role="status">{t.loading as string}</div>
-        ) : (
-          <form onSubmit={submit}>
-            {mode !== "totp" && (
-              <label>
-                <span>{t.email as string}</span>
-                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required />
-              </label>
-            )}
-            {mode === "setup" && (
-              <label>
-                <span>{t.displayName as string}</span>
-                <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} minLength={2} maxLength={120} autoComplete="name" required />
-              </label>
-            )}
-            {mode !== "totp" && (
-              <label>
-                <span>{t.password as string}</span>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  minLength={mode === "setup" ? 12 : 1}
-                  maxLength={128}
-                  autoComplete={mode === "setup" ? "new-password" : "current-password"}
-                  required
-                />
-              </label>
-            )}
-            {mode === "setup" && (
-              <label>
-                <span>{t.confirmPassword as string}</span>
-                <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={12} maxLength={128} autoComplete="new-password" required />
-              </label>
-            )}
-            {mode === "totp" && (
-              <label>
-                <span>{t.totpCode as string}</span>
-                <input value={token} onChange={(event) => setToken(event.target.value.replace(/\D/gu, ""))} inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" minLength={6} maxLength={6} required autoFocus />
-              </label>
-            )}
-            {error && <p className="auth-error" role="alert"><WarningCircle />{error}</p>}
-            <button className="primary-action" disabled={busy}>
-              {mode === "totp" ? <ShieldCheck size={19} /> : <LockKey size={19} />}
-              {busy
-                ? t.submitting as string
-                : mode === "setup"
-                  ? t.createAdmin as string
-                  : mode === "totp"
-                    ? t.verifyAndSignIn as string
-                    : t.passwordSignIn as string}
-            </button>
-          </form>
-        )}
-        {mode === "totp" && (
-          <div className="auth-links">
-            <button onClick={resetLogin}>{t.backToLogin as string}</button>
-          </div>
-        )}
       </section>
     </main>
   );

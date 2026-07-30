@@ -27,6 +27,7 @@ import {
   decodeBase64Url,
   deriveSitesAesKey,
   sitesDataAdditionalData,
+  sitesDataAdditionalDataV3,
 } from "../server/data-protection.ts";
 import {
   prepareRestoreDrill,
@@ -38,6 +39,8 @@ const migrations = [
   "0001_robust_mole_man.sql",
   "0002_fix_storefront_design_data.sql",
   "0003_chunky_tattoo.sql",
+  "0004_sweet_adam_warlock.sql",
+  "0005_concerned_war_machine.sql",
 ].map((name) => readFileSync(
   new URL(`../drizzle/${name}`, import.meta.url),
   "utf8",
@@ -68,7 +71,7 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
   assert.match(backups[0].checksumSha256, /^[a-f0-9]{64}$/u);
   assert.equal(r2.size(), 1);
   assert.doesNotMatch(r2.firstValue(), /OpenAI Codex Professional/u);
-  assert.equal(JSON.parse(r2.firstValue()).version, 2);
+  assert.equal(JSON.parse(r2.firstValue()).version, 3);
 
   const verified = await verifyBackupSnapshot(
     env,
@@ -110,7 +113,7 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
   );
   assert.equal(restoreValidated.restoreValidationStatus, "PASSED");
   assert.equal(restoreValidated.restoreValidation.kind, "LOGICAL_PACKAGE");
-  assert.equal(restoreValidated.restoreValidation.tableCount, 15);
+  assert.equal(restoreValidated.restoreValidation.tableCount, 19);
   assert.equal(restoreValidated.restoreValidation.encryptedContactChecks, 1);
   assert.ok(restoreValidated.restoreValidation.relationshipChecks > 0);
 
@@ -162,7 +165,7 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
   });
   assert.deepEqual(isolatedDrill.summary, {
     target: "NODE_SQLITE_MEMORY",
-    tableCount: 15,
+    tableCount: 19,
     recordCount: restoreValidated.restoreValidation.recordCount,
     foreignKeyViolationCount: 0,
     completedAt: isolatedDrill.summary.completedAt,
@@ -547,7 +550,7 @@ async function encryptContact(value, dataKey) {
 
 async function convertBackupToLegacyV1(envelopeText, dataKey) {
   const envelope = JSON.parse(envelopeText);
-  assert.equal(envelope.version, 2);
+  assert.equal(envelope.version, 3);
   const currentKey = await deriveSitesAesKey(
     dataKey,
     "BACKUP_SNAPSHOT",
@@ -558,7 +561,7 @@ async function convertBackupToLegacyV1(envelopeText, dataKey) {
     {
       name: "AES-GCM",
       iv: decodeBase64Url(envelope.iv),
-      additionalData: sitesDataAdditionalData("BACKUP_SNAPSHOT"),
+      additionalData: sitesDataAdditionalDataV3("BACKUP_SNAPSHOT", envelope.keyId),
     },
     currentKey,
     decodeBase64Url(envelope.ciphertext),

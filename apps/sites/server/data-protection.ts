@@ -2,6 +2,7 @@ import { ApiInputError } from "./http";
 
 export const sitesDataProtectionPurposes = [
   "ORDER_CONTACT",
+  "CONTACT_LOOKUP",
   "BACKUP_SNAPSHOT",
   "RESTORE_TOKEN",
   "RESTORE_PROOF",
@@ -17,6 +18,8 @@ const hkdfSalt = textBuffer("cloudbridge:sites:data-protection:v2");
 
 const purposeInfo = (purpose: SitesDataProtectionPurpose): ArrayBuffer =>
   textBuffer(`cloudbridge:sites:${purpose.toLowerCase().replaceAll("_", "-")}:v2`);
+const purposeInfoV3 = (purpose: SitesDataProtectionPurpose, keyId: string): ArrayBuffer =>
+  textBuffer(`cloudbridge:sites:${purpose.toLowerCase().replaceAll("_", "-")}:v3:${keyId}`);
 
 export class ProtectedDataInvalidError extends Error {
   constructor(readonly kind: "CONTACT") {
@@ -27,9 +30,12 @@ export class ProtectedDataInvalidError extends Error {
 export async function encryptOrderContact(
   value: string,
   encodedKey: string | undefined,
+  nextEncodedKey?: string,
 ): Promise<string> {
+  const activeKey = nextEncodedKey ?? encodedKey;
+  const keyId = await sitesDataKeyId(activeKey, "ORDER");
   const key = await deriveSitesAesKey(
-    encodedKey,
+    activeKey,
     "ORDER_CONTACT",
     "ORDER",
     ["encrypt"],
@@ -39,20 +45,49 @@ export async function encryptOrderContact(
     {
       name: "AES-GCM",
       iv,
-      additionalData: purposeInfo("ORDER_CONTACT"),
+      additionalData: purposeInfoV3("ORDER_CONTACT", keyId),
     },
     key,
     encoder.encode(value),
   );
-  return `v2.${encodeBase64Url(iv)}.${encodeBase64Url(new Uint8Array(encrypted))}`;
+  return `v3.${keyId}.${encodeBase64Url(iv)}.${encodeBase64Url(new Uint8Array(encrypted))}`;
 }
 
 export async function decryptOrderContact(
   value: string,
   encodedKey: string | undefined,
   context: SitesDataKeyContext = "ORDER",
+  nextEncodedKey?: string,
 ): Promise<string> {
-  const [version, ivValue, encryptedValue, extra] = value.split(".");
+  const parts = value.split(".");
+  const version = parts[0];
+  if (version === "v3") {
+    const [, keyId, ivValue, encryptedValue, extra] = parts;
+    if (!keyId || !ivValue || !encryptedValue || extra) {
+      throw new ProtectedDataInvalidError("CONTACT");
+    }
+    const matchingKey = await matchingDataKey(
+      keyId,
+      [nextEncodedKey, encodedKey],
+      context,
+    );
+    if (!matchingKey) throw new ProtectedDataInvalidError("CONTACT");
+    try {
+      const decrypted = await crypto.subtle.decrypt(
+        {
+          name: "AES-GCM",
+          iv: decodeBase64Url(ivValue),
+          additionalData: purposeInfoV3("ORDER_CONTACT", keyId),
+        },
+        await deriveSitesAesKey(matchingKey, "ORDER_CONTACT", context, ["decrypt"]),
+        decodeBase64Url(encryptedValue),
+      );
+      return new TextDecoder().decode(decrypted);
+    } catch {
+      throw new ProtectedDataInvalidError("CONTACT");
+    }
+  }
+  const [, ivValue, encryptedValue, extra] = parts;
   if (
     (version !== "v1" && version !== "v2")
     || !ivValue
@@ -83,6 +118,35 @@ export async function decryptOrderContact(
   } catch {
     throw new ProtectedDataInvalidError("CONTACT");
   }
+}
+
+export async function hashOrderContact(
+  value: string,
+  encodedKey: string | undefined,
+  nextEncodedKey?: string,
+): Promise<string> {
+  const activeKey = nextEncodedKey ?? encodedKey;
+  const keyId = await sitesDataKeyId(activeKey, "ORDER");
+  const key = await deriveSitesHmacKey(
+    activeKey,
+    "CONTACT_LOOKUP",
+    "ORDER",
+    ["sign"],
+  );
+  const normalized = value.normalize("NFKC").trim().toLocaleLowerCase();
+  const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(normalized));
+  return `v2.${keyId}.${encodeBase64Url(new Uint8Array(digest))}`;
+}
+
+export async function sitesDataKeyId(
+  encodedKey: string | undefined,
+  context: SitesDataKeyContext,
+): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", requireSitesDataKey(encodedKey, context));
+  return [...new Uint8Array(digest)]
+    .slice(0, 8)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export async function deriveSitesAesKey(
@@ -149,6 +213,13 @@ export function sitesDataAdditionalData(
   purpose: SitesDataProtectionPurpose,
 ): ArrayBuffer {
   return purposeInfo(purpose);
+}
+
+export function sitesDataAdditionalDataV3(
+  purpose: SitesDataProtectionPurpose,
+  keyId: string,
+): ArrayBuffer {
+  return purposeInfoV3(purpose, keyId);
 }
 
 export function requireSitesDataKey(
@@ -222,6 +293,22 @@ async function deriveSitesKeyBits(
     rootKey,
     256,
   );
+}
+
+async function matchingDataKey(
+  keyId: string,
+  candidates: Array<string | undefined>,
+  context: SitesDataKeyContext,
+): Promise<string | null> {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      if (await sitesDataKeyId(candidate, context) === keyId) return candidate;
+    } catch {
+      // Invalid candidates fail closed after all configured slots are checked.
+    }
+  }
+  return null;
 }
 
 function invalidKey(context: SitesDataKeyContext): ApiInputError {

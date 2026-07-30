@@ -65,6 +65,14 @@ test("Sites build declares D1 and R2 and ships the migration", () => {
     read("dist/.openai/drizzle/0003_chunky_tattoo.sql"),
     /restore_validation_status/u,
   );
+  assert.match(
+    read("dist/.openai/drizzle/0004_sweet_adam_warlock.sql"),
+    /CREATE TABLE `telegram_deliveries`/u,
+  );
+  assert.match(
+    read("dist/.openai/drizzle/0005_concerned_war_machine.sql"),
+    /ALTER TABLE `privacy_requests` ADD `result_json`/u,
+  );
 });
 
 test("root Sites release stages the complete platform instead of the legacy prototype", () => {
@@ -78,6 +86,8 @@ test("root Sites release stages the complete platform instead of the legacy prot
   assert.match(releaseScript, /apps", "sites", "dist"/u);
   assert.match(releaseScript, /sites-admin-client-/u);
   assert.match(releaseScript, /0003_chunky_tattoo\.sql/u);
+  assert.match(releaseScript, /0004_sweet_adam_warlock\.sql/u);
+  assert.match(releaseScript, /0005_concerned_war_machine\.sql/u);
   assert.match(releaseScript, /rmSync\(target,\s*\{\s*force:\s*true,\s*recursive:\s*true\s*\}\)/u);
   assert.match(releaseScript, /cpSync\(source,\s*target,\s*\{\s*recursive:\s*true\s*\}\)/u);
 });
@@ -142,7 +152,7 @@ test("Sites runtime contains public, admin, health, D1, and R2 routes", () => {
   assert.match(router, /isPublicMediaObjectKey/u);
   assert.match(media, /uploadKeyPattern/u);
   assert.doesNotMatch(media, /backups\//u);
-  assert.match(admin, /valkey: "not_required"/u);
+  assert.match(admin, /objectStorage: env\.MEDIA \? "bound" : "missing"/u);
 });
 
 test("Sites launch gates fail closed until a configured contact channel exists", () => {

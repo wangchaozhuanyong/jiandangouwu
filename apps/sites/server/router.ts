@@ -2,11 +2,12 @@ import { handleAdminApi, handleSitesHealth } from "./admin-api";
 import { ApiInputError, failure } from "./http";
 import { isPublicMediaObjectKey } from "./media-api";
 import { handlePublicApi } from "./public-api";
-import type { SitesEnv } from "./types";
+import type { SitesEnv, SitesExecutionContext } from "./types";
 
 export async function handleCloudBridgeRequest(
   request: Request,
   env: SitesEnv,
+  context?: SitesExecutionContext,
 ): Promise<Response | null> {
   const url = new URL(request.url);
   const pathname = url.pathname.replace(/\/+$/u, "") || "/";
@@ -40,7 +41,7 @@ export async function handleCloudBridgeRequest(
   try {
     const admin = await handleAdminApi(request, env, pathname);
     if (admin) return admin;
-    const storefront = await handlePublicApi(request, env, pathname);
+    const storefront = await handlePublicApi(request, env, pathname, context);
     if (storefront) return storefront;
     return failure(404, "ROUTE_NOT_FOUND", "The requested API route was not found.");
   } catch (error) {

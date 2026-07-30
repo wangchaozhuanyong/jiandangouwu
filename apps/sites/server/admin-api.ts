@@ -39,6 +39,17 @@ import {
   ProtectedDataInvalidError,
 } from "./data-protection";
 import {
+  createPrivacyRequest,
+  getDataGovernanceOverview,
+  runDataKeyRotation,
+  updatePrivacyRequest,
+} from "./data-governance";
+import {
+  getExchangeRateSyncSettings,
+  runExchangeRateSync,
+  updateExchangeRateSyncSettings,
+} from "./exchange-rates";
+import {
   deleteManagedMedia,
   listManagedMedia,
   replaceMediaReferences,
@@ -56,6 +67,13 @@ import {
   verifyBackupSnapshot,
 } from "./backup-api";
 import { reconcileExpiredOrders } from "./order-expiry";
+import {
+  getTelegramSettings,
+  listTelegramDeliveries,
+  retryTelegramDelivery,
+  testTelegramConnection,
+  updateTelegramSettingValue,
+} from "./telegram";
 import { normalizeLegacyLineBreaks } from "./text";
 import type { D1Database, SitesEnv } from "./types";
 
@@ -94,21 +112,6 @@ export async function handleAdminApi(
       csrfToken: "sites-siwc",
     });
   }
-  if (request.method === "GET" && pathname === "/v1/admin/auth/setup/status") {
-    return success({ available: false });
-  }
-  if (request.method === "POST" && pathname === "/v1/admin/auth/logout") {
-    requireCsrf(request);
-    return new Response(null, { status: 204 });
-  }
-  if (pathname.startsWith("/v1/admin/auth/totp/")) {
-    throw new ApiInputError(
-      "SITES_AUTH_MANAGED",
-      "CloudBridge Sites uses ChatGPT sign-in. Password and TOTP are managed outside this site.",
-      409,
-    );
-  }
-
   if (request.method === "GET" && pathname === "/v1/admin/sites-readiness") {
     const identity = await requireAdmin(env.DB, request, "settings.read");
     const settingsRow = await env.DB.prepare(
@@ -194,11 +197,34 @@ export async function handleAdminApi(
   if (rateMatch && request.method === "PATCH") {
     const actor = await writeIdentity(env.DB, request, "currencies.write");
     return success(await updateCurrencyRate(
-      env.DB,
+      env,
       request,
       decodeURIComponent(rateMatch[1]).toUpperCase(),
       actor,
     ));
+  }
+  if (pathname === "/v1/admin/exchange-rate-sync") {
+    if (request.method === "GET") {
+      await requireAdmin(env.DB, request, "catalog.read");
+      return success(await getExchangeRateSyncSettings(env.DB));
+    }
+    if (request.method === "PATCH") {
+      const actor = await writeIdentity(env.DB, request, "currencies.write");
+      const body = await readJson<Record<string, unknown>>(request);
+      return success(await updateExchangeRateSyncSettings(env.DB, {
+        enabled: body.enabled !== false,
+        intervalMinutes: safeInteger(body.intervalMinutes, "intervalMinutes", 1),
+        modes: body.modes && typeof body.modes === "object"
+          ? body.modes as Record<string, unknown>
+          : {},
+        version: safeInteger(body.version, "version", 1),
+        reason: requiredString(body.reason, "reason", 8, 500),
+      }, actor));
+    }
+  }
+  if (pathname === "/v1/admin/exchange-rate-sync/run" && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "currencies.write");
+    return success(await runExchangeRateSync(env, "MANUAL", actor));
   }
 
   if (pathname === "/v1/admin/heroes") {
@@ -580,16 +606,25 @@ export async function handleAdminApi(
   if (pathname === "/v1/admin/telegram-new-order-settings") {
     if (request.method === "GET") {
       await requireAdmin(env.DB, request, "settings.read");
-      return success(await telegramSettings(env.DB));
+      return success(await getTelegramSettings(env));
     }
     if (request.method === "PUT") {
       const actor = await writeIdentity(env.DB, request, "settings.write");
-      return success(await updateTelegramSettings(env.DB, request, actor));
+      const body = await readJson<Record<string, unknown>>(request);
+      return success(await updateTelegramSettingValue(env, {
+        version: safeInteger(body.version, "version", 1),
+        requestedEnabled: body.requestedEnabled === true,
+        recipientGroupLabel: requiredString(body.recipientGroupLabel, "recipientGroupLabel", 1, 120),
+        includedFields: Array.isArray(body.includedFields)
+          ? body.includedFields.map((item) => String(item).toUpperCase())
+          : [],
+        reason: requiredString(body.reason, "reason", 8, 500),
+      }, actor));
     }
   }
   if (pathname === "/v1/admin/telegram-new-order-settings/simulation" && request.method === "POST") {
     await writeIdentity(env.DB, request, "settings.read");
-    const settings = await telegramSettings(env.DB);
+    const settings = await getTelegramSettings(env);
     return success({
       mode: "SIMULATED",
       recipientGroupLabel: settings.recipientGroupLabel,
@@ -602,11 +637,77 @@ export async function handleAdminApi(
         { code: "CREATED_AT", value: new Date().toISOString() },
         { code: "CONTACT_CHANNEL", value: "EMAIL" },
         { code: "MASKED_CONTACT", value: "de***@invalid.example" },
-      ].filter((field) => settings.includedFields.includes(field.code)),
+      ].filter((field) => settings.includedFields.includes(
+        field.code as (typeof settings.includedFields)[number],
+      )),
       generatedAt: new Date().toISOString(),
       deliveryAttempted: false,
       externalDeliveryVerified: false,
     });
+  }
+  if (pathname === "/v1/admin/telegram-new-order-settings/test" && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    const body = await readJson<Record<string, unknown>>(request);
+    return success(await testTelegramConnection(
+      env,
+      actor,
+      requiredString(body.reason, "reason", 8, 500),
+    ));
+  }
+  if (pathname === "/v1/admin/telegram-deliveries" && request.method === "GET") {
+    await requireAdmin(env.DB, request, "settings.read");
+    return success(await listTelegramDeliveries(env.DB));
+  }
+  const telegramRetryMatch = pathname.match(/^\/v1\/admin\/telegram-deliveries\/([^/]+)\/retry$/u);
+  if (telegramRetryMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    const body = await readJson<Record<string, unknown>>(request);
+    return success(await retryTelegramDelivery(
+      env.DB,
+      decodeURIComponent(telegramRetryMatch[1]),
+      actor,
+      requiredString(body.reason, "reason", 8, 500),
+    ));
+  }
+
+  if (pathname === "/v1/admin/data-governance" && request.method === "GET") {
+    await requireAdmin(env.DB, request, "settings.read");
+    return success(await getDataGovernanceOverview(env));
+  }
+  if (pathname === "/v1/admin/privacy-requests" && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    const body = await readJson<Record<string, unknown>>(request);
+    return success(await createPrivacyRequest(env, {
+      type: requiredString(body.type, "type", 1, 20),
+      requesterReference: requiredString(body.requesterReference, "requesterReference", 3, 240),
+      reason: requiredString(body.reason, "reason", 8, 500),
+    }, actor), { status: 201 });
+  }
+  const privacyRequestMatch = pathname.match(/^\/v1\/admin\/privacy-requests\/([^/]+)$/u);
+  if (privacyRequestMatch && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    const body = await readJson<Record<string, unknown>>(request);
+    return success(await updatePrivacyRequest(
+      env,
+      decodeURIComponent(privacyRequestMatch[1]),
+      {
+        status: requiredString(body.status, "status", 1, 40),
+        reason: requiredString(body.reason, "reason", 8, 500),
+        confirmation: nullableString(body.confirmation, "confirmation", 120) ?? undefined,
+        correctedReference: nullableString(body.correctedReference, "correctedReference", 240) ?? undefined,
+      },
+      actor,
+    ));
+  }
+  if (pathname === "/v1/admin/data-governance/key-rotation" && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    const body = await readJson<Record<string, unknown>>(request);
+    return success(await runDataKeyRotation(
+      env,
+      actor,
+      requiredString(body.reason, "reason", 8, 500),
+      requiredString(body.confirmation, "confirmation", 1, 120),
+    ));
   }
 
   return null;
@@ -619,11 +720,10 @@ export async function handleSitesHealth(env: SitesEnv): Promise<Response> {
   return success({
     status: "healthy",
     database: "connected",
-    valkey: "not_required",
     runtime: "sites",
+    objectStorage: env.MEDIA ? "bound" : "missing",
     latencyMs: {
       database: databaseLatency,
-      valkey: 0,
     },
     timestamp: new Date().toISOString(),
   });
@@ -690,7 +790,6 @@ function adminUser(identity: AdminIdentity) {
     displayName: identity.displayName,
     roles: [{ key: "SUPER_ADMIN", name: { zh: "超级管理员", en: "Super admin" } }],
     permissions: identity.permissions,
-    totpEnabled: false,
     authProvider: "SITES",
   };
 }
@@ -1105,17 +1204,31 @@ async function currencyRateHistory(db: D1Database, code: string) {
 }
 
 async function updateCurrencyRate(
-  db: D1Database,
+  env: SitesEnv,
   request: Request,
   code: string,
   actor: AdminIdentity,
 ) {
+  const db = env.DB;
   const body = await readJson<Record<string, unknown>>(request);
   const rate = decimalString(body.rate, "rate", 10);
   const reason = requiredString(body.reason, "reason", 8, 500);
   const currency = await db.prepare("SELECT code FROM currencies WHERE code = ? LIMIT 1")
     .bind(code).first<{ code: string }>();
   if (!currency) throw new ApiInputError("CURRENCY_NOT_FOUND", "Currency was not found.", 404);
+  if (code !== "MYR") {
+    const settings = await getExchangeRateSyncSettings(db);
+    await updateExchangeRateSyncSettings(db, {
+      enabled: settings.enabled,
+      intervalMinutes: settings.intervalMinutes,
+      modes: Object.fromEntries(settings.currencies.map((item) => [
+        item.code,
+        item.code === code ? "MANUAL" : item.mode,
+      ])),
+      version: settings.version,
+      reason,
+    }, actor);
+  }
   const now = new Date().toISOString();
   await db.prepare(
     "INSERT INTO exchange_rates (id, from_code, to_code, rate, source, effective_at, expires_at, created_at) VALUES (?, 'MYR', ?, ?, 'sites-admin-manual', ?, NULL, ?)",
@@ -1619,7 +1732,12 @@ async function revealOrderContact(
   if (!row) throw new ApiInputError("ORDER_NOT_FOUND", "Order was not found.", 404);
   let contact: string;
   try {
-    contact = await decryptOrderContact(row.contactEncrypted, env.CLOUDBRIDGE_DATA_KEY);
+    contact = await decryptOrderContact(
+      row.contactEncrypted,
+      env.CLOUDBRIDGE_DATA_KEY,
+      "ORDER",
+      env.CLOUDBRIDGE_DATA_KEY_NEXT,
+    );
   } catch (error) {
     if (error instanceof ProtectedDataInvalidError) {
       throw new ApiInputError(
@@ -1665,10 +1783,6 @@ async function teamOverview(db: D1Database) {
     members: (members.results ?? []).map((member) => ({
       ...member,
       authProvider: "SITES",
-      passwordConfigured: null,
-      totpEnabled: null,
-      failedLoginCount: null,
-      lockedUntil: null,
       roles: [superRole],
     })),
     availableRoles: [superRole],
@@ -1749,60 +1863,6 @@ async function manualPaymentEvents(db: D1Database, url: URL): Promise<Response> 
     };
   });
   return success(items, { meta: pageMeta(page, pageSize, total) });
-}
-
-async function telegramSettings(db: D1Database) {
-  const row = await db.prepare(
-    "SELECT value_json AS valueJson, version, updated_at AS updatedAt FROM site_settings WHERE key = 'notifications.telegram.new-order' LIMIT 1",
-  ).first<{ valueJson: string; version: number; updatedAt: string }>();
-  const parsed = row ? JSON.parse(row.valueJson) as Record<string, unknown> : {};
-  return {
-    requestedEnabled: Boolean(parsed.requestedEnabled),
-    effectiveEnabled: false,
-    recipientGroupLabel: typeof parsed.recipientGroupLabel === "string" ? parsed.recipientGroupLabel : "",
-    eventType: "ORDER_CREATED",
-    includedFields: Array.isArray(parsed.includedFields)
-      ? parsed.includedFields.map((item) => String(item).toUpperCase())
-      : [],
-    connectionState: "NOT_CONNECTED",
-    tokenConfigured: false,
-    externalDeliveryVerified: false,
-    version: row?.version ?? 1,
-    updatedAt: row?.updatedAt ?? new Date(0).toISOString(),
-  };
-}
-
-async function updateTelegramSettings(
-  db: D1Database,
-  request: Request,
-  actor: AdminIdentity,
-) {
-  const body = await readJson<Record<string, unknown>>(request);
-  const version = safeInteger(body.version, "version", 1);
-  const reason = requiredString(body.reason, "reason", 8, 500);
-  const value = {
-    requestedEnabled: Boolean(body.requestedEnabled),
-    recipientGroupLabel: nullableString(body.recipientGroupLabel, "recipientGroupLabel", 120) ?? "",
-    includedFields: Array.isArray(body.includedFields)
-      ? body.includedFields.map((item) => String(item).toUpperCase()).slice(0, 8)
-      : [],
-  };
-  const now = new Date().toISOString();
-  const result = await db.prepare(
-    `UPDATE site_settings SET value_json = ?, version = version + 1,
-      updated_at = ?, updated_by_email = ?
-     WHERE key = 'notifications.telegram.new-order' AND version = ?`,
-  ).bind(JSON.stringify(value), now, actor.email, version).run();
-  if (changes(result) !== 1) throw new ApiInputError("VERSION_CONFLICT", "Notification settings changed. Refresh and try again.", 409);
-  await writeAudit(db, {
-    action: "notifications.telegram.intent.updated",
-    result: "SUCCEEDED",
-    actor,
-    targetType: "SITE_SETTING",
-    targetId: "notifications.telegram.new-order",
-    reason,
-  });
-  return telegramSettings(db);
 }
 
 type AdminProductRow = {

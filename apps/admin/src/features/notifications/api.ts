@@ -1,5 +1,7 @@
 import type {
   AdminTelegramNewOrderSettings,
+  TelegramConnectionTest,
+  TelegramDeliveryItem,
   TelegramNewOrderSimulation,
   UpdateAdminTelegramNewOrderSettingsInput,
 } from "@cloudbridge/contracts";
@@ -7,27 +9,13 @@ import { request } from "../../api";
 
 const settingsPath = "/admin/telegram-new-order-settings";
 
-const requireUnconnectedSettings = (
-  settings: AdminTelegramNewOrderSettings,
-): AdminTelegramNewOrderSettings => {
-  if (
-    settings.connectionState !== "NOT_CONNECTED"
-    || settings.effectiveEnabled !== false
-    || settings.tokenConfigured !== false
-    || settings.externalDeliveryVerified !== false
-  ) {
-    throw new Error("Telegram settings response failed the unconnected-state contract.");
-  }
-  return settings;
-};
-
 export const getTelegramNewOrderSettings = async (
   signal?: AbortSignal,
 ): Promise<AdminTelegramNewOrderSettings> => {
   const settings = (
     await request<AdminTelegramNewOrderSettings>(settingsPath, { signal })
   ).data;
-  return requireUnconnectedSettings(settings);
+  return settings;
 };
 
 export const updateTelegramNewOrderSettings = async (
@@ -37,11 +25,36 @@ export const updateTelegramNewOrderSettings = async (
     method: "PUT",
     body: JSON.stringify(body),
   });
-  return {
-    ...response,
-    data: requireUnconnectedSettings(response.data),
-  };
+  return response;
 };
+
+export const testTelegramConnection = async (
+  reason: string,
+): Promise<TelegramConnectionTest> => (
+  await request<TelegramConnectionTest>(`${settingsPath}/test`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  })
+).data;
+
+export const getTelegramDeliveries = async (
+  signal?: AbortSignal,
+): Promise<TelegramDeliveryItem[]> => (
+  await request<TelegramDeliveryItem[]>("/admin/telegram-deliveries", { signal })
+).data;
+
+export const retryTelegramDelivery = async (
+  id: string,
+  reason: string,
+): Promise<TelegramDeliveryItem> => (
+  await request<TelegramDeliveryItem>(
+    `/admin/telegram-deliveries/${encodeURIComponent(id)}/retry`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+  )
+).data;
 
 export const simulateTelegramNewOrder = async (): Promise<TelegramNewOrderSimulation> => {
   const simulation = (

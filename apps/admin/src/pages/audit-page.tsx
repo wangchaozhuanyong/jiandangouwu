@@ -53,10 +53,8 @@ const copy = (locale: Locale, zh: string, en: string): string =>
 
 export default function AuditPage({
   locale,
-  sitesRuntime,
 }: {
   locale: Locale;
-  sitesRuntime: boolean;
 }) {
   const { notify } = useAdminStatus();
   const [query, setQuery] = useState(() => readAuditQuery(window.location.search));
@@ -534,17 +532,11 @@ export default function AuditPage({
               </span>
             </div>
             <p className="audit-export-auth-note">
-              {sitesRuntime
-                ? copy(
-                    locale,
-                    "Sites 身份由 ChatGPT 平台在每次请求中验证；CloudBridge 不保存密码，也无法读取平台的密码或 TOTP 重新认证时间。",
-                    "ChatGPT verifies the Sites identity on each request. CloudBridge stores no password and cannot read the platform's password or TOTP reauthentication time.",
-                  )
-                : copy(
-                    locale,
-                    "MySQL 后台要求五分钟内最近认证；如果已超时，请退出后重新登录再执行导出。",
-                    "The MySQL administration runtime requires authentication within the last five minutes. If it expired, sign out and sign in again.",
-                  )}
+              {copy(
+                locale,
+                "Sites 身份由 ChatGPT 平台在每次请求中验证；CloudBridge 不保存密码，也无法读取平台的密码或双重验证重新认证时间。",
+                "ChatGPT verifies the Sites identity on each request. CloudBridge stores no password and cannot read the platform's password or two-step reauthentication time.",
+              )}
             </p>
             <label>
               <span>{copy(locale, "业务原因", "Business reason")}</span>

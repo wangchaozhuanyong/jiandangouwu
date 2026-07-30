@@ -91,7 +91,7 @@ export function PaymentsPage({ lang, onSensitiveAction }) {
               <div><dt>Webhook</dt><dd>{activeProvider.webhook === "healthy" ? (zh ? "签名验证正常" : "Signature healthy") : (zh ? "未配置" : "Not configured")}</dd></div>
               <div><dt>{zh ? "客户端状态" : "Storefront"}</dt><dd>{zh ? "关闭" : "Off"}</dd></div>
             </dl>
-            <div className="provider-security-note"><ShieldCheck size={18} /><span>{zh ? "密钥值只保存在 Secrets Manager。后台只显示状态与末尾标识。" : "Credential values stay in Secrets Manager. The console shows only status and a suffix."}</span></div>
+            <div className="provider-security-note"><ShieldCheck size={18} /><span>{zh ? "未来支付密钥只允许保存在 Sites 生产密钥中；当前支付保持关闭。" : "Future payment credentials may only be stored as Sites production secrets; payments remain disabled."}</span></div>
             <div className="provider-actions"><button className="admin-secondary" onClick={() => onSensitiveAction({ title: zh ? "测试连接" : "Test connection", description: zh ? "验证密钥权限、Webhook 签名和测试环境连通性。" : "Validate credential permissions, webhook signatures, and sandbox connectivity." })}><Pulse size={17} />{zh ? "测试连接" : "Test connection"}</button><button className="admin-primary" onClick={requestLiveMode}><LockKey size={17} />{zh ? "申请正式启用" : "Request live mode"}</button></div>
           </aside>
         </div>
@@ -301,11 +301,11 @@ export function DataSecurityPage({ lang, onSensitiveAction }) {
         </aside>
       </div>
       <section className="architecture-strip admin-panel">
-        <div><small>{zh ? "托管基础设施设计" : "MANAGED INFRASTRUCTURE DESIGN"}</small><h2>{zh ? "数据流与信任边界" : "Data flow and trust boundaries"}</h2></div>
-        <div className="architecture-flow" aria-label={zh ? "AWS 架构流程" : "AWS architecture flow"}>
-          {["CloudFront / WAF", "ALB", "ECS / Fargate", "RDS MySQL Multi-AZ"].map((item, index) => <span key={item}><strong>{item}</strong><small>{index === 0 ? "EDGE" : index === 1 ? "ROUTING" : index === 2 ? "PRIVATE APP" : "ENCRYPTED DATA"}</small></span>)}
+        <div><small>{zh ? "SITES 托管架构" : "SITES MANAGED ARCHITECTURE"}</small><h2>{zh ? "数据流与信任边界" : "Data flow and trust boundaries"}</h2></div>
+        <div className="architecture-flow" aria-label={zh ? "Sites 架构流程" : "Sites architecture flow"}>
+          {["Sites Worker", "D1", "R2", "ChatGPT Identity"].map((item, index) => <span key={item}><strong>{item}</strong><small>{index === 0 ? "RUNTIME" : index === 1 ? "STRUCTURED DATA" : index === 2 ? "MEDIA + BACKUPS" : "ADMIN ACCESS"}</small></span>)}
         </div>
-        <p>{zh ? "ElastiCache 管理会话与限流，私有 S3 保存媒体，KMS 与 Secrets Manager 保护密钥，SQS 承接异步任务，CloudWatch / GuardDuty 提供告警。" : "ElastiCache supports sessions and rate limits, private S3 stores media, KMS and Secrets Manager protect secrets, SQS handles asynchronous work, and CloudWatch / GuardDuty provide alerts."}</p>
+        <p>{zh ? "Sites Worker 承载公开站点、后台和 API；D1 保存结构化数据，R2 保存媒体与加密备份，生产密钥和 ChatGPT 登录构成安全边界。" : "Sites Worker hosts the public site, admin, and API. D1 stores structured data, R2 stores media and encrypted backups, while production secrets and ChatGPT sign-in form the security boundary."}</p>
       </section>
     </>
   );
@@ -321,9 +321,9 @@ export function BackupsPage({ lang, onSensitiveAction }) {
   return (
     <>
       <section className="backup-objectives">
-        <article><small>RPO</small><strong>≤ 5 min</strong><span>{zh ? "最大数据丢失目标" : "Maximum data-loss objective"}</span></article>
+        <article><small>RPO</small><strong>≤ 24 h</strong><span>{zh ? "当前每日备份目标" : "Current daily-backup target"}</span></article>
         <article><small>RTO</small><strong>≤ 60 min</strong><span>{zh ? "核心服务恢复目标" : "Core-service recovery objective"}</span></article>
-        <article><small>{zh ? "最近演练" : "LAST DRILL"}</small><strong>{zh ? "通过" : "Passed"}</strong><span>2026-07-20 · 42 min</span></article>
+        <article><small>{zh ? "生产演练" : "PRODUCTION DRILL"}</small><strong>{zh ? "待人工批准" : "Approval required"}</strong><span>{zh ? "不自动覆盖 D1" : "Never overwrites D1 automatically"}</span></article>
       </section>
       <div className="backup-layout">
         <section className="admin-panel restore-points admin-data-scroll">
@@ -346,21 +346,21 @@ export function BackupsPage({ lang, onSensitiveAction }) {
 export function SecretsPage({ lang, onSensitiveAction }) {
   const zh = lang === "zh";
   const secrets = [
-    ["RDS application user", "AWS Secrets Manager", "•••• 9C4F", zh ? "13 天后轮换" : "Rotates in 13 days", "healthy"],
-    ["Stripe sandbox key", "AWS Secrets Manager", "•••• 4F8A", zh ? "测试环境" : "Sandbox only", "healthy"],
-    ["Webhook signing secret", "AWS Secrets Manager", "•••• 8D2C", zh ? "42 天后轮换" : "Rotates in 42 days", "warning"],
-    ["KMS data key", "AWS KMS", "key/•••• 61BE", zh ? "托管轮换" : "Managed rotation", "healthy"],
+    ["CLOUDBRIDGE_DATA_KEY", "Sites production secrets", zh ? "值不可读取" : "Value unreadable", zh ? "当前数据密钥" : "Active data key", "healthy"],
+    ["CLOUDBRIDGE_DATA_KEY_NEXT", "Sites production secrets", zh ? "值不可读取" : "Value unreadable", zh ? "仅轮换期间配置" : "Set only during rotation", "warning"],
+    ["TELEGRAM_BOT_TOKEN", "Sites production secrets", zh ? "值不可读取" : "Value unreadable", zh ? "服务端通知专用" : "Server notification only", "healthy"],
+    ["TELEGRAM_ORDER_CHAT_ID", "Sites production secrets", zh ? "值不可读取" : "Value unreadable", zh ? "订单群标识" : "Order group identifier", "healthy"],
   ];
   return (
     <>
       <PageToolbar summary={zh ? "4 个机密引用 · 0 个明文值 · 1 个轮换提醒" : "4 secret references · 0 plaintext values · 1 rotation reminder"}>
-        <button className="toolbar-action" onClick={() => onSensitiveAction({ title: zh ? "创建机密引用" : "Create secret reference", description: zh ? "后台只保存 Secrets Manager 引用，不接收或显示完整机密值。" : "The console stores only a Secrets Manager reference and never accepts or displays the full secret." })}><Key size={17} />{zh ? "新增引用" : "New reference"}</button>
+        <button className="toolbar-action" onClick={() => onSensitiveAction({ title: zh ? "生产密钥由 Sites 管理" : "Production secrets are managed by Sites", description: zh ? "CloudBridge 只读取绑定状态，不接收、保存或显示完整密钥值。" : "CloudBridge reads binding status only and never accepts, stores, or displays full secret values." })}><Key size={17} />{zh ? "查看边界" : "View boundary"}</button>
       </PageToolbar>
       <section className="admin-panel secrets-table admin-data-scroll">
         <div className="mapping-header"><span>{zh ? "名称" : "Name"}</span><span>{zh ? "存储位置" : "Store"}</span><span>{zh ? "标识" : "Identifier"}</span><span>{zh ? "轮换状态" : "Rotation"}</span><span>{zh ? "操作" : "Action"}</span></div>
         {secrets.map(([name, store, suffix, rotation, tone]) => <div className="mapping-row" key={name}><strong>{name}</strong><span>{store}</span><code>{suffix}</code><StatusBadge tone={tone}>{rotation}</StatusBadge><button aria-label={zh ? `复制 ${name} 引用` : `Copy ${name} reference`}><Copy size={16} /></button></div>)}
       </section>
-      <div className="secret-boundary-note"><LockKey size={20} /><div><strong>{zh ? "此页面永远不显示机密值" : "This page never displays secret values"}</strong><p>{zh ? "查看状态、末尾标识、使用范围和轮换记录即可完成日常运维。真正的读取权限由 IAM 与 KMS 控制。" : "Status, suffix, usage scope, and rotation history are sufficient for operations. IAM and KMS control actual read access."}</p></div></div>
+      <div className="secret-boundary-note"><LockKey size={20} /><div><strong>{zh ? "此页面永远不显示机密值" : "This page never displays secret values"}</strong><p>{zh ? "Sites 生产密钥、版本化密文、双密钥过渡与审计共同构成当前密钥边界。" : "Sites production secrets, versioned ciphertext, dual-key transition, and auditing form the current key boundary."}</p></div></div>
     </>
   );
 }

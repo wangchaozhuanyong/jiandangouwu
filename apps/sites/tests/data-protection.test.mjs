@@ -8,20 +8,21 @@ import {
   encryptOrderContact,
   ProtectedDataInvalidError,
   sitesDataAdditionalData,
+  sitesDataAdditionalDataV3,
 } from "../server/data-protection.ts";
 
 const dataKey = Buffer.alloc(32, 7).toString("base64url");
 
-test("Sites writes v2 order contacts with a purpose-derived key and authenticated context", async () => {
+test("Sites writes key-versioned v3 order contacts with a purpose-derived key and authenticated context", async () => {
   const first = await encryptOrderContact("customer@example.test", dataKey);
   const second = await encryptOrderContact("customer@example.test", dataKey);
 
-  assert.match(first, /^v2\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u);
+  assert.match(first, /^v3\.[a-f0-9]{16}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u);
   assert.notEqual(first, second);
   assert.equal(await decryptOrderContact(first, dataKey), "customer@example.test");
 
-  const [version, ivValue, encryptedValue] = first.split(".");
-  assert.equal(version, "v2");
+  const [version, keyId, ivValue, encryptedValue] = first.split(".");
+  assert.equal(version, "v3");
   const backupKey = await deriveSitesAesKey(
     dataKey,
     "BACKUP_SNAPSHOT",
@@ -33,7 +34,7 @@ test("Sites writes v2 order contacts with a purpose-derived key and authenticate
       {
         name: "AES-GCM",
         iv: decodeBase64Url(ivValue),
-        additionalData: sitesDataAdditionalData("ORDER_CONTACT"),
+        additionalData: sitesDataAdditionalDataV3("ORDER_CONTACT", keyId),
       },
       backupKey,
       decodeBase64Url(encryptedValue),

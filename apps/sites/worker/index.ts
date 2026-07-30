@@ -5,7 +5,9 @@ import {
 } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { ensureDailyBackup } from "../server/backup-api";
+import { ensureExchangeRatesFresh } from "../server/exchange-rates";
 import { handleCloudBridgeRequest } from "../server/router";
+import { processTelegramDeliveries } from "../server/telegram";
 import type { SitesEnv, SitesExecutionContext } from "../server/types";
 
 const worker = {
@@ -22,8 +24,16 @@ const worker = {
       context.waitUntil(ensureDailyBackup(env).catch((error: unknown) => {
         console.error("[cloudbridge] Automatic daily backup failed", error);
       }));
+      context.waitUntil(ensureExchangeRatesFresh(env).catch((error: unknown) => {
+        console.error("[cloudbridge] Automatic exchange-rate sync failed", error);
+      }));
     }
-    const cloudBridgeResponse = await handleCloudBridgeRequest(request, env);
+    if (url.pathname.startsWith("/v1/")) {
+      context.waitUntil(processTelegramDeliveries(env).catch((error: unknown) => {
+        console.error("[cloudbridge] Telegram delivery processing failed", error);
+      }));
+    }
+    const cloudBridgeResponse = await handleCloudBridgeRequest(request, env, context);
     if (cloudBridgeResponse) return cloudBridgeResponse;
 
     if (url.pathname === "/_vinext/image") {

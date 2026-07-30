@@ -125,6 +125,21 @@ export const exchangeRates = sqliteTable("exchange_rates", {
   ),
 ]);
 
+export const exchangeRateSyncRuns = sqliteTable("exchange_rate_sync_runs", {
+  id: text("id").primaryKey(),
+  scheduleKey: text("schedule_key").notNull(),
+  trigger: text("trigger").notNull(),
+  status: text("status").notNull(),
+  providerSummary: text("provider_summary").notNull(),
+  updatedCurrenciesJson: text("updated_currencies_json").notNull().default("[]"),
+  errorCode: text("error_code"),
+  startedAt: text("started_at").notNull(),
+  completedAt: text("completed_at"),
+}, (table) => [
+  uniqueIndex("exchange_rate_sync_runs_schedule_unique").on(table.scheduleKey),
+  index("exchange_rate_sync_runs_started_idx").on(table.startedAt),
+]);
+
 export const merchantChannels = sqliteTable("merchant_channels", {
   id: text("id").primaryKey(),
   type: text("type").notNull(),
@@ -161,6 +176,8 @@ export const orders = sqliteTable("orders", {
   contactEncrypted: text("contact_encrypted").notNull(),
   contactHash: text("contact_hash").notNull(),
   maskedContact: text("masked_contact").notNull(),
+  contactErasedAt: text("contact_erased_at"),
+  contactErasureRequestId: text("contact_erasure_request_id"),
   acceptedPolicyVersion: text("accepted_policy_version").notNull(),
   status: text("status").notNull().default("MANUAL_PENDING"),
   paymentMode: text("payment_mode").notNull().default("MANUAL"),
@@ -175,6 +192,26 @@ export const orders = sqliteTable("orders", {
   uniqueIndex("orders_idempotency_unique").on(table.idempotencyKey),
   index("orders_status_created_idx").on(table.status, table.createdAt),
   index("orders_product_created_idx").on(table.productId, table.createdAt),
+]);
+
+export const telegramDeliveries = sqliteTable("telegram_deliveries", {
+  id: text("id").primaryKey(),
+  orderId: text("order_id").references(() => orders.id, { onDelete: "set null" }),
+  orderNumber: text("order_number").notNull(),
+  eventType: text("event_type").notNull(),
+  status: text("status").notNull(),
+  payloadJson: text("payload_json").notNull(),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  nextAttemptAt: text("next_attempt_at"),
+  deliveredAt: text("delivered_at"),
+  telegramMessageId: text("telegram_message_id"),
+  errorCode: text("error_code"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  uniqueIndex("telegram_deliveries_order_event_unique").on(table.orderId, table.eventType),
+  index("telegram_deliveries_status_next_idx").on(table.status, table.nextAttemptAt),
+  index("telegram_deliveries_created_idx").on(table.createdAt),
 ]);
 
 export const orderStatusHistory = sqliteTable("order_status_history", {
@@ -226,6 +263,38 @@ export const siteSettings = sqliteTable("site_settings", {
   updatedAt: text("updated_at").notNull(),
   updatedByEmail: text("updated_by_email"),
 });
+
+export const privacyRequests = sqliteTable("privacy_requests", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  status: text("status").notNull(),
+  requesterReference: text("requester_reference").notNull(),
+  requesterLookupHash: text("requester_lookup_hash").notNull(),
+  reason: text("reason").notNull(),
+  resultJson: text("result_json"),
+  identityVerifiedAt: text("identity_verified_at"),
+  completedAt: text("completed_at"),
+  createdByEmail: text("created_by_email").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  index("privacy_requests_status_created_idx").on(table.status, table.createdAt),
+  index("privacy_requests_lookup_idx").on(table.requesterLookupHash),
+]);
+
+export const dataKeyVersions = sqliteTable("data_key_versions", {
+  keyId: text("key_id").primaryKey(),
+  slot: text("slot").notNull(),
+  status: text("status").notNull(),
+  contactsMigrated: integer("contacts_migrated").notNull().default(0),
+  backupsMigrated: integer("backups_migrated").notNull().default(0),
+  errorCode: text("error_code"),
+  createdAt: text("created_at").notNull(),
+  activatedAt: text("activated_at"),
+  completedAt: text("completed_at"),
+}, (table) => [
+  index("data_key_versions_status_created_idx").on(table.status, table.createdAt),
+]);
 
 export const mediaObjects = sqliteTable("media_objects", {
   key: text("key").primaryKey(),

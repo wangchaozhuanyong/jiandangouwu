@@ -8,27 +8,23 @@
     "node": ">=24"
   },
   "workspaces": [
-    "apps/*",
-    "packages/*",
-    "infra"
+    "apps/admin",
+    "apps/sites",
+    "apps/storefront",
+    "packages/contracts"
   ],
   "scripts": {
     "dev": "vite",
     "dev:legacy": "vite",
     "dev:storefront": "npm run dev --workspace @cloudbridge/storefront",
     "dev:admin": "npm run dev --workspace @cloudbridge/admin",
-    "dev:api": "npm run dev --workspace @cloudbridge/api",
     "dev:sites": "npm run dev --workspace @cloudbridge/sites",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
-    "prepare:platform": "npm run build --workspace @cloudbridge/contracts && npm run db:generate --workspace @cloudbridge/api",
-    "build:platform": "npm run prepare:platform && npm run build --workspace @cloudbridge/api && npm run build --workspace @cloudbridge/storefront && npm run build --workspace @cloudbridge/admin && npm run build --workspace @cloudbridge/infra",
+    "prepare:platform": "npm run build --workspace @cloudbridge/contracts",
+    "build:platform": "npm run prepare:platform && npm run build --workspace @cloudbridge/storefront && npm run build --workspace @cloudbridge/admin",
     "build:sites": "npm run build --workspace @cloudbridge/sites && node scripts/prepare-sites-platform-release.mjs",
     "preview": "vite preview",
-    "typecheck:platform": "npm run prepare:platform && npm run typecheck --workspace @cloudbridge/contracts && npm run typecheck --workspace @cloudbridge/api && npm run typecheck --workspace @cloudbridge/storefront && npm run typecheck --workspace @cloudbridge/admin && npm run typecheck --workspace @cloudbridge/infra",
-    "db:up": "docker compose -p cloudbridge up -d mysql redis",
-    "db:down": "docker compose -p cloudbridge down",
-    "db:migrate": "npm run db:migrate --workspace @cloudbridge/api",
-    "db:seed": "npm run db:seed --workspace @cloudbridge/api",
+    "typecheck:platform": "npm run prepare:platform && npm run typecheck --workspace @cloudbridge/contracts && npm run typecheck --workspace @cloudbridge/storefront && npm run typecheck --workspace @cloudbridge/admin && npm run typecheck --workspace @cloudbridge/sites",
     "check:rules": "node scripts/check-project-rules.mjs",
     "test:catalog": "node --test tests/catalog.test.mjs",
     "test:i18n": "node --test tests/i18n-copy.test.mjs",
@@ -41,12 +37,11 @@
     "test:transit-service": "node --test tests/transit-service.test.mjs",
     "test:platform": "node --test tests/platform-architecture.test.mjs tests/platform-ux.test.mjs tests/admin-design-workflows.test.mjs tests/platform-content-management.test.mjs",
     "test:admin": "npm run test --workspace @cloudbridge/admin",
-    "test:api": "npm run prepare:platform && npm run test --workspace @cloudbridge/api",
     "test:storefront": "npm run test --workspace @cloudbridge/storefront",
     "test:sites-platform": "npm run test --workspace @cloudbridge/sites",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "check:legacy": "npm run check:rules && npm run test:catalog && npm run test:i18n && npm run test:ux && npm run test:security && npm run test:admin-tables && npm run test:admin-navigation && npm run test:brand && npm run test:transit-service && npm run build && npm run test:sites",
-    "check": "npm run check:legacy && npm run test:platform && npm run test:admin && npm run test:api && npm run test:storefront && npm run test:sites-platform && npm run typecheck:platform && npm run build:platform"
+    "check": "npm run check:legacy && npm run test:platform && npm run test:admin && npm run test:storefront && npm run test:sites-platform && npm run typecheck:platform && npm run build:platform"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
@@ -63,9 +58,6 @@
     "typescript": "7.0.2"
   },
   "overrides": {
-    "@nestjs/swagger": {
-      "js-yaml": "5.2.2"
-    },
     "next": {
       "postcss": "8.5.25",
       "sharp": "0.35.3"

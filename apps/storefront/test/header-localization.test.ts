@@ -12,6 +12,10 @@ test("the header always exposes truthful customer support", () => {
   const shell = read("components/site-shell.tsx");
 
   assert.match(shell, /className="support-trigger"/u);
+  assert.match(
+    shell,
+    /<div className="header-utilities">\s*<LanguagePicker[\s\S]*?\/>\s*<button[\s\S]*?className="support-trigger"/u,
+  );
   assert.doesNotMatch(
     shell,
     /\{supportEnabled && \(\s*<button[\s\S]*?className="support-trigger"/u,

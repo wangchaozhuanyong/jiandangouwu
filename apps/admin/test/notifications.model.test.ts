@@ -11,35 +11,38 @@ const settings = (
   recipientGroupLabel: "Internal order operations",
   eventType: "ORDER_CREATED",
   includedFields: ["ORDER_NUMBER", "PRODUCT", "MASKED_CONTACT"],
-  connectionState: "NOT_CONNECTED",
+  connectionState: "MISSING_SECRETS",
   tokenConfigured: false,
   externalDeliveryVerified: false,
+  verifiedAt: null,
+  verifiedChatTitle: null,
+  botUsername: null,
   version: 3,
   updatedAt: "2026-07-29T12:00:00.000Z",
   ...overrides,
 });
 
-test("notification readiness preserves the server's unconnected truth", () => {
+test("notification readiness preserves the server's missing-secret truth", () => {
   const result = buildNotificationReadiness(settings());
 
   assert.equal(result.route.provider, "TELEGRAM");
   assert.equal(result.route.eventType, "ORDER_CREATED");
-  assert.equal(result.route.connectionState, "NOT_CONNECTED");
+  assert.equal(result.route.connectionState, "MISSING_SECRETS");
   assert.equal(result.route.effectiveEnabled, false);
   assert.equal(result.route.tokenConfigured, false);
   assert.equal(result.route.externalDeliveryVerified, false);
   assert.equal(result.deliveryEvidenceState, "NOT_COLLECTED");
 });
 
-test("future activation intent never becomes effective delivery", () => {
+test("future activation intent does not bypass verification", () => {
   const result = buildNotificationReadiness(settings({ requestedEnabled: true }));
 
   assert.equal(result.route.requestedEnabled, true);
   assert.equal(result.route.effectiveEnabled, false);
-  assert.equal(result.route.connectionState, "NOT_CONNECTED");
+  assert.equal(result.route.connectionState, "MISSING_SECRETS");
 });
 
-test("notification readiness separates blocked gates from missing infrastructure", () => {
+test("notification readiness separates external blockers from implemented queue capabilities", () => {
   const result = buildNotificationReadiness(settings());
 
   assert.deepEqual(
@@ -47,9 +50,25 @@ test("notification readiness separates blocked gates from missing infrastructure
     ["DELIVERY_RUNTIME", "BOT_CREDENTIAL", "EXTERNAL_VERIFICATION"],
   );
   assert.deepEqual(
-    result.gates.filter((gate) => gate.state === "NOT_IMPLEMENTED").map((gate) => gate.code),
+    result.gates.filter((gate) => gate.state === "READY").map((gate) => gate.code),
     ["DELIVERY_EVENT_STORE", "RETRY_QUEUE"],
   );
+});
+
+test("verified effective settings report every launch gate ready", () => {
+  const result = buildNotificationReadiness(settings({
+    requestedEnabled: true,
+    effectiveEnabled: true,
+    connectionState: "CONNECTED",
+    tokenConfigured: true,
+    externalDeliveryVerified: true,
+    verifiedAt: "2026-07-29T12:02:00.000Z",
+    verifiedChatTitle: "云桥代充网站",
+    botUsername: "cloudbridge_order_bot",
+  }));
+
+  assert.equal(result.deliveryEvidenceState, "VERIFIED");
+  assert.ok(result.gates.every((gate) => gate.state === "READY"));
 });
 
 test("notification readiness retains only the real saved route metadata", () => {

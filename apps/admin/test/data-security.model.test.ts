@@ -6,7 +6,6 @@ import type {
 } from "../src/api";
 import {
   buildDataSecurityReadiness,
-  dataGovernanceGateCodes,
   dataSecurityBoundaryCodes,
   dataSecurityControlCodes,
 } from "../src/features/data-security/model";
@@ -20,7 +19,6 @@ const user: AdminUser = {
     { key: "SECURITY_REVIEWER", name: { zh: "安全复核", en: "Security reviewer" } },
   ],
   permissions: ["orders.read", "audit.read", "contacts.reveal"],
-  totpEnabled: true,
 };
 
 const auditEvent = ({
@@ -59,7 +57,6 @@ test("data security readiness reports the current session without expanding its 
     roleCount: 2,
     roleKeys: ["SECURITY_REVIEWER", "SUPPORT"],
     permissionCount: 3,
-    totpEnabled: true,
     auditReadGranted: true,
   });
   assert.equal("email" in result.currentSession, false);
@@ -116,7 +113,7 @@ test("data security readiness fails closed when audit permission is absent", () 
   assert.deepEqual(result.auditEvidence.recentEvents, []);
 });
 
-test("data security readiness keeps code controls separate from governance gates", () => {
+test("data security readiness keeps code controls separate from the live governance resource", () => {
   const result = buildDataSecurityReadiness({
     auditEvents: null,
     canReadAudit: true,
@@ -126,13 +123,6 @@ test("data security readiness keeps code controls separate from governance gates
   assert.deepEqual(result.controls.map((control) => control.code), dataSecurityControlCodes);
   assert.ok(result.controls.every((control) => control.state === "IMPLEMENTED_CODE"));
   assert.deepEqual(result.boundaries.map((boundary) => boundary.code), dataSecurityBoundaryCodes);
-  assert.ok(result.boundaries.every((boundary) => boundary.retentionState === "NOT_DEFINED"));
-  assert.deepEqual(result.gates.map((gate) => gate.code), dataGovernanceGateCodes);
-  assert.deepEqual(result.gates.map((gate) => gate.state), [
-    "NOT_DEFINED",
-    "NOT_DEFINED",
-    "NOT_IMPLEMENTED",
-    "NOT_IMPLEMENTED",
-    "NOT_CONNECTED",
-  ]);
+  assert.ok(result.boundaries.every((boundary) => boundary.retentionState === "DRAFT_DISABLED"));
+  assert.equal("gates" in result, false);
 });

@@ -14,11 +14,7 @@ export type AdminTeamMember = {
   email: string;
   displayName: string;
   status: AdminAccountStatus;
-  authProvider: "PASSWORD" | "SITES";
-  passwordConfigured: boolean | null;
-  totpEnabled: boolean | null;
-  failedLoginCount: number | null;
-  lockedUntil: string | null;
+  authProvider: "SITES";
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -28,32 +24,6 @@ export type AdminTeamMember = {
 export type AdminTeamOverview = {
   members: AdminTeamMember[];
   availableRoles: AdminAccessRoleSummary[];
-};
-
-export type AdminSessionSummary = {
-  id: string;
-  current: boolean;
-  createdAt: string;
-  lastSeenAt: string;
-  expiresAt: string;
-};
-
-export type AdminSessionOverview = {
-  source: "VALKEY";
-  sessions: AdminSessionSummary[];
-};
-
-export type AdminMemberLifecycleAction =
-  | "ENABLE"
-  | "DISABLE"
-  | "UNLOCK"
-  | "RESET_TOTP";
-
-export type AdminMemberLifecycleResult = {
-  action: AdminMemberLifecycleAction;
-  member: AdminTeamMember;
-  revokedSessionCount: number;
-  revokedChallengeCount: number;
 };
 
 export type AdminPermissionSummary = {
@@ -66,12 +36,6 @@ export type AdminRoleDetail = AdminAccessRoleSummary & {
   memberCount: number;
   updatedAt: string;
   systemProtected: boolean;
-};
-
-export type AdminRoleDeletionResult = {
-  id: string;
-  key: string;
-  name: LocalizedText;
 };
 
 export type AdminRolesOverview = {

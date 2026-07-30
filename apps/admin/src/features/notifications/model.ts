@@ -1,5 +1,6 @@
 import type {
   AdminTelegramNewOrderSettings,
+  TelegramConnectionState,
   TelegramNewOrderFieldCode,
 } from "@cloudbridge/contracts";
 
@@ -12,24 +13,24 @@ export type NotificationReadinessGateCode =
 
 export type NotificationReadinessGate = {
   code: NotificationReadinessGateCode;
-  state: "BLOCKED" | "NOT_IMPLEMENTED";
+  state: "READY" | "BLOCKED";
 };
 
 export type NotificationReadiness = {
   route: {
     provider: "TELEGRAM";
     eventType: "ORDER_CREATED";
-    connectionState: "NOT_CONNECTED";
+    connectionState: TelegramConnectionState;
     requestedEnabled: boolean;
-    effectiveEnabled: false;
-    tokenConfigured: false;
-    externalDeliveryVerified: false;
+    effectiveEnabled: boolean;
+    tokenConfigured: boolean;
+    externalDeliveryVerified: boolean;
     recipientGroupLabel: string;
     includedFields: ReadonlyArray<TelegramNewOrderFieldCode>;
     version: number;
     updatedAt: string;
   };
-  deliveryEvidenceState: "NOT_COLLECTED";
+  deliveryEvidenceState: "VERIFIED" | "NOT_COLLECTED";
   gates: ReadonlyArray<NotificationReadinessGate>;
 };
 
@@ -49,12 +50,12 @@ export const buildNotificationReadiness = (
     version: settings.version,
     updatedAt: settings.updatedAt,
   },
-  deliveryEvidenceState: "NOT_COLLECTED",
+  deliveryEvidenceState: settings.externalDeliveryVerified ? "VERIFIED" : "NOT_COLLECTED",
   gates: [
-    { code: "DELIVERY_RUNTIME", state: "BLOCKED" },
-    { code: "BOT_CREDENTIAL", state: "BLOCKED" },
-    { code: "EXTERNAL_VERIFICATION", state: "BLOCKED" },
-    { code: "DELIVERY_EVENT_STORE", state: "NOT_IMPLEMENTED" },
-    { code: "RETRY_QUEUE", state: "NOT_IMPLEMENTED" },
+    { code: "DELIVERY_RUNTIME", state: settings.effectiveEnabled ? "READY" : "BLOCKED" },
+    { code: "BOT_CREDENTIAL", state: settings.tokenConfigured ? "READY" : "BLOCKED" },
+    { code: "EXTERNAL_VERIFICATION", state: settings.externalDeliveryVerified ? "READY" : "BLOCKED" },
+    { code: "DELIVERY_EVENT_STORE", state: "READY" },
+    { code: "RETRY_QUEUE", state: "READY" },
   ],
 });
