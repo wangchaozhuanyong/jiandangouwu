@@ -4,6 +4,7 @@ import type { Page } from "../../admin-model";
 export type DashboardCapabilityState =
   | "IMPLEMENTED_REQUEST_DRIVEN"
   | "IMPLEMENTED_LIVE_QUERY"
+  | "IMPLEMENTED_RETRY_QUEUE"
   | "NOT_COLLECTED"
   | "NOT_IMPLEMENTED";
 
@@ -40,12 +41,12 @@ const capabilityBoundaries: readonly DashboardCapabilityBoundary[] = [
   },
   {
     code: "NOTIFICATION_DELIVERY",
-    state: "NOT_COLLECTED",
+    state: "IMPLEMENTED_RETRY_QUEUE",
     ownerPage: "notifications",
   },
   {
     code: "SECURITY_ALERT",
-    state: "NOT_IMPLEMENTED",
+    state: "IMPLEMENTED_RETRY_QUEUE",
     ownerPage: "security-events",
   },
 ] as const;

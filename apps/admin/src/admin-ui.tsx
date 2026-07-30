@@ -41,7 +41,7 @@ export const statusLabels: Record<string, Record<Locale, string>> = {
 export function formatDate(value: string, locale: Locale): string {
   return new Intl.DateTimeFormat(
     locale === "zh" ? "zh-CN" : "en-US",
-    { dateStyle: "medium", timeStyle: "short" },
+    { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Shanghai" },
   ).format(new Date(value));
 }
 

@@ -23,6 +23,7 @@ import {
   validateBackupRestorePackage,
   verifyBackupSnapshot,
 } from "../server/backup-api.ts";
+import { handleAdminApi } from "../server/admin-api.ts";
 import {
   decodeBase64Url,
   deriveSitesAesKey,
@@ -41,6 +42,7 @@ const migrations = [
   "0003_chunky_tattoo.sql",
   "0004_sweet_adam_warlock.sql",
   "0005_concerned_war_machine.sql",
+  "0006_nice_doctor_faustus.sql",
 ].map((name) => readFileSync(
   new URL(`../drizzle/${name}`, import.meta.url),
   "utf8",
@@ -90,7 +92,7 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
   assert.equal(verified.status, "VERIFIED");
   assert.ok(verified.verifiedAt);
 
-  const readinessBefore = await getBackupReadiness(env.DB);
+  const readinessBefore = await getBackupReadiness(env);
   assert.equal(readinessBefore.state, "ATTENTION");
   assert.equal(
     readinessBefore.gates.find((gate) => gate.code === "RECENT_ISOLATED_RESTORE_DRILL")?.state,
@@ -113,11 +115,11 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
   );
   assert.equal(restoreValidated.restoreValidationStatus, "PASSED");
   assert.equal(restoreValidated.restoreValidation.kind, "LOGICAL_PACKAGE");
-  assert.equal(restoreValidated.restoreValidation.tableCount, 19);
+  assert.equal(restoreValidated.restoreValidation.tableCount, 20);
   assert.equal(restoreValidated.restoreValidation.encryptedContactChecks, 1);
   assert.ok(restoreValidated.restoreValidation.relationshipChecks > 0);
 
-  const readinessAfterLogicalValidation = await getBackupReadiness(env.DB);
+  const readinessAfterLogicalValidation = await getBackupReadiness(env);
   assert.equal(readinessAfterLogicalValidation.state, "ATTENTION");
   assert.equal(
     readinessAfterLogicalValidation.gates.find(
@@ -165,7 +167,7 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
   });
   assert.deepEqual(isolatedDrill.summary, {
     target: "NODE_SQLITE_MEMORY",
-    tableCount: 19,
+    tableCount: 20,
     recordCount: restoreValidated.restoreValidation.recordCount,
     foreignKeyViolationCount: 0,
     completedAt: isolatedDrill.summary.completedAt,
@@ -325,7 +327,7 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
     1,
   );
 
-  const readinessAfterDrill = await getBackupReadiness(env.DB);
+  const readinessAfterDrill = await getBackupReadiness(env);
   assert.equal(readinessAfterDrill.state, "ATTENTION");
   assert.equal(
     readinessAfterDrill.gates.find(
@@ -340,7 +342,7 @@ test("daily D1 backups are encrypted, stored in R2, verified, and not duplicated
     "FAIL",
   );
   assert.deepEqual(readinessAfterDrill.externalAlerting, {
-    state: "NOT_CONNECTED",
+    state: "MISSING_SECRETS",
     configuredChannels: 0,
     lastDeliveryVerifiedAt: null,
   });
@@ -459,6 +461,64 @@ test("restore drill runner protects ephemeral private-key state from overwrite",
   } finally {
     rmSync(stateDirectory, { recursive: true, force: true });
   }
+});
+
+test("backup overview stays readable when automatic creation fails before a snapshot row exists", async () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(migrations);
+  const now = "2026-07-30T05:30:00.000Z";
+  sqlite.prepare(
+    `INSERT INTO admin_members
+      (id, email, display_name, status, permissions_json, last_login_at, created_at, updated_at)
+     VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?)`,
+  ).run(
+    "admin-backup-read",
+    "owner@example.test",
+    "Owner",
+    JSON.stringify(["settings.read"]),
+    now,
+    now,
+    now,
+  );
+  const env = {
+    DB: d1Adapter(sqlite),
+    MEDIA: memoryR2(),
+  };
+  const request = () => new Request("https://example.test/v1/admin/backups", {
+    headers: {
+      "oai-authenticated-user-email": "owner@example.test",
+    },
+  });
+
+  const firstResponse = await handleAdminApi(
+    request(),
+    env,
+    "/v1/admin/backups",
+  );
+  assert.equal(firstResponse.status, 200);
+  const firstBody = await firstResponse.json();
+  assert.deepEqual(firstBody.data.items, []);
+  assert.equal(firstBody.data.readiness.state, "BLOCKED");
+  assert.equal(firstBody.data.readiness.externalAlerting.state, "MISSING_SECRETS");
+
+  const secondResponse = await handleAdminApi(
+    request(),
+    env,
+    "/v1/admin/backups",
+  );
+  assert.equal(secondResponse.status, 200);
+  assert.equal(
+    Number(sqlite.prepare(
+      "SELECT COUNT(*) AS count FROM system_alert_deliveries WHERE source = 'BACKUP'",
+    ).get()?.count ?? 0),
+    1,
+  );
+  assert.equal(
+    Number(sqlite.prepare(
+      "SELECT COUNT(*) AS count FROM audit_events WHERE action = 'backup.snapshot.created' AND result = 'FAILED'",
+    ).get()?.count ?? 0),
+    1,
+  );
 });
 
 async function seedRecoverableOrder(sqlite, dataKey) {

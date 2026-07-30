@@ -89,8 +89,8 @@ test("dashboard snapshot separates live inventory evidence from missing alert ev
     [
       ["RESERVATION_EXPIRY", "IMPLEMENTED_REQUEST_DRIVEN"],
       ["LOW_STOCK_ALERT", "IMPLEMENTED_LIVE_QUERY"],
-      ["NOTIFICATION_DELIVERY", "NOT_COLLECTED"],
-      ["SECURITY_ALERT", "NOT_IMPLEMENTED"],
+      ["NOTIFICATION_DELIVERY", "IMPLEMENTED_RETRY_QUEUE"],
+      ["SECURITY_ALERT", "IMPLEMENTED_RETRY_QUEUE"],
     ],
   );
 });

@@ -190,16 +190,14 @@ button:active, a:active { transform: scale(.985); transition-duration: 80ms; }
 .order-panel-heading > span { width: 42px; height: 42px; display: grid; place-items: center; flex: none; border-radius: 13px; color: var(--cyan); background: rgba(69,202,224,.12); }
 .order-panel h2, .order-success h2 { margin: 0; font-family: var(--serif); font-size: 20px; font-weight: 500; }
 .order-panel-heading p, .order-success p { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.order-panel > label:not(.policy-check) { display: grid; gap: 7px; margin-top: 13px; }
+.order-panel > label { display: grid; gap: 7px; margin-top: 13px; }
 .order-panel label > span { color: var(--muted); font-size: 10px; }
 .order-panel input, .order-panel select { width: 100%; min-height: 48px; padding: 0 13px; border: 1px solid var(--frame-line-soft); border-radius: 12px; outline: none; color: var(--text); background: #071522; background-clip: padding-box; }
 .order-panel select { color-scheme: dark; }
 .order-panel select option { color: var(--text); background: #071522; }
 .order-panel input:focus, .order-panel select:focus { border-color: var(--cyan); }
 .order-panel [aria-invalid="true"] { border-color: var(--red); }
-.policy-check { display: flex; align-items: start; gap: 9px; margin: 16px 0; }
-.policy-check input { width: 16px; height: 16px; min-height: 0; margin: 0; accent-color: #41c7d4; }
-.order-panel input, .order-panel select, .policy-check { scroll-margin-block: 130px; }
+.order-panel input, .order-panel select { scroll-margin-block: 130px; }
 .order-action-dock { position: fixed; z-index: 90; left: 50%; right: auto; bottom: max(18px, env(safe-area-inset-bottom)); width: min(560px, calc(100vw - 32px)); display: flex; align-items: center; gap: 12px; margin: 0; padding: 8px; border: 1px solid var(--frame-line-soft); border-radius: 18px; background: rgba(4,17,28,.92); background-clip: padding-box; box-shadow: 0 18px 50px rgba(0,0,0,.48); backdrop-filter: blur(16px); transform: translateX(-50%); }
 .order-action-dock > span { min-width: 112px; display: grid; gap: 3px; padding-left: 9px; }
 .order-action-dock > span small { color: var(--muted-2); font-size: 9px; }

@@ -30,6 +30,7 @@ import {
   validateSitesBackupRestorePackage,
   verifySitesBackup,
 } from "./backups-api";
+import { SystemAlertsPanel } from "../system-alerts/system-alerts-panel";
 
 const copy = (locale: Locale, zh: string, en: string) => locale === "zh" ? zh : en;
 
@@ -262,6 +263,7 @@ export default function SitesBackupsPage({
             </div>
 
             {readiness && <BackupReadiness readiness={readiness} locale={locale} />}
+            <SystemAlertsPanel canWrite={canWrite} locale={locale} source="BACKUP" />
 
             <div className="sites-backups-create">
               <label>
@@ -515,8 +517,8 @@ function BackupReadiness({
           <p>
             {copy(
               locale,
-              "每次打开本页都会核对最近备份、今日自动备份、失败/卡住记录、隔离恢复演练与外部告警送达。邮件、短信或 Telegram 告警尚未连接，因此当前不会显示为完全就绪。",
-              "Opening this page checks recent backups, today's automatic run, failed or stuck records, the isolated restore drill, and external alert delivery. Email, SMS, and Telegram alerts are not connected, so readiness remains incomplete.",
+              "每次打开本页都会核对最近备份、今日自动备份、失败/卡住记录、隔离恢复演练与 Telegram 告警送达。通道必须完成真实连接测试并至少取得一次该范围的消息回执，才通过外部告警门禁。",
+              "Opening this page checks recent backups, today's automatic run, failed or stuck records, the isolated restore drill, and Telegram alert delivery. The channel must pass a real connection test and receive at least one receipt for this scope before the external-alert gate passes.",
             )}
           </p>
         </div>

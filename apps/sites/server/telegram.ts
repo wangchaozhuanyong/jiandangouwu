@@ -4,12 +4,27 @@ import {
   type TelegramDeliveryItem,
   type TelegramNewOrderFieldCode,
 } from "@cloudbridge/contracts";
+import { decryptOrderContact } from "./data-protection";
 import { ApiInputError, writeAudit, type AdminIdentity } from "./http";
+import { formatChinaDateTime } from "./time";
 import type { D1Database, D1PreparedStatement, D1Result, SitesEnv } from "./types";
 
 const settingKey = "notifications.telegram.new-order";
 const telegramApiBase = "https://api.telegram.org";
 const retryDelaysMs = [0, 60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000, 12 * 60 * 60_000] as const;
+const orderStatusLabelsZh: Readonly<Record<string, string>> = {
+  MANUAL_PENDING: "待人工确认",
+  CONTACTED: "已联系",
+  AWAITING_PAYMENT: "等待付款",
+  PAYMENT_PROCESSING: "付款处理中",
+  PAID: "已付款",
+  FULFILLING: "交付中",
+  COMPLETED: "已完成",
+  CANCELLED: "已取消",
+  REFUND_PENDING: "等待退款",
+  REFUNDED: "已退款",
+  DISPUTED: "争议中",
+};
 
 type TelegramSettingValue = {
   requestedEnabled: boolean;
@@ -121,7 +136,7 @@ export async function testTelegramConnection(
       "CloudBridge 云桥",
       "Telegram 新订单通知连接测试成功",
       `群组：${chatTitle}`,
-      `时间：${deliveredAt}`,
+      `时间：${formatChinaDateTime(deliveredAt)}`,
       "此消息不包含真实订单或客户联系方式。",
     ].join("\n"),
     disable_notification: true,
@@ -283,7 +298,7 @@ export async function processTelegramDeliveries(env: SitesEnv, limit = 5): Promi
     try {
       const message = await telegramCall<{ message_id: number }>(token, "sendMessage", {
         chat_id: chatId,
-        text: formatDeliveryMessage(row.payloadJson),
+        text: await formatDeliveryMessage(env, row.payloadJson, row.orderId),
       });
       const deliveredAt = new Date().toISOString();
       await env.DB.prepare(
@@ -311,6 +326,28 @@ export async function processTelegramDeliveries(env: SitesEnv, limit = 5): Promi
       ).run();
     }
   }
+}
+
+export async function sendVerifiedTelegramMessage(
+  env: SitesEnv,
+  text: string,
+  options: { disableNotification?: boolean } = {},
+): Promise<{ message_id: number }> {
+  const settings = await getTelegramSettings(env);
+  if (!settings.effectiveEnabled) {
+    throw new ApiInputError(
+      "TELEGRAM_DELIVERY_NOT_ENABLED",
+      "The verified Telegram delivery channel is not enabled.",
+      409,
+    );
+  }
+  const token = requiredSecret(env.TELEGRAM_BOT_TOKEN, "TELEGRAM_BOT_TOKEN");
+  const chatId = requiredSecret(env.TELEGRAM_ORDER_CHAT_ID, "TELEGRAM_ORDER_CHAT_ID");
+  return telegramCall<{ message_id: number }>(token, "sendMessage", {
+    chat_id: chatId,
+    text,
+    ...(options.disableNotification ? { disable_notification: true } : {}),
+  });
 }
 
 export async function listTelegramDeliveries(db: D1Database): Promise<TelegramDeliveryItem[]> {
@@ -410,12 +447,50 @@ async function telegramCall<T>(
   return payload.result;
 }
 
-function formatDeliveryMessage(payloadJson: string): string {
+async function formatDeliveryMessage(
+  env: SitesEnv,
+  payloadJson: string,
+  orderId: string | null,
+): Promise<string> {
   let payload: Record<string, string> = {};
   try {
     payload = JSON.parse(payloadJson) as Record<string, string>;
   } catch {
     throw new ApiInputError("TELEGRAM_PAYLOAD_INVALID", "The Telegram delivery payload is invalid.", 500);
+  }
+  if (payload.MASKED_CONTACT) {
+    if (!orderId) {
+      throw new ApiInputError(
+        "TELEGRAM_ORDER_CONTACT_UNAVAILABLE",
+        "The order contact is unavailable for Telegram delivery.",
+        500,
+      );
+    }
+    const order = await env.DB.prepare(
+      `SELECT contact_encrypted AS contactEncrypted, contact_erased_at AS contactErasedAt
+       FROM orders WHERE id = ? LIMIT 1`,
+    ).bind(orderId).first<{ contactEncrypted: string; contactErasedAt: string | null }>();
+    if (!order || order.contactErasedAt) {
+      throw new ApiInputError(
+        "TELEGRAM_ORDER_CONTACT_UNAVAILABLE",
+        "The order contact is unavailable for Telegram delivery.",
+        500,
+      );
+    }
+    try {
+      payload.MASKED_CONTACT = await decryptOrderContact(
+        order.contactEncrypted,
+        env.CLOUDBRIDGE_DATA_KEY,
+        "ORDER",
+        env.CLOUDBRIDGE_DATA_KEY_NEXT,
+      );
+    } catch {
+      throw new ApiInputError(
+        "TELEGRAM_ORDER_CONTACT_DECRYPT_FAILED",
+        "The order contact could not be decrypted for Telegram delivery.",
+        500,
+      );
+    }
   }
   const labels: Record<string, string> = {
     ORDER_NUMBER: "订单号",
@@ -425,11 +500,17 @@ function formatDeliveryMessage(payloadJson: string): string {
     STATUS: "状态",
     CREATED_AT: "创建时间",
     CONTACT_CHANNEL: "联系渠道",
-    MASKED_CONTACT: "脱敏联系方式",
+    MASKED_CONTACT: "联系方式",
   };
   const lines = ["CloudBridge 云桥 · 新订单"];
   for (const field of telegramNewOrderFieldCodes) {
-    if (payload[field]) lines.push(`${labels[field]}：${payload[field]}`);
+    if (!payload[field]) continue;
+    const value = field === "STATUS"
+      ? orderStatusLabelsZh[payload[field]] ?? payload[field]
+      : field === "CREATED_AT"
+        ? formatChinaDateTime(payload[field])
+      : payload[field];
+    lines.push(`${labels[field]}：${value}`);
   }
   return lines.join("\n");
 }

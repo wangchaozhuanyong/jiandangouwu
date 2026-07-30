@@ -4,10 +4,11 @@ import type { StorefrontChannel } from "@cloudbridge/contracts";
 import { resolveContactTarget } from "../lib/contact-actions.js";
 
 const channel = (
-  input: Pick<StorefrontChannel, "type" | "mode" | "directTarget">,
+  input: Pick<StorefrontChannel, "type" | "mode" | "directTarget">
+    & Partial<Pick<StorefrontChannel, "account">>,
 ): StorefrontChannel => ({
   label: input.type,
-  account: "account",
+  account: input.account ?? "account",
   qrImageUrl: null,
   serviceHours: "09:00 - 18:00",
   ...input,
@@ -45,8 +46,21 @@ test("only approved channel, mode, and protocol combinations produce direct acti
   assert.equal(resolveContactTarget(channel({
     type: "QQ",
     mode: "DIRECT_WITH_FALLBACK",
+    account: "288661812",
     directTarget: "mqqwpa://im/chat?chat_type=wpa&uin=288661812",
-  }), "zh"), "mqqwpa://im/chat?chat_type=wpa&uin=288661812");
+  }), "zh"), "https://wpa.qq.com/msgrd?v=3&uin=288661812&site=qq&menu=yes");
+  assert.equal(resolveContactTarget(channel({
+    type: "QQ",
+    mode: "DIRECT_WITH_FALLBACK",
+    account: "288661812",
+    directTarget: "mqqwpa://im/chat?chat_type=wpa&uin=3543543345",
+  }), "zh"), null);
+  assert.equal(resolveContactTarget(channel({
+    type: "QQ",
+    mode: "DIRECT_WITH_FALLBACK",
+    account: "288661812",
+    directTarget: "https://wpa.qq.com/msgrd?v=3&uin=288661812&site=qq&menu=yes",
+  }), "zh"), null);
   assert.equal(resolveContactTarget(channel({
     type: "WECHAT",
     mode: "QR_COPY",

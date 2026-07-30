@@ -233,6 +233,7 @@ export function SupportDrawer({ initialConfig, locale, onClose, open }: SupportD
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">(initialConfig ? "ready" : "idle");
   const [copied, setCopied] = useState("");
   const [copyError, setCopyError] = useState(false);
+  const [qqFallbackVisible, setQqFallbackVisible] = useState(false);
   const [qrChannel, setQrChannel] = useState<StorefrontChannel | null>(null);
   const [qrStatus, setQrStatus] = useState("");
   const [qrBusy, setQrBusy] = useState(false);
@@ -256,12 +257,17 @@ export function SupportDrawer({ initialConfig, locale, onClose, open }: SupportD
   useEffect(() => {
     setConfig(initialConfig);
     setState(initialConfig ? "ready" : "idle");
+    setQqFallbackVisible(false);
   }, [initialConfig, locale]);
 
   useEffect(() => {
     if (!open || state !== "idle") return;
     void loadChannels();
   }, [open, state]);
+
+  useEffect(() => {
+    if (!open) setQqFallbackVisible(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -310,10 +316,16 @@ export function SupportDrawer({ initialConfig, locale, onClose, open }: SupportD
     try {
       await navigator.clipboard.writeText(channel.account);
       setCopied(channel.type);
+      if (channel.type === "QQ") setQqFallbackVisible(false);
       window.setTimeout(() => setCopied(""), 1600);
     } catch {
       setCopyError(true);
     }
+  };
+
+  const handleQqLaunch = () => {
+    setCopyError(false);
+    setQqFallbackVisible(true);
   };
 
   const openQr = (channel: StorefrontChannel) => {
@@ -453,6 +465,7 @@ export function SupportDrawer({ initialConfig, locale, onClose, open }: SupportD
                     {directTarget && (
                       <a
                         href={directTarget}
+                        onClick={channel.type === "QQ" ? handleQqLaunch : undefined}
                         rel={external ? "noreferrer" : undefined}
                         target={external ? "_blank" : undefined}
                       >
@@ -463,7 +476,7 @@ export function SupportDrawer({ initialConfig, locale, onClose, open }: SupportD
                             ? (zh ? "撰写邮件" : "Write email")
                             : channel.type === "TELEGRAM"
                               ? (zh ? "打开 Telegram" : "Open Telegram")
-                              : (zh ? "打开 QQ" : "Open QQ")}
+                              : (zh ? "尝试打开 QQ" : "Try to open QQ")}
                       </a>
                     )}
                     <button onClick={() => void copyAccount(channel)} type="button">
@@ -477,7 +490,13 @@ export function SupportDrawer({ initialConfig, locale, onClose, open }: SupportD
           </div>
         )}
         <div aria-live="polite" className="support-drawer__status" role="status">
-          {copyError ? (zh ? "复制失败，请手动选择上方账号。" : "Copy failed. Select the account above manually.") : ""}
+          {copyError
+            ? (zh ? "复制失败，请手动选择上方账号。" : "Copy failed. Select the account above manually.")
+            : qqFallbackVisible
+              ? (zh
+                  ? "如果 QQ 没有打开，请确认设备已安装并登录 QQ，或复制 QQ 号后在客户端搜索。"
+                  : "If QQ did not open, make sure it is installed and signed in, or copy the QQ number and search in the app.")
+              : ""}
         </div>
         <footer>
           {zh

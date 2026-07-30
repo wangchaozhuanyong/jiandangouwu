@@ -1,5 +1,6 @@
 import type { D1Database } from "./types";
 import { adminPermissions } from "./access-roles";
+import { securityAlertDeliveryInsert } from "./system-alert-core";
 
 export type HeaderUser = {
   email: string;
@@ -238,7 +239,8 @@ export async function writeAudit(
   },
 ): Promise<void> {
   const id = crypto.randomUUID();
-  await db.prepare(
+  const createdAt = new Date().toISOString();
+  const auditInsert = db.prepare(
     "INSERT INTO audit_events (id, trace_id, action, result, actor_email, actor_display_name, target_type, target_id, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).bind(
     id,
@@ -250,8 +252,21 @@ export async function writeAudit(
     input.targetType ?? null,
     input.targetId ?? null,
     input.reason ?? null,
-    new Date().toISOString(),
-  ).run();
+    createdAt,
+  );
+  const alertInsert = securityAlertDeliveryInsert(db, {
+    auditId: id,
+    action: input.action,
+    result: input.result,
+    targetType: input.targetType ?? null,
+    targetId: input.targetId ?? null,
+    createdAt,
+  });
+  if (alertInsert) {
+    await db.batch([auditInsert, alertInsert]);
+    return;
+  }
+  await auditInsert.run();
 }
 
 export function parsePage(url: URL, defaults = { page: 1, pageSize: 30 }): {

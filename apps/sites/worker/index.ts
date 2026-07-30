@@ -14,6 +14,7 @@ import { scheduleExpiredOrderReconciliation } from "../server/public-api";
 import { handleCloudBridgeRequest } from "../server/router";
 import { serveStaticAsset } from "../server/static-assets";
 import { buildStorefrontBootstrap } from "../server/storefront-bootstrap";
+import { processSystemAlertDeliveries } from "../server/system-alerts";
 import { processTelegramDeliveries } from "../server/telegram";
 import type { SitesEnv, SitesExecutionContext } from "../server/types";
 
@@ -38,9 +39,16 @@ const worker = {
         )
       )
     ) {
-      context.waitUntil(ensureDailyBackup(env).catch((error: unknown) => {
-        console.error("[cloudbridge] Automatic daily backup failed", error);
-      }));
+      context.waitUntil(
+        ensureDailyBackup(env)
+          .catch((error: unknown) => {
+            console.error("[cloudbridge] Automatic daily backup failed", error);
+          })
+          .then(() => processSystemAlertDeliveries(env))
+          .catch((error: unknown) => {
+            console.error("[cloudbridge] System alert delivery processing failed", error);
+          }),
+      );
       context.waitUntil(ensureExchangeRatesFresh(env).catch((error: unknown) => {
         console.error("[cloudbridge] Automatic exchange-rate sync failed", error);
       }));
@@ -51,7 +59,12 @@ const worker = {
       }));
     }
     const cloudBridgeResponse = await handleCloudBridgeRequest(request, env, context);
-    if (cloudBridgeResponse) return cloudBridgeResponse;
+    if (cloudBridgeResponse) {
+      context.waitUntil(processSystemAlertDeliveries(env).catch((error: unknown) => {
+        console.error("[cloudbridge] System alert delivery processing failed", error);
+      }));
+      return cloudBridgeResponse;
+    }
 
     if (url.pathname === "/_vinext/image") {
       const images = env.IMAGES;

@@ -29,6 +29,7 @@ import {
   processTelegramDeliveries,
   telegramDeliveryInsert,
 } from "./telegram";
+import { chinaDateKey } from "./time";
 import type {
   D1Database,
   D1PreparedStatement,
@@ -441,7 +442,7 @@ async function createOrder(
   const reservedUntil = new Date(now.getTime() + 30 * 60_000).toISOString();
   const id = crypto.randomUUID();
   const historyId = crypto.randomUUID();
-  const orderNumber = `CB${now.toISOString().slice(0, 10).replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase()}`;
+  const orderNumber = `CB${chinaDateKey(now).replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase()}`;
   const referenceAmount = currency === "USDT"
     ? null
     : {

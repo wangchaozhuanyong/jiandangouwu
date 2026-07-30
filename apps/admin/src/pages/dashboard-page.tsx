@@ -56,8 +56,8 @@ const capabilityCopy: Record<
   NOTIFICATION_DELIVERY: {
     title: { zh: "通知投递异常", en: "Notification delivery incidents" },
     body: {
-      zh: "系统尚未保存发送、失败、重试或外部回执，因此不能显示失败数量。",
-      en: "Send, failure, retry, and external receipt events are not stored, so no failure count can be shown.",
+      zh: "Telegram 新订单通知保存发送、失败、重试和外部消息回执；实际投递仍取决于服务端密钥、真实连接验证和启用状态。",
+      en: "Telegram new-order notifications store sends, failures, retries, and external message receipts. Actual delivery still depends on server secrets, real connection verification, and enabled state.",
     },
     action: { zh: "查看通知边界", en: "View notification boundary" },
     icon: Bell,
@@ -65,8 +65,8 @@ const capabilityCopy: Record<
   SECURITY_ALERT: {
     title: { zh: "自动安全告警", en: "Automated security alerts" },
     body: {
-      zh: "安全事件页是审计记录的固定规则投影，不是威胁检测或自动告警服务。",
-      en: "Security events are a fixed audit projection, not threat detection or an automated alerting service.",
+      zh: "高优先级安全审计信号会进入可去重、可重试并保存 Telegram 回执的告警队列；这仍不是威胁检测、SIEM 或自动账号处置。",
+      en: "High-priority security audit signals enter a deduplicated, retryable alert queue with Telegram receipts. This is still not threat detection, SIEM, or automatic account response.",
     },
     action: { zh: "查看安全事件", en: "View security events" },
     icon: ShieldCheck,
@@ -79,6 +79,7 @@ const capabilityStateCopy: Record<
 > = {
   IMPLEMENTED_REQUEST_DRIVEN: { zh: "按访问运行", en: "On-access" },
   IMPLEMENTED_LIVE_QUERY: { zh: "实时查询", en: "Live query" },
+  IMPLEMENTED_RETRY_QUEUE: { zh: "可重试队列", en: "Retry queue" },
   NOT_COLLECTED: { zh: "未采集", en: "Not collected" },
   NOT_IMPLEMENTED: { zh: "未开发", en: "Not implemented" },
 };

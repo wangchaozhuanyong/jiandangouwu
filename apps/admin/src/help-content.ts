@@ -73,8 +73,8 @@ export const adminPageHelp = {
     en: "Reviews the current ChatGPT administrator identity and sign-in boundary. Passwords and two-step verification are managed by ChatGPT, not stored here.",
   },
   "security-events": {
-    zh: "筛选与安全相关的审计事件，帮助优先复核拒绝、失败和敏感操作。这里显示的是审计信号，不是自动处置结果。",
-    en: "Filters security-related audit events to prioritize denied, failed, and sensitive actions. These are audit signals, not automatic remediation results.",
+    zh: "筛选与安全相关的审计事件，并管理高优先级信号的 Telegram 告警、真实回执和失败重试。这里仍不执行威胁检测或自动账号处置。",
+    en: "Filters security-related audit events and manages Telegram alerts, real receipts, and retries for high-priority signals. It still performs no threat detection or automatic account response.",
   },
   "data-security": {
     zh: "查看数据加密、访问边界、保留清理预览、隐私请求和密钥轮换状态。不可逆清理仍保持关闭并需要人工核验。",
@@ -89,8 +89,8 @@ export const adminPageHelp = {
     en: "Searches, filters, and exports administrator audit records. Sensitive exports require a business reason, confirmation text, and permission.",
   },
   backups: {
-    zh: "管理加密 D1 备份、逻辑校验和隔离恢复演练。演练不会覆盖当前生产 D1，也不等于已经完成切换。",
-    en: "Manages encrypted D1 backups, logical verification, and isolated recovery drills. A drill does not overwrite production D1 or prove a completed cutover.",
+    zh: "管理加密 D1 备份、逻辑校验、隔离恢复演练及备份失败/卡住告警。演练不会覆盖当前生产 D1，也不等于已经完成切换。",
+    en: "Manages encrypted D1 backups, logical verification, isolated recovery drills, and failed or stale backup alerts. A drill does not overwrite production D1 or prove a completed cutover.",
   },
   integrations: {
     zh: "查看 Sites D1、R2、ChatGPT 身份及外部集成的真实连接状态。未配置或未验证的集成会明确显示为不可用。",

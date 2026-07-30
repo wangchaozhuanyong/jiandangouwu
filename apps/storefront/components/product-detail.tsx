@@ -84,14 +84,13 @@ export function ProductDetailView({
   const [mutationState, setMutationState] = useState<MutationState>("idle");
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
   const [requestError, setRequestError] = useState("");
-  const [fieldError, setFieldError] = useState<"contact" | "policy" | "">("");
+  const [fieldError, setFieldError] = useState<"contact" | "">("");
   const [slow, setSlow] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [compactNav, setCompactNav] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const lastLoadedCurrency = useRef(initialProduct ? "CNY" : "");
   const contactRef = useRef<HTMLInputElement>(null);
-  const policyRef = useRef<HTMLInputElement>(null);
   const topSentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -141,14 +140,14 @@ export function ProductDetailView({
   }, [mutationState]);
 
   useEffect(() => {
-    const dirty = Boolean(draft.contact || draft.accepted) && !receipt;
+    const dirty = Boolean(draft.contact) && !receipt;
     if (!dirty) return undefined;
     const guard = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
-  }, [draft.accepted, draft.contact, receipt]);
+  }, [draft.contact, receipt]);
 
   useEffect(() => {
     const sentinel = topSentinelRef.current;
@@ -186,11 +185,6 @@ export function ProductDetailView({
       focusField(contactRef.current);
       return;
     }
-    if (!draft.accepted) {
-      setFieldError("policy");
-      focusField(policyRef.current);
-      return;
-    }
     const idempotencyKey = draft.idempotencyKey ?? crypto.randomUUID();
     if (!draft.idempotencyKey) updateOrderDraft(slug, { idempotencyKey });
     setMutationState("submitting");
@@ -217,12 +211,10 @@ export function ProductDetailView({
             getProduct(slug, locale, currency),
           ]);
           const nextChannel = resolveAvailableContactChannel(nextConfig.channels, draft.channel);
-          const policyChanged = nextConfig.settings.policyVersion !== config.settings.policyVersion;
           setConfig(nextConfig);
           setProduct(nextProduct);
           updateOrderDraft(slug, {
             ...(nextChannel ? { channel: nextChannel } : {}),
-            ...(policyChanged ? { accepted: false } : {}),
           });
           setRequestError(t.orderConfigurationUpdated);
           setViewState("ready");
@@ -253,7 +245,6 @@ export function ProductDetailView({
   const backHref = getListingHref(locale);
   const channel = draft.channel;
   const contact = draft.contact;
-  const accepted = draft.accepted;
   const orderAvailability = resolveOrderAvailability(config);
   const canOrder = orderAvailability === "available";
   const shareText = product
@@ -406,20 +397,6 @@ export function ProductDetailView({
                   />
                   {fieldError === "contact" && <small className="field-error" id="contact-error">{t.contactError}</small>}
                 </label>
-                <label className="policy-check">
-                  <input
-                    ref={policyRef}
-                    type="checkbox"
-                    checked={accepted}
-                    onChange={(event) => updateDraft({ accepted: event.target.checked })}
-                    aria-invalid={fieldError === "policy"}
-                    aria-describedby={fieldError === "policy" ? "policy-error" : undefined}
-                    disabled={!canOrder}
-                    required
-                  />
-                  <span>{t.policyAccept}</span>
-                </label>
-                {fieldError === "policy" && <small className="field-error" id="policy-error">{t.policyError}</small>}
                 {requestError && <p className="form-error" role="alert"><WarningCircle size={16} aria-hidden="true" />{requestError}</p>}
                 {slow && <p className="slow-network" role="status">{t.slowNetwork}</p>}
                 <div className="order-action-dock">

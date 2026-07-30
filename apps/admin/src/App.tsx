@@ -545,7 +545,12 @@ function PageOutlet({
     return <TranslationsPage locale={locale} permissions={user.permissions} />;
   }
   if (page === "security-events") {
-    return <SecurityEventsPage locale={locale} />;
+    return (
+      <SecurityEventsPage
+        canWrite={user.permissions.includes("settings.write")}
+        locale={locale}
+      />
+    );
   }
   if (page === "data-security") {
     return (

@@ -82,6 +82,12 @@ import {
   testTelegramConnection,
   updateTelegramSettingValue,
 } from "./telegram";
+import {
+  createSystemAlertDeliveryTest,
+  listSystemAlertDeliveries,
+  parseSystemAlertSource,
+  retrySystemAlertDelivery,
+} from "./system-alerts";
 import { normalizeLegacyLineBreaks } from "./text";
 import type { D1Database, SitesEnv } from "./types";
 
@@ -497,10 +503,15 @@ export async function handleAdminApi(
   if (pathname === "/v1/admin/backups") {
     if (request.method === "GET") {
       await requireAdmin(env.DB, request, "settings.read");
-      await ensureDailyBackup(env);
+      try {
+        await ensureDailyBackup(env);
+      } catch {
+        // Backup failures are persisted to the audit and system-alert queues.
+        // Keep the read surface available so operators can inspect that evidence.
+      }
       return success({
         items: await listBackupSnapshots(env.DB),
-        readiness: await getBackupReadiness(env.DB),
+        readiness: await getBackupReadiness(env),
       });
     }
     if (request.method === "POST") {
@@ -671,7 +682,7 @@ export async function handleAdminApi(
         { code: "STATUS", value: "MANUAL_PENDING" },
         { code: "CREATED_AT", value: new Date().toISOString() },
         { code: "CONTACT_CHANNEL", value: "EMAIL" },
-        { code: "MASKED_CONTACT", value: "de***@invalid.example" },
+        { code: "MASKED_CONTACT", value: "demo@invalid.example" },
       ].filter((field) => settings.includedFields.includes(
         field.code as (typeof settings.includedFields)[number],
       )),
@@ -700,6 +711,57 @@ export async function handleAdminApi(
     return success(await retryTelegramDelivery(
       env.DB,
       decodeURIComponent(telegramRetryMatch[1]),
+      actor,
+      requiredString(body.reason, "reason", 8, 500),
+    ));
+  }
+
+  if (pathname === "/v1/admin/system-alert-deliveries" && request.method === "GET") {
+    const requestedSource = url.searchParams.get("source");
+    const source = parseSystemAlertSource(requestedSource);
+    if (requestedSource && !source) {
+      throw new ApiInputError(
+        "SYSTEM_ALERT_SOURCE_INVALID",
+        "The system alert source is invalid.",
+        422,
+      );
+    }
+    await requireAdmin(
+      env.DB,
+      request,
+      source === "BACKUP" ? "settings.read" : "audit.read",
+    );
+    return success(await listSystemAlertDeliveries(env, source));
+  }
+  if (pathname === "/v1/admin/system-alert-deliveries/test" && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    const body = await readJson<Record<string, unknown>>(request);
+    const source = parseSystemAlertSource(
+      typeof body.source === "string" ? body.source : null,
+    );
+    if (!source) {
+      throw new ApiInputError(
+        "SYSTEM_ALERT_SOURCE_INVALID",
+        "The system alert source is invalid.",
+        422,
+      );
+    }
+    return success(await createSystemAlertDeliveryTest(
+      env,
+      source,
+      actor,
+      requiredString(body.reason, "reason", 8, 500),
+    ), { status: 201 });
+  }
+  const systemAlertRetryMatch = pathname.match(
+    /^\/v1\/admin\/system-alert-deliveries\/([^/]+)\/retry$/u,
+  );
+  if (systemAlertRetryMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "settings.write");
+    const body = await readJson<Record<string, unknown>>(request);
+    return success(await retrySystemAlertDelivery(
+      env,
+      decodeURIComponent(systemAlertRetryMatch[1]),
       actor,
       requiredString(body.reason, "reason", 8, 500),
     ));

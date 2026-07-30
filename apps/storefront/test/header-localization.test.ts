@@ -33,6 +33,22 @@ test("the header always exposes truthful customer support", () => {
   );
 });
 
+test("QQ support uses a best-effort app handoff with a visible copy fallback", () => {
+  const controls = read("components/storefront-controls.tsx");
+
+  assert.match(
+    controls,
+    /onClick=\{channel\.type === "QQ" \? handleQqLaunch : undefined\}/u,
+  );
+  assert.match(controls, /尝试打开 QQ/u);
+  assert.match(controls, /Try to open QQ/u);
+  assert.match(controls, /如果 QQ 没有打开/u);
+  assert.match(controls, /If QQ did not open/u);
+  assert.match(controls, /setQqFallbackVisible\(true\)/u);
+  assert.match(controls, /copyAccount\(channel\)/u);
+  assert.doesNotMatch(controls, /QQ (?:已打开|opened successfully)/u);
+});
+
 test("the footer keeps four stable entries and opens truthful contact support last", () => {
   const shell = read("components/site-shell.tsx");
   const footer = shell.slice(

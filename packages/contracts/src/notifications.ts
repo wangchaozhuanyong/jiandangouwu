@@ -86,3 +86,55 @@ export type TelegramDeliveryItem = {
 export type RetryTelegramDeliveryInput = {
   reason: string;
 };
+
+export const systemAlertSources = ["SECURITY", "BACKUP"] as const;
+export type SystemAlertSource = (typeof systemAlertSources)[number];
+
+export type SystemAlertEventType =
+  | "SECURITY_SIGNAL"
+  | "BACKUP_FAILURE"
+  | "BACKUP_STALE"
+  | "DELIVERY_TEST";
+
+export type SystemAlertSeverity = "HIGH" | "MEDIUM";
+export type SystemAlertDeliveryStatus = TelegramDeliveryStatus;
+export type SystemAlertConnectionState =
+  | "MISSING_SECRETS"
+  | "UNVERIFIED"
+  | "DISABLED"
+  | "CONNECTED";
+
+export type SystemAlertDeliveryItem = {
+  id: string;
+  source: SystemAlertSource;
+  eventType: SystemAlertEventType;
+  severity: SystemAlertSeverity;
+  status: SystemAlertDeliveryStatus;
+  subjectType: string;
+  subjectId: string;
+  title: Readonly<Record<"zh" | "en", string>>;
+  summary: Readonly<Record<"zh" | "en", string>>;
+  attemptCount: number;
+  nextAttemptAt: string | null;
+  deliveredAt: string | null;
+  telegramMessageId: string | null;
+  errorCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SystemAlertReadiness = {
+  connectionState: SystemAlertConnectionState;
+  configuredChannels: number;
+  recipientGroupLabel: string;
+  verifiedAt: string | null;
+  pendingCount: number;
+  failedCount: number;
+  deliveredCount: number;
+  lastDeliveryVerifiedAt: string | null;
+};
+
+export type SystemAlertDeliveriesResponse = {
+  items: SystemAlertDeliveryItem[];
+  readiness: SystemAlertReadiness;
+};

@@ -8,6 +8,7 @@ import {
   writeAudit,
   type AdminIdentity,
 } from "./http";
+import { chinaDateKey } from "./time";
 import type {
   D1Database,
   D1PreparedStatement,
@@ -373,9 +374,7 @@ async function validateUpload(value: FormDataEntryValue | null): Promise<Validat
       ? "webp"
       : "jpg";
   const slug = safeFileSlug(value.name);
-  const now = new Date();
-  const year = String(now.getUTCFullYear());
-  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const [year, month] = chinaDateKey(new Date()).split("-");
   const key = `uploads/${year}/${month}/${crypto.randomUUID()}-${slug}.${extension}`;
   return {
     key,

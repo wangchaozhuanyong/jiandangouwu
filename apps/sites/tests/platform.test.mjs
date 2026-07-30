@@ -102,6 +102,10 @@ test("Sites build declares D1 and R2 and ships the migration", () => {
     read("dist/.openai/drizzle/0005_concerned_war_machine.sql"),
     /ALTER TABLE `privacy_requests` ADD `result_json`/u,
   );
+  assert.match(
+    read("dist/.openai/drizzle/0006_nice_doctor_faustus.sql"),
+    /CREATE TABLE `system_alert_deliveries`/u,
+  );
 });
 
 test("root Sites release stages the complete platform instead of the legacy prototype", () => {
@@ -117,6 +121,7 @@ test("root Sites release stages the complete platform instead of the legacy prot
   assert.match(releaseScript, /0003_chunky_tattoo\.sql/u);
   assert.match(releaseScript, /0004_sweet_adam_warlock\.sql/u);
   assert.match(releaseScript, /0005_concerned_war_machine\.sql/u);
+  assert.match(releaseScript, /0006_nice_doctor_faustus\.sql/u);
   assert.match(releaseScript, /rmSync\(target,\s*\{\s*force:\s*true,\s*recursive:\s*true\s*\}\)/u);
   assert.match(releaseScript, /cpSync\(source,\s*target,\s*\{\s*recursive:\s*true\s*\}\)/u);
 });
@@ -159,8 +164,26 @@ test("Sites sets the server-rendered document language from the locale route", (
   assert.match(proxy, /resolveDocumentLocale\(request\.nextUrl\.pathname\)/u);
   assert.match(layout, /await headers\(\)/u);
   assert.match(layout, /requestHeaders\.get\(DOCUMENT_LOCALE_HEADER\)/u);
-  assert.match(layout, /<html lang=\{documentLanguage\}>/u);
+  assert.match(layout, /<html[\s\S]*?lang=\{documentLanguage\}/u);
   assert.doesNotMatch(layout, /<html lang="zh-CN">/u);
+});
+
+test("Sites restores the persisted storefront theme before hydration", () => {
+  const layout = read("app/layout.tsx");
+
+  assert.match(layout, /STOREFRONT_THEME_STORAGE_KEY/u);
+  assert.match(
+    layout,
+    /window\.localStorage\.getItem\("\$\{STOREFRONT_THEME_STORAGE_KEY\}"\)/u,
+  );
+  assert.match(layout, /document\.documentElement\.dataset\.theme=theme/u);
+  assert.match(layout, /document\.documentElement\.style\.colorScheme=theme/u);
+  assert.match(layout, /data-theme=\{DEFAULT_STOREFRONT_THEME\}/u);
+  assert.match(layout, /suppressHydrationWarning/u);
+  assert.match(
+    layout,
+    /<script dangerouslySetInnerHTML=\{\{ __html: themeBootstrap \}\} \/>/u,
+  );
 });
 
 test("Sites runtime contains public, admin, health, D1, and R2 routes", () => {
@@ -172,6 +195,7 @@ test("Sites runtime contains public, admin, health, D1, and R2 routes", () => {
   assert.match(router, /\/media\//u);
   assert.match(admin, /\/v1\/admin\/sites-readiness/u);
   assert.match(admin, /\/v1\/admin\/backups/u);
+  assert.match(admin, /\/v1\/admin\/system-alert-deliveries/u);
   assert.match(admin, /\/v1\/admin\/media/u);
   assert.match(admin, /replaceMediaReferences/u);
   assert.match(admin, /deleteManagedMedia/u);
@@ -182,6 +206,19 @@ test("Sites runtime contains public, admin, health, D1, and R2 routes", () => {
   assert.match(media, /uploadKeyPattern/u);
   assert.doesNotMatch(media, /backups\//u);
   assert.match(admin, /objectStorage: env\.MEDIA \? "bound" : "missing"/u);
+});
+
+test("Sites processes automatic system alerts after audited API and backup work", () => {
+  const worker = read("worker/index.ts");
+  const alertRuntime = read("server/system-alerts.ts");
+  const auditRuntime = read("server/http.ts");
+
+  assert.match(worker, /processSystemAlertDeliveries/u);
+  assert.match(worker, /ensureDailyBackup\(env\)[\s\S]*?processSystemAlertDeliveries\(env\)/u);
+  assert.match(auditRuntime, /securityAlertDeliveryInsert/u);
+  assert.match(alertRuntime, /status IN \('PENDING','RETRY_SCHEDULED'\)/u);
+  assert.match(alertRuntime, /attemptCount >= retryDelaysMs\.length/u);
+  assert.match(alertRuntime, /telegram_message_id/u);
 });
 
 test("Sites launch gates fail closed until a configured contact channel exists", () => {
@@ -247,7 +284,7 @@ test("Sites logo bypasses unavailable image transforms and the worker keeps a sa
   assert.ok(worker.includes("sourceUrl.origin !== url.origin"));
 });
 
-test("Sites backup admin exposes encrypted backup, D1 import candidates, and fail-closed alerting", () => {
+test("Sites backup admin exposes encrypted backup, D1 import candidates, and verified alert delivery", () => {
   const page = read("../admin/src/features/sites/sites-backups-page.tsx");
   const api = read("../admin/src/features/sites/backups-api.ts");
   const server = read("server/backup-api.ts");
@@ -256,7 +293,8 @@ test("Sites backup admin exposes encrypted backup, D1 import candidates, and fai
   assert.match(page, /createSitesBackup/u);
   assert.match(page, /verifySitesBackup/u);
   assert.match(page, /validateSitesBackupRestorePackage/u);
-  assert.match(page, /邮件、短信或 Telegram 告警尚未连接/u);
+  assert.match(page, /SystemAlertsPanel/u);
+  assert.match(page, /至少取得一次该范围的消息回执/u);
   assert.match(page, /隔离恢复运行器/u);
   assert.match(page, /不会写入当前 D1/u);
   assert.match(page, /--d1-candidate-dir/u);

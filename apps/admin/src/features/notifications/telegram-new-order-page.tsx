@@ -50,7 +50,7 @@ const fieldLabels: Record<TelegramNewOrderFieldCode, Record<Locale, string>> = {
   STATUS: { zh: "订单状态", en: "Order status" },
   CREATED_AT: { zh: "创建时间", en: "Created at" },
   CONTACT_CHANNEL: { zh: "联系渠道", en: "Contact channel" },
-  MASKED_CONTACT: { zh: "脱敏联系方式", en: "Masked contact" },
+  MASKED_CONTACT: { zh: "联系方式", en: "Contact" },
 };
 
 const editableSettings = (settings: AdminTelegramNewOrderSettings): TelegramSettingsForm => ({
@@ -384,7 +384,7 @@ export default function TelegramNewOrderPage({
         <div className="telegram-panel-heading">
           <div>
             <small>SAFE PREVIEW</small>
-            <h2>{copy(locale, "脱敏消息预览", "Masked message preview")}</h2>
+            <h2>{copy(locale, "消息预览", "Message preview")}</h2>
           </div>
           <button
             className="admin-secondary"

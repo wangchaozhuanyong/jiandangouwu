@@ -214,6 +214,33 @@ export const telegramDeliveries = sqliteTable("telegram_deliveries", {
   index("telegram_deliveries_created_idx").on(table.createdAt),
 ]);
 
+export const systemAlertDeliveries = sqliteTable("system_alert_deliveries", {
+  id: text("id").primaryKey(),
+  dedupeKey: text("dedupe_key").notNull(),
+  source: text("source").notNull(),
+  eventType: text("event_type").notNull(),
+  severity: text("severity").notNull(),
+  status: text("status").notNull(),
+  subjectType: text("subject_type").notNull(),
+  subjectId: text("subject_id").notNull(),
+  titleZh: text("title_zh").notNull(),
+  titleEn: text("title_en").notNull(),
+  summaryZh: text("summary_zh").notNull(),
+  summaryEn: text("summary_en").notNull(),
+  payloadJson: text("payload_json").notNull(),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  nextAttemptAt: text("next_attempt_at"),
+  deliveredAt: text("delivered_at"),
+  telegramMessageId: text("telegram_message_id"),
+  errorCode: text("error_code"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  uniqueIndex("system_alert_deliveries_dedupe_unique").on(table.dedupeKey),
+  index("system_alert_deliveries_status_next_idx").on(table.status, table.nextAttemptAt),
+  index("system_alert_deliveries_source_created_idx").on(table.source, table.createdAt),
+]);
+
 export const orderStatusHistory = sqliteTable("order_status_history", {
   id: text("id").primaryKey(),
   orderId: text("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
