@@ -7,6 +7,9 @@ export const stockModes = ["FINITE", "UNLIMITED"] as const;
 export type StockMode = (typeof stockModes)[number];
 
 export const STOREFRONT_LOW_STOCK_MAX = 3;
+export const INVENTORY_RISK_THRESHOLD_MIN = 1;
+export const INVENTORY_RISK_THRESHOLD_MAX = 99;
+export const DEFAULT_INVENTORY_RISK_THRESHOLD = STOREFRONT_LOW_STOCK_MAX;
 
 export const adminInventoryRiskLevels = [
   "INVALID_STOCK",

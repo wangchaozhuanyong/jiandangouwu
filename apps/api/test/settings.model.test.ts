@@ -17,6 +17,7 @@ test("site settings use safe defaults for missing or damaged values", () => {
     policyVersion: "",
     acceptOrders: "yes",
     supportEnabled: false,
+    inventoryRiskThreshold: 0,
     transitServiceEnabled: true,
     transitServiceUrl: "javascript:alert(1)",
     secret: "must-never-be-exposed",
@@ -27,6 +28,7 @@ test("site settings use safe defaults for missing or damaged values", () => {
   assert.equal(parsed.defaultLocale, "zh");
   assert.equal(parsed.acceptOrders, true);
   assert.equal(parsed.supportEnabled, false);
+  assert.equal(parsed.inventoryRiskThreshold, 3);
   assert.equal(parsed.transitServiceUrl, null);
   assert.equal("secret" in parsed, false);
 });
@@ -46,6 +48,7 @@ test("site settings preserve valid localized content and HTTPS transit URLs", ()
     policyVersion: "2026-08-01",
     acceptOrders: false,
     supportEnabled: true,
+    inventoryRiskThreshold: 7,
     transitServiceEnabled: true,
     transitServiceUrl: "https://transit.example.com/path",
   });
@@ -57,6 +60,7 @@ test("site settings preserve valid localized content and HTTPS transit URLs", ()
     policyVersion: "2026-08-01",
     acceptOrders: false,
     supportEnabled: true,
+    inventoryRiskThreshold: 7,
     transitServiceEnabled: true,
     transitServiceUrl: "https://transit.example.com/path",
   });

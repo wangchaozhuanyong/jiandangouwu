@@ -110,6 +110,9 @@ test("Sites overview returns full-catalog live inventory risks with stable prior
     UPDATE products
       SET stock_quantity = 5
       WHERE id = 'product-chatgpt' AND stock_mode = 'UNLIMITED';
+    UPDATE site_settings
+      SET value_json = json_set(value_json, '$.inventoryRiskThreshold', 7)
+      WHERE key = 'storefront.settings';
   `);
 
   try {
@@ -124,7 +127,7 @@ test("Sites overview returns full-catalog live inventory risks with stable prior
 
     assert.deepEqual(payload.data.inventoryRisk, {
       source: "LIVE_DATABASE_QUERY",
-      threshold: 3,
+      threshold: 7,
       evaluatedProductCount: 8,
       affectedProductCount: 3,
       soldOutCount: 1,
@@ -163,6 +166,58 @@ test("Sites overview returns full-catalog live inventory risks with stable prior
   }
 });
 
+test("Sites settings persist a bounded inventory risk threshold with CAS and audit", async () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(migration);
+  seedAdministrator(sqlite);
+
+  try {
+    const readResponse = await handleAdminApi(
+      productRequest("/v1/admin/site-settings"),
+      { DB: d1Adapter(sqlite), MEDIA: {} },
+      "/v1/admin/site-settings",
+    );
+    assert.ok(readResponse);
+    const initial = await readResponse.json();
+    assert.equal(initial.data.inventoryRiskThreshold, 3);
+
+    const updateResponse = await handleAdminApi(
+      settingsRequest(7, 1),
+      { DB: d1Adapter(sqlite), MEDIA: {} },
+      "/v1/admin/site-settings",
+    );
+    assert.ok(updateResponse);
+    assert.equal(updateResponse.status, 200);
+    const updated = await updateResponse.json();
+    assert.equal(updated.data.inventoryRiskThreshold, 7);
+    assert.equal(updated.data.version, 2);
+
+    const stored = sqlite.prepare(
+      "SELECT json_extract(value_json, '$.inventoryRiskThreshold') AS threshold FROM site_settings WHERE key = 'storefront.settings'",
+    ).get();
+    assert.equal(stored.threshold, 7);
+    assert.equal(
+      sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM audit_events WHERE action = 'settings.storefront.updated'",
+      ).get().count,
+      1,
+    );
+
+    await assert.rejects(
+      handleAdminApi(
+        settingsRequest(100, 2),
+        { DB: d1Adapter(sqlite), MEDIA: {} },
+        "/v1/admin/site-settings",
+      ),
+      (error) => error instanceof ApiInputError
+        && error.code === "VALIDATION_FAILED"
+        && error.details?.[0]?.field === "inventoryRiskThreshold",
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 async function productPayload(sqlite, path) {
   const response = await handleAdminApi(
     productRequest(path),
@@ -182,6 +237,30 @@ function productRequest(path) {
   });
 }
 
+function settingsRequest(inventoryRiskThreshold, version) {
+  return new Request("https://example.test/v1/admin/site-settings", {
+    method: "PATCH",
+    headers: {
+      "content-type": "application/json",
+      "oai-authenticated-user-email": "owner@example.test",
+      "x-csrf-token": "sites-siwc",
+    },
+    body: JSON.stringify({
+      version,
+      siteName: { zh: "云桥", en: "CloudBridge" },
+      defaultLocale: "zh",
+      seoDescription: { zh: "中文介绍", en: "English description" },
+      policyVersion: "2026-07-29",
+      acceptOrders: false,
+      supportEnabled: false,
+      inventoryRiskThreshold,
+      transitServiceEnabled: false,
+      transitServiceUrl: null,
+      reason: "QA inventory risk threshold update",
+    }),
+  });
+}
+
 function seedAdministrator(sqlite) {
   const now = new Date().toISOString();
   sqlite.prepare(
@@ -192,7 +271,7 @@ function seedAdministrator(sqlite) {
     "admin-owner",
     "owner@example.test",
     "Owner",
-    JSON.stringify(["catalog.read"]),
+    JSON.stringify(["catalog.read", "settings.read", "settings.write"]),
     now,
     now,
     now,

@@ -7,6 +7,7 @@ export type StorefrontSettings = {
   policyVersion: string;
   acceptOrders: boolean;
   supportEnabled: boolean;
+  inventoryRiskThreshold: number;
   transitServiceEnabled: boolean;
   transitServiceUrl: string | null;
 };

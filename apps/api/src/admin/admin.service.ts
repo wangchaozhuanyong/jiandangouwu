@@ -1,6 +1,5 @@
 import {
   AUDIT_CSV_EXPORT_LIMIT,
-  STOREFRONT_LOW_STOCK_MAX,
   auditCsvFilename,
   serializeAuditCsv,
   type AdminInventoryRiskItem,
@@ -21,6 +20,10 @@ import type { Prisma } from "../generated/prisma/client.js";
 import { deriveManualPaymentStage } from "../orders/orders.admin.service.js";
 import { OrderReservationService } from "../orders/order-reservation.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import {
+  parseStorefrontSettings,
+  STOREFRONT_SETTINGS_KEY,
+} from "../settings/settings.model.js";
 import type {
   AdminAuditQueryDto,
   AdminAuditExportDto,
@@ -162,74 +165,81 @@ export class AdminService {
   }
 
   private async inventoryRisk(): Promise<AdminInventoryRiskSummary> {
-    const invalidStockWhere = {
-      status: "ACTIVE",
-      OR: [
-        { stockMode: "FINITE", stockQuantity: null },
-        { stockMode: "FINITE", stockQuantity: { lt: 0 } },
-        { stockMode: "UNLIMITED", stockQuantity: { not: null } },
-      ],
-    } satisfies Prisma.ProductWhereInput;
-    const soldOutWhere = {
-      status: "ACTIVE",
-      stockMode: "FINITE",
-      stockQuantity: 0,
-    } satisfies Prisma.ProductWhereInput;
-    const lowStockWhere = {
-      status: "ACTIVE",
-      stockMode: "FINITE",
-      stockQuantity: { gt: 0, lte: STOREFRONT_LOW_STOCK_MAX },
-    } satisfies Prisma.ProductWhereInput;
-    const [
-      evaluatedProductCount,
-      soldOutCount,
-      lowStockCount,
-      invalidStockCount,
-      invalidProducts,
-      soldOutProducts,
-      lowStockProducts,
-    ] = await this.prisma.$transaction([
-      this.prisma.product.count({ where: { status: "ACTIVE" } }),
-      this.prisma.product.count({ where: soldOutWhere }),
-      this.prisma.product.count({ where: lowStockWhere }),
-      this.prisma.product.count({ where: invalidStockWhere }),
-      this.prisma.product.findMany({
-        where: invalidStockWhere,
-        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-        take: inventoryRiskSampleLimit,
-        select: inventoryRiskProductSelect,
-      }),
-      this.prisma.product.findMany({
-        where: soldOutWhere,
-        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-        take: inventoryRiskSampleLimit,
-        select: inventoryRiskProductSelect,
-      }),
-      this.prisma.product.findMany({
-        where: lowStockWhere,
-        orderBy: [{ stockQuantity: "asc" }, { updatedAt: "desc" }, { id: "asc" }],
-        take: inventoryRiskSampleLimit,
-        select: inventoryRiskProductSelect,
-      }),
-    ]);
-    const affectedProductCount = soldOutCount + lowStockCount + invalidStockCount;
-    const items = [
-      ...invalidProducts.map((product) => inventoryRiskItem(product, "INVALID_STOCK")),
-      ...soldOutProducts.map((product) => inventoryRiskItem(product, "SOLD_OUT")),
-      ...lowStockProducts.map((product) => inventoryRiskItem(product, "LOW_STOCK")),
-    ].slice(0, inventoryRiskSampleLimit);
+    return this.prisma.$transaction(async (transaction) => {
+      const settingsRow = await transaction.siteSetting.findUnique({
+        where: { key: STOREFRONT_SETTINGS_KEY },
+        select: { value: true },
+      });
+      const threshold = parseStorefrontSettings(settingsRow?.value).inventoryRiskThreshold;
+      const invalidStockWhere = {
+        status: "ACTIVE",
+        OR: [
+          { stockMode: "FINITE", stockQuantity: null },
+          { stockMode: "FINITE", stockQuantity: { lt: 0 } },
+          { stockMode: "UNLIMITED", stockQuantity: { not: null } },
+        ],
+      } satisfies Prisma.ProductWhereInput;
+      const soldOutWhere = {
+        status: "ACTIVE",
+        stockMode: "FINITE",
+        stockQuantity: 0,
+      } satisfies Prisma.ProductWhereInput;
+      const lowStockWhere = {
+        status: "ACTIVE",
+        stockMode: "FINITE",
+        stockQuantity: { gt: 0, lte: threshold },
+      } satisfies Prisma.ProductWhereInput;
+      const [
+        evaluatedProductCount,
+        soldOutCount,
+        lowStockCount,
+        invalidStockCount,
+        invalidProducts,
+        soldOutProducts,
+        lowStockProducts,
+      ] = await Promise.all([
+        transaction.product.count({ where: { status: "ACTIVE" } }),
+        transaction.product.count({ where: soldOutWhere }),
+        transaction.product.count({ where: lowStockWhere }),
+        transaction.product.count({ where: invalidStockWhere }),
+        transaction.product.findMany({
+          where: invalidStockWhere,
+          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+          take: inventoryRiskSampleLimit,
+          select: inventoryRiskProductSelect,
+        }),
+        transaction.product.findMany({
+          where: soldOutWhere,
+          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+          take: inventoryRiskSampleLimit,
+          select: inventoryRiskProductSelect,
+        }),
+        transaction.product.findMany({
+          where: lowStockWhere,
+          orderBy: [{ stockQuantity: "asc" }, { updatedAt: "desc" }, { id: "asc" }],
+          take: inventoryRiskSampleLimit,
+          select: inventoryRiskProductSelect,
+        }),
+      ]);
+      const affectedProductCount = soldOutCount + lowStockCount + invalidStockCount;
+      const items = [
+        ...invalidProducts.map((product) => inventoryRiskItem(product, "INVALID_STOCK")),
+        ...soldOutProducts.map((product) => inventoryRiskItem(product, "SOLD_OUT")),
+        ...lowStockProducts.map((product) => inventoryRiskItem(product, "LOW_STOCK")),
+      ].slice(0, inventoryRiskSampleLimit);
 
-    return {
-      source: "LIVE_DATABASE_QUERY",
-      threshold: STOREFRONT_LOW_STOCK_MAX,
-      evaluatedProductCount,
-      affectedProductCount,
-      soldOutCount,
-      lowStockCount,
-      invalidStockCount,
-      sampleLimit: inventoryRiskSampleLimit,
-      items,
-    };
+      return {
+        source: "LIVE_DATABASE_QUERY",
+        threshold,
+        evaluatedProductCount,
+        affectedProductCount,
+        soldOutCount,
+        lowStockCount,
+        invalidStockCount,
+        sampleLimit: inventoryRiskSampleLimit,
+        items,
+      };
+    });
   }
 
   async categories() {

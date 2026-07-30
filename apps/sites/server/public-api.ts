@@ -1,4 +1,7 @@
 import {
+  DEFAULT_INVENTORY_RISK_THRESHOLD,
+  INVENTORY_RISK_THRESHOLD_MAX,
+  INVENTORY_RISK_THRESHOLD_MIN,
   isConfiguredContactChannel,
   type ContactChannelMode,
   type ContactChannelType,
@@ -553,6 +556,7 @@ function parseSettings(value: string | undefined) {
     policyVersion: "2026-07-29",
     acceptOrders: false,
     supportEnabled: false,
+    inventoryRiskThreshold: DEFAULT_INVENTORY_RISK_THRESHOLD,
     transitServiceEnabled: true,
     transitServiceUrl: null,
   };
@@ -571,6 +575,11 @@ function parseSettings(value: string | undefined) {
       policyVersion,
       acceptOrders: parsed.acceptOrders === true,
       supportEnabled: parsed.supportEnabled === true,
+      inventoryRiskThreshold: Number.isSafeInteger(parsed.inventoryRiskThreshold)
+        && Number(parsed.inventoryRiskThreshold) >= INVENTORY_RISK_THRESHOLD_MIN
+        && Number(parsed.inventoryRiskThreshold) <= INVENTORY_RISK_THRESHOLD_MAX
+        ? Number(parsed.inventoryRiskThreshold)
+        : DEFAULT_INVENTORY_RISK_THRESHOLD,
       transitServiceEnabled: parsed.transitServiceEnabled !== false,
       transitServiceUrl: typeof parsed.transitServiceUrl === "string"
         ? parsed.transitServiceUrl

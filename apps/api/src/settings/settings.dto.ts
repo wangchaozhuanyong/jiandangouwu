@@ -1,5 +1,9 @@
 import { Transform, Type } from "class-transformer";
 import {
+  INVENTORY_RISK_THRESHOLD_MAX,
+  INVENTORY_RISK_THRESHOLD_MIN,
+} from "@cloudbridge/contracts";
+import {
   IsBoolean,
   IsDefined,
   IsIn,
@@ -8,6 +12,7 @@ import {
   IsString,
   IsUrl,
   Matches,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -74,6 +79,11 @@ export class UpdateStorefrontSettingsDto {
 
   @IsBoolean()
   supportEnabled!: boolean;
+
+  @IsInt()
+  @Min(INVENTORY_RISK_THRESHOLD_MIN)
+  @Max(INVENTORY_RISK_THRESHOLD_MAX)
+  inventoryRiskThreshold!: number;
 
   @IsBoolean()
   transitServiceEnabled!: boolean;

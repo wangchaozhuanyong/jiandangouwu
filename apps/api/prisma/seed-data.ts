@@ -309,6 +309,7 @@ export const storefrontSettingsSeed = {
   policyVersion: "2026-07-27",
   acceptOrders: true,
   supportEnabled: true,
+  inventoryRiskThreshold: 3,
   transitServiceEnabled: true,
   transitServiceUrl: null,
 } as const;
