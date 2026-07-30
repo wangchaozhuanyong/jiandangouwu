@@ -50,15 +50,15 @@ const pageCopy: Record<SitesPlatformPageKind, {
   secrets: {
     title: { zh: "运行密钥状态", en: "Runtime secret status" },
     body: {
-      zh: "页面只确认订单联系方式加密密钥是否已配置，不读取或显示密钥内容。",
-      en: "This page only confirms whether the order-contact encryption key is configured. It never reads or displays the secret.",
+      zh: "页面只确认 Sites 数据保护根密钥是否已配置；新联系方式、备份和恢复证明使用独立派生密钥，页面不读取或显示密钥内容。",
+      en: "This page only confirms whether the Sites data-protection root key is configured. New contacts, backups, and restore proofs use separate derived keys; the secret value is never read or displayed.",
     },
   },
   "data-security": {
     title: { zh: "Sites 数据安全边界", en: "Sites data-security boundary" },
     body: {
-      zh: "管理员身份由 ChatGPT 登录保护，结构化数据保存在 D1，媒体使用 R2，敏感联系方式在写入前加密。",
-      en: "ChatGPT sign-in protects administrator identity, D1 stores structured data, R2 stores media, and sensitive contact details are encrypted before storage.",
+      zh: "管理员身份由 ChatGPT 登录保护，结构化数据保存在 D1，媒体使用 R2；敏感联系方式在写入前使用独立用途密钥加密。",
+      en: "ChatGPT sign-in protects administrator identity, D1 stores structured data, and R2 stores media. Sensitive contact details are encrypted with a purpose-specific key before storage.",
     },
   },
 };
@@ -113,7 +113,7 @@ export default function SitesPlatformPage({
               />
               <PlatformState
                 icon={Key}
-                label={copy(locale, "联系方式加密", "Contact encryption")}
+                label={copy(locale, "数据保护根密钥", "Data-protection root key")}
                 ok={resource.data.dataEncryptionKey === "configured"}
                 value={resource.data.dataEncryptionKey === "configured" ? copy(locale, "已配置", "Configured") : copy(locale, "未配置", "Not configured")}
               />
@@ -140,6 +140,16 @@ export default function SitesPlatformPage({
               <div className="sites-platform-warning" role="note">
                 <WarningCircle size={18} />
                 {copy(locale, "本站没有自行显示或伪造备份成功记录。正式开放订单前，应在 Sites 管理端确认 D1 的备份与恢复流程。", "This site does not display or invent backup-success records. Confirm the D1 backup and restore workflow in Sites administration before enabling orders.")}
+              </div>
+            )}
+            {kind === "secrets" && (
+              <div className="sites-platform-warning" role="note">
+                <ShieldCheck size={18} />
+                {copy(
+                  locale,
+                  "新写入使用 v2 用途隔离：订单联系方式、D1 快照、恢复令牌和恢复证明互不复用子密钥；旧 v1 联系方式与备份仅保留兼容读取，不会在发布时主动改写生产数据。",
+                  "New writes use v2 purpose separation: order contacts, D1 snapshots, restore tokens, and restore proofs do not reuse child keys. Legacy v1 contacts and backups remain read-compatible only and are not rewritten during deployment.",
+                )}
               </div>
             )}
             <div className="sites-platform-toolbar">

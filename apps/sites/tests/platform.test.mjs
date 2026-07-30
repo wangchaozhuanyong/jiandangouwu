@@ -160,6 +160,32 @@ test("Sites launch gates fail closed until a configured contact channel exists",
   assert.match(storefront, /isConfiguredContactChannel\(channel\)/u);
 });
 
+test("Sites separates v2 data-protection purposes while preserving legacy reads", () => {
+  const protection = read("server/data-protection.ts");
+  const publicApi = read("server/public-api.ts");
+  const adminApi = read("server/admin-api.ts");
+  const backupApi = read("server/backup-api.ts");
+  const platformPage = read("../admin/src/features/sites/sites-platform-page.tsx");
+
+  for (const purpose of [
+    "ORDER_CONTACT",
+    "BACKUP_SNAPSHOT",
+    "RESTORE_TOKEN",
+    "RESTORE_PROOF",
+  ]) {
+    assert.match(protection, new RegExp(`"${purpose}"`, "u"));
+  }
+  assert.match(protection, /name: "HKDF"/u);
+  assert.match(protection, /hash: "SHA-256"/u);
+  assert.match(protection, /version !== "v1" && version !== "v2"/u);
+  assert.match(publicApi, /encryptOrderContact/u);
+  assert.match(adminApi, /decryptOrderContact/u);
+  assert.match(backupApi, /envelope\.version !== 1 && envelope\.version !== 2/u);
+  assert.match(backupApi, /version: 2/u);
+  assert.match(platformPage, /v2 用途隔离/u);
+  assert.match(platformPage, /Legacy v1 contacts and backups remain read-compatible/u);
+});
+
 test("Sites worker avoids createRequire with an undefined module URL", () => {
   const workerEntry = read("dist/server/index.js");
   assert.doesNotMatch(workerEntry, /createRequire\(import\.meta\.url\)/u);
