@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AdminOrderListItem } from "@cloudbridge/contracts";
 import type { Overview } from "../src/api";
-import { buildDashboardSnapshot } from "../src/features/dashboard/model";
+import {
+  buildDashboardSnapshot,
+  liveInventoryRiskCapabilityBody,
+} from "../src/features/dashboard/model";
 
 const order = (id: string, createdAt: string): AdminOrderListItem => ({
   id,
@@ -103,4 +106,15 @@ test("dashboard snapshot closes inconsistent inactive-product counts at zero", (
   }));
 
   assert.equal(snapshot.inactiveProductCount, 0);
+});
+
+test("dashboard capability copy uses the inventory threshold from the live response", () => {
+  assert.equal(
+    liveInventoryRiskCapabilityBody("zh", 7),
+    "工作台会实时查询全部在售商品，区分库存数据冲突、售罄和 1–7 件低库存；它不是通知投递或历史告警。",
+  );
+  assert.equal(
+    liveInventoryRiskCapabilityBody("en", 7),
+    "The workspace queries every active product and separates invalid stock, sold-out items, and low stock from 1–7. This is not notification delivery or alert history.",
+  );
 });
