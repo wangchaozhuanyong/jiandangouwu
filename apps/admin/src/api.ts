@@ -11,6 +11,9 @@ import type {
   AdminSessionOverview,
   AdminTeamMember,
   AdminTeamOverview,
+  SecurityAuditSummary,
+  SecurityEventCategory,
+  SecurityEventSeverity,
   SystemHealthStatus,
 } from "@cloudbridge/contracts";
 import {
@@ -152,15 +155,22 @@ export type AuditEventQuery = {
   actor?: "administrator" | "system";
   targetType?: string;
   timeRange?: "24h" | "7d" | "30d" | "all";
+  scope?: "security";
+  category?: SecurityEventCategory;
+  severity?: SecurityEventSeverity;
 };
 export type AuditEventPage = {
   data: AuditEvent[];
   meta: PageMeta;
   facets: {
     targetTypes: string[];
+    securitySummary?: SecurityAuditSummary;
   };
 };
-export type AuditEventExportInput = Omit<AuditEventQuery, "page" | "pageSize"> & {
+export type AuditEventExportInput = Omit<
+  AuditEventQuery,
+  "page" | "pageSize" | "scope" | "category" | "severity"
+> & {
   reason: string;
   confirmation: typeof AUDIT_CSV_EXPORT_CONFIRMATION;
 };
@@ -379,11 +389,23 @@ export const getAuditPage = async (
   if (query.actor) params.set("actor", query.actor);
   if (query.targetType?.trim()) params.set("targetType", query.targetType.trim());
   if (query.timeRange) params.set("timeRange", query.timeRange);
+  if (query.scope) params.set("scope", query.scope);
+  if (query.category) params.set("category", query.category);
+  if (query.severity) params.set("severity", query.severity);
   const response = await request<{
     items: AuditEvent[];
-    facets: { targetTypes: string[] };
+    facets: {
+      targetTypes: string[];
+      securitySummary?: SecurityAuditSummary;
+    };
   }>(`/admin/audit?${params.toString()}`, { signal });
   const { meta } = response;
+  const securitySummary = response.data?.facets?.securitySummary;
+  const validSecuritySummary = securitySummary !== undefined
+    && isNonNegativeSafeInteger(securitySummary.total)
+    && isNonNegativeSafeInteger(securitySummary.last24Hours)
+    && isNonNegativeSafeInteger(securitySummary.needsReview)
+    && isNonNegativeSafeInteger(securitySummary.deniedOrFailed);
   if (
     !meta
     || !Number.isSafeInteger(meta.page)
@@ -397,6 +419,8 @@ export const getAuditPage = async (
     || response.data.facets.targetTypes.some((value) => (
       typeof value !== "string" || value.length === 0 || value.length > 80
     ))
+    || (query.scope === "security" && !validSecuritySummary)
+    || (query.scope !== "security" && securitySummary !== undefined && !validSecuritySummary)
   ) {
     throw new Error("Audit pagination metadata failed the runtime contract.");
   }
@@ -405,6 +429,7 @@ export const getAuditPage = async (
     meta,
     facets: {
       targetTypes: [...new Set(response.data.facets.targetTypes)].sort(),
+      ...(securitySummary ? { securitySummary } : {}),
     },
   };
 };

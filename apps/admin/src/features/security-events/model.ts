@@ -1,18 +1,26 @@
+import {
+  classifySecurityAuditEvent,
+  securityAuditActionProfiles,
+  securityEventCategories,
+  securityEventSeverities,
+  type SecurityAuditSummary,
+  type SecurityEventCategory,
+  type SecurityEventSeverity,
+} from "@cloudbridge/contracts";
 import type {
   AuditEvent,
+  AuditEventQuery,
   Locale,
 } from "../../api";
 
-export const securityEventSeverities = ["high", "medium", "low"] as const;
-export type SecurityEventSeverity = (typeof securityEventSeverities)[number];
-
-export const securityEventCategories = [
-  "authentication",
-  "authorization",
-  "sensitive-data",
-  "configuration",
-] as const;
-export type SecurityEventCategory = (typeof securityEventCategories)[number];
+export {
+  securityEventCategories,
+  securityEventSeverities,
+};
+export type {
+  SecurityEventCategory,
+  SecurityEventSeverity,
+};
 
 export type SecurityEvent = AuditEvent & {
   category: SecurityEventCategory;
@@ -28,68 +36,15 @@ export type SecurityEventFilter = {
   timeRange: "24h" | "7d" | "30d" | "all";
 };
 
-type SecurityActionProfile = {
-  category: SecurityEventCategory;
-  defaultSeverity: SecurityEventSeverity;
-  label: Record<Locale, string>;
+export type SecurityEventQuery = AuditEventQuery & {
+  scope: "security";
 };
 
-const securityActionProfiles: Record<string, SecurityActionProfile> = {
-  "auth.setup.complete": {
-    category: "authorization",
-    defaultSeverity: "medium",
-    label: { zh: "首位管理员创建", en: "First administrator created" },
-  },
-  "auth.login.password": {
-    category: "authentication",
-    defaultSeverity: "low",
-    label: { zh: "密码登录成功", en: "Password sign-in succeeded" },
-  },
-  "auth.login.totp": {
-    category: "authentication",
-    defaultSeverity: "low",
-    label: { zh: "双重验证登录成功", en: "Two-factor sign-in succeeded" },
-  },
-  "auth.login.failed": {
-    category: "authentication",
-    defaultSeverity: "high",
-    label: { zh: "管理员登录失败", en: "Administrator sign-in failed" },
-  },
-  "auth.totp.enabled": {
-    category: "authentication",
-    defaultSeverity: "low",
-    label: { zh: "双重验证已开启", en: "Two-factor authentication enabled" },
-  },
-  "auth.totp.disabled": {
-    category: "authentication",
-    defaultSeverity: "medium",
-    label: { zh: "双重验证已关闭", en: "Two-factor authentication disabled" },
-  },
-  "team.member.roles.update": {
-    category: "authorization",
-    defaultSeverity: "medium",
-    label: { zh: "成员角色已变更", en: "Member roles changed" },
-  },
-  "access.role.permissions.update": {
-    category: "authorization",
-    defaultSeverity: "medium",
-    label: { zh: "角色权限已变更", en: "Role permissions changed" },
-  },
-  "order.contact.reveal": {
-    category: "sensitive-data",
-    defaultSeverity: "medium",
-    label: { zh: "订单联系方式查看", en: "Order contact revealed" },
-  },
-  "site_setting.update": {
-    category: "configuration",
-    defaultSeverity: "medium",
-    label: { zh: "站点关键设置已变更", en: "Critical site settings changed" },
-  },
-  "telegram.new_order.settings.update": {
-    category: "configuration",
-    defaultSeverity: "medium",
-    label: { zh: "Telegram 通知意向已变更", en: "Telegram notification intent changed" },
-  },
+export const defaultSecurityEventQuery: Readonly<SecurityEventQuery> = {
+  page: 1,
+  pageSize: 30,
+  scope: "security",
+  timeRange: "30d",
 };
 
 const normalized = (value: string): string =>
@@ -101,21 +56,15 @@ const eventTimestamp = (event: Pick<AuditEvent, "createdAt">): number => {
 };
 
 export function securityActionLabel(action: string, locale: Locale): string {
-  return securityActionProfiles[action]?.label[locale] ?? action;
+  return securityAuditActionProfiles[action]?.label[locale] ?? action;
 }
 
 export function toSecurityEvent(event: AuditEvent): SecurityEvent | null {
-  const profile = securityActionProfiles[event.action];
-  if (!profile && event.result !== "DENIED") return null;
-  const category = profile?.category ?? "authorization";
-  const severity = event.result === "DENIED" || event.result === "FAILED"
-    ? "high"
-    : profile?.defaultSeverity ?? "medium";
+  const classification = classifySecurityAuditEvent(event.action, event.result);
+  if (!classification) return null;
   return {
     ...event,
-    category,
-    severity,
-    needsReview: severity === "high",
+    ...classification,
   };
 }
 
@@ -163,17 +112,86 @@ export function filterSecurityEvents(
 export function summarizeSecurityEvents(
   events: SecurityEvent[],
   now = Date.now(),
-): {
-  total: number;
-  last24Hours: number;
-  needsReview: number;
-  deniedOrFailed: number;
-} {
+): SecurityAuditSummary {
   const dayAgo = now - 24 * 60 * 60 * 1000;
   return {
     total: events.length,
     last24Hours: events.filter((event) => eventTimestamp(event) >= dayAgo).length,
     needsReview: events.filter((event) => event.needsReview).length,
     deniedOrFailed: events.filter((event) => event.result !== "SUCCEEDED").length,
+  };
+}
+
+export function readSecurityEventQuery(search: string): SecurityEventQuery {
+  const params = new URLSearchParams(search);
+  const pageValue = Number(params.get("page") ?? "1");
+  const resultValue = params.get("result");
+  const categoryValue = params.get("category");
+  const severityValue = params.get("severity");
+  const timeRangeValue = params.get("timeRange");
+  const searchValue = params.get("search")?.normalize("NFKC").trim().slice(0, 160);
+  return {
+    page: Number.isSafeInteger(pageValue) && pageValue >= 1 && pageValue <= 1000
+      ? pageValue
+      : 1,
+    pageSize: 30,
+    scope: "security",
+    ...(searchValue ? { search: searchValue } : {}),
+    ...(resultValue && ["SUCCEEDED", "FAILED", "DENIED"].includes(resultValue)
+      ? { result: resultValue as AuditEvent["result"] }
+      : {}),
+    ...(categoryValue && securityEventCategories.includes(
+      categoryValue as SecurityEventCategory,
+    )
+      ? { category: categoryValue as SecurityEventCategory }
+      : {}),
+    ...(severityValue && securityEventSeverities.includes(
+      severityValue as SecurityEventSeverity,
+    )
+      ? { severity: severityValue as SecurityEventSeverity }
+      : {}),
+    timeRange: timeRangeValue && ["24h", "7d", "30d", "all"].includes(timeRangeValue)
+      ? timeRangeValue as SecurityEventFilter["timeRange"]
+      : "30d",
+  };
+}
+
+export function securityEventQuerySearch(query: SecurityEventQuery): string {
+  const params = new URLSearchParams();
+  if (query.page > 1) params.set("page", String(query.page));
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.result) params.set("result", query.result);
+  if (query.category) params.set("category", query.category);
+  if (query.severity) params.set("severity", query.severity);
+  if (query.timeRange && query.timeRange !== "30d") {
+    params.set("timeRange", query.timeRange);
+  }
+  return params.toString();
+}
+
+export function securityEventFilterFromQuery(
+  query: SecurityEventQuery,
+): SecurityEventFilter {
+  return {
+    category: query.category ?? "all",
+    result: query.result ?? "all",
+    search: query.search ?? "",
+    severity: query.severity ?? "all",
+    timeRange: query.timeRange ?? "30d",
+  };
+}
+
+export function securityEventQueryFromFilter(
+  filter: SecurityEventFilter,
+): SecurityEventQuery {
+  return {
+    page: 1,
+    pageSize: 30,
+    scope: "security",
+    ...(filter.search.trim() ? { search: filter.search.trim().slice(0, 160) } : {}),
+    ...(filter.result !== "all" ? { result: filter.result } : {}),
+    ...(filter.category !== "all" ? { category: filter.category } : {}),
+    ...(filter.severity !== "all" ? { severity: filter.severity } : {}),
+    timeRange: filter.timeRange,
   };
 }

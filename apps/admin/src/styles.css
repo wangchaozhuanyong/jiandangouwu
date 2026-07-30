@@ -1608,7 +1608,13 @@
 .security-event-search { position: relative; }
 .security-event-search > svg { position: absolute; z-index: 1; left: 11px; bottom: 14px; color: #8ba0ac; pointer-events: none; }
 .security-event-search input { padding-left: 35px; }
+.security-event-filter-actions { display: flex; justify-content: flex-end; gap: 8px; grid-column: 1 / -1; }
 .security-event-table-panel { min-width: 0; overflow: hidden; }
+.security-event-table-heading { min-width: 0; min-height: 78px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 18px; border-bottom: 1px solid var(--line-soft); }
+.security-event-table-heading > div { min-width: 0; }
+.security-event-table-heading small { color: #44889a; font-size: 8px; font-weight: 800; letter-spacing: .12em; }
+.security-event-table-heading h2 { margin: 5px 0 0; color: var(--ink); font-family: var(--serif); font-size: 19px; font-weight: 500; line-height: 1.35; }
+.security-event-table-heading > span { flex: none; color: #687f8d; font-family: "SFMono-Regular", Consolas, monospace; font-size: 8px; }
 .security-event-table-wrap { max-width: 100%; overflow-x: auto; }
 .security-event-table { width: max-content; min-width: 1750px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
 .security-event-table th, .security-event-table td { height: 56px; padding: 0 10px; border-top: 1px solid var(--line-soft); overflow: hidden; color: #68808f; text-align: left; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; font-size: 9px; }
@@ -1630,6 +1636,7 @@
 .security-event-severity.is-medium { color: #87662b; background: #faf3e5; }
 .security-event-severity.is-high { color: #a34d57; background: #faedef; }
 .security-event-detail-button { width: 44px; height: 44px; display: inline-grid; place-items: center; border-radius: 9px; color: #247f96; background: #edf7f9; }
+.security-event-pagination { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--line-soft); }
 .security-event-detail { display: grid; gap: 14px; padding: 18px; }
 .security-event-detail-heading { display: flex; align-items: center; gap: 8px; }
 .security-event-detail > p { margin: 0; padding: 11px 12px; border-radius: 10px; color: #80662f; background: #faf3e5; font-size: 9px; line-height: 1.6; }
@@ -1912,6 +1919,9 @@
   .security-event-truth-note { align-items: flex-start; }
   .security-event-filters { grid-template-columns: 1fr; padding: 12px; }
   .security-event-severity-filter { grid-column: auto; }
+  .security-event-filter-actions { flex-wrap: wrap; }
+  .security-event-table-heading { align-items: flex-start; flex-direction: column; }
+  .security-event-table-heading > span { flex: auto; }
   .security-event-table th:first-child, .security-event-table td:first-child { position: sticky; z-index: 2; left: 0; background: #fff; box-shadow: 8px 0 14px -12px rgba(26,58,74,.75); }
   .security-event-table thead th:first-child { z-index: 3; background: #f8fafb; }
   .security-event-table th:last-child, .security-event-table td:last-child { position: sticky; z-index: 2; right: 0; background: #fff; box-shadow: -8px 0 14px -12px rgba(26,58,74,.75); }
@@ -2015,6 +2025,8 @@
   .audit-log-filter-actions { grid-template-columns: 1fr; }
   .audit-log-pagination { display: grid; grid-template-columns: 1fr 1fr; }
   .audit-log-pagination button { width: 100%; }
+  .security-event-pagination { display: grid; grid-template-columns: 1fr 1fr; }
+  .security-event-pagination button { width: 100%; }
   .audit-log-table-heading { align-items: flex-start; flex-direction: column; }
   .audit-log-table-tools { width: 100%; align-items: flex-start; flex-direction: column; }
   .audit-log-table-tools > button { width: 100%; }
@@ -2024,6 +2036,8 @@
   .security-event-summary { grid-template-columns: 1fr; }
   .security-event-summary article { min-height: 80px; }
   .security-event-severity-filter { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); overflow: visible; }
+  .security-event-filter-actions { display: grid; grid-template-columns: 1fr; }
+  .security-event-filter-actions button { width: 100%; }
   .security-event-detail dl { grid-template-columns: 1fr; }
   .translation-progress > div { grid-template-columns: 58px 50px minmax(70px,1fr); }
   .translation-progress small { grid-column: 1 / -1; text-align: left; }

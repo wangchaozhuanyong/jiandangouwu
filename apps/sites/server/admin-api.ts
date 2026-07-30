@@ -6,11 +6,19 @@ import {
   INVENTORY_RISK_THRESHOLD_MIN,
   isConfiguredContactChannel,
   auditCsvFilename,
+  securityAuditActions,
+  securityAuditActionsForCategory,
+  securityAuditActionsForDefaultSeverity,
+  securityEventCategories,
+  securityEventSeverities,
   serializeAuditCsv,
   type AdminInventoryRiskLevel,
   type AdminInventoryRiskSummary,
   type ContactChannelMode,
   type ContactChannelType,
+  type SecurityAuditSummary,
+  type SecurityEventCategory,
+  type SecurityEventSeverity,
 } from "@cloudbridge/contracts";
 import {
   adminPermissions,
@@ -314,6 +322,9 @@ export async function handleAdminApi(
       `SELECT DISTINCT COALESCE(target_type, 'SYSTEM') AS targetType
        FROM audit_events ORDER BY targetType ASC`,
     ).all<{ targetType: string }>()).results ?? [];
+    const securitySummary = auditQuery.scope === "security"
+      ? await readSecurityAuditSummary(env.DB)
+      : undefined;
     return success({
       items: rows.map((row) => ({
         id: row.id,
@@ -330,6 +341,7 @@ export async function handleAdminApi(
       })),
       facets: {
         targetTypes: targetTypes.map((row) => row.targetType),
+        ...(securitySummary ? { securitySummary } : {}),
       },
     }, {
       meta: pageMeta(auditQuery.page, auditQuery.pageSize, total),
@@ -2160,6 +2172,9 @@ function readAuditQuery(url: URL): {
   offset: number;
   conditions: string[];
   bindings: Array<string | number>;
+  scope: "security" | null;
+  category: SecurityEventCategory | null;
+  severity: SecurityEventSeverity | null;
 } {
   const page = auditQueryInteger(url.searchParams.get("page"), "page", 1, 1000, 1);
   const pageSize = auditQueryInteger(url.searchParams.get("pageSize"), "pageSize", 1, 100, 30);
@@ -2180,6 +2195,24 @@ function readAuditQuery(url: URL): {
     "timeRange",
     ["24h", "7d", "30d", "all"] as const,
   ) ?? "all";
+  const requestedScope = auditQueryEnum(
+    url.searchParams.get("scope"),
+    "scope",
+    ["security"] as const,
+  );
+  const category = auditQueryEnum(
+    url.searchParams.get("category"),
+    "category",
+    securityEventCategories,
+  );
+  const severity = auditQueryEnum(
+    url.searchParams.get("severity"),
+    "severity",
+    securityEventSeverities,
+  );
+  const scope = requestedScope === "security" || category || severity
+    ? "security"
+    : null;
   const conditions: string[] = [];
   const bindings: Array<string | number> = [];
 
@@ -2216,6 +2249,21 @@ function readAuditQuery(url: URL): {
       .join(" OR ")})`);
     bindings.push(...searchableColumns.map(() => search));
   }
+  if (scope === "security") {
+    const securityScope = securityScopeSql();
+    conditions.push(securityScope.condition);
+    bindings.push(...securityScope.bindings);
+  }
+  if (category) {
+    const categoryFilter = securityCategorySql(category);
+    conditions.push(categoryFilter.condition);
+    bindings.push(...categoryFilter.bindings);
+  }
+  if (severity) {
+    const severityFilter = securitySeveritySql(severity);
+    conditions.push(severityFilter.condition);
+    bindings.push(...severityFilter.bindings);
+  }
 
   return {
     page,
@@ -2223,6 +2271,100 @@ function readAuditQuery(url: URL): {
     offset: (page - 1) * pageSize,
     conditions,
     bindings,
+    scope,
+    category,
+    severity,
+  };
+}
+
+type AuditSqlFilter = {
+  condition: string;
+  bindings: string[];
+};
+
+const actionInSql = (
+  actions: readonly string[],
+  negate = false,
+): AuditSqlFilter => ({
+  condition: `action ${negate ? "NOT " : ""}IN (${actions.map(() => "?").join(", ")})`,
+  bindings: [...actions],
+});
+
+const securityScopeSql = (): AuditSqlFilter => {
+  const knownActions = actionInSql(securityAuditActions);
+  return {
+    condition: `(${knownActions.condition} OR result = 'DENIED')`,
+    bindings: knownActions.bindings,
+  };
+};
+
+const securityCategorySql = (
+  category: SecurityEventCategory,
+): AuditSqlFilter => {
+  const categoryActions = actionInSql(securityAuditActionsForCategory(category));
+  if (category !== "authorization") return categoryActions;
+  const unknownActions = actionInSql(securityAuditActions, true);
+  return {
+    condition: `(${categoryActions.condition} OR (result = 'DENIED' AND ${unknownActions.condition}))`,
+    bindings: [...categoryActions.bindings, ...unknownActions.bindings],
+  };
+};
+
+const securitySeveritySql = (
+  severity: SecurityEventSeverity,
+): AuditSqlFilter => {
+  const defaultActions = actionInSql(
+    securityAuditActionsForDefaultSeverity(severity),
+  );
+  if (severity !== "high") {
+    return {
+      condition: `(result = 'SUCCEEDED' AND ${defaultActions.condition})`,
+      bindings: defaultActions.bindings,
+    };
+  }
+  return {
+    condition: `(result IN ('FAILED', 'DENIED') OR (result = 'SUCCEEDED' AND ${defaultActions.condition}))`,
+    bindings: defaultActions.bindings,
+  };
+};
+
+async function auditCount(
+  database: D1Database,
+  filters: readonly AuditSqlFilter[],
+): Promise<number> {
+  const whereSql = filters.length > 0
+    ? ` WHERE ${filters.map((filter) => filter.condition).join(" AND ")}`
+    : "";
+  const bindings = filters.flatMap((filter) => filter.bindings);
+  return Number((await database.prepare(
+    `SELECT COUNT(*) AS count FROM audit_events${whereSql}`,
+  ).bind(...bindings).first<{ count: number }>())?.count ?? 0);
+}
+
+async function readSecurityAuditSummary(
+  database: D1Database,
+): Promise<SecurityAuditSummary> {
+  const scope = securityScopeSql();
+  const last24Hours = {
+    condition: "created_at >= ?",
+    bindings: [new Date(Date.now() - auditTimeRangeMs["24h"]).toISOString()],
+  };
+  const needsReview = securitySeveritySql("high");
+  const deniedOrFailed = {
+    condition: "result IN ('FAILED', 'DENIED')",
+    bindings: [],
+  };
+  const [total, last24, review, unsuccessful] = await Promise.all([
+    auditCount(database, [scope]),
+    auditCount(database, [scope, last24Hours]),
+    auditCount(database, [scope, needsReview]),
+    auditCount(database, [scope, deniedOrFailed]),
+  ]);
+  return {
+    total,
+    last24Hours: last24,
+    needsReview: review,
+    deniedOrFailed: unsuccessful,
   };
 }
 

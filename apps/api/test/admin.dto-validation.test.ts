@@ -60,6 +60,9 @@ test("audit query trims valid strings and converts pagination", async () => {
     actor: "administrator",
     targetType: "  Product  ",
     timeRange: "7d",
+    scope: "security",
+    category: "authorization",
+    severity: "high",
   });
 
   assert.deepEqual({ ...query }, {
@@ -70,6 +73,9 @@ test("audit query trims valid strings and converts pagination", async () => {
     actor: "administrator",
     targetType: "Product",
     timeRange: "7d",
+    scope: "security",
+    category: "authorization",
+    severity: "high",
   });
 });
 
@@ -80,6 +86,9 @@ test("audit query rejects blank strings, invalid enums, and unsafe pagination", 
     { result: "PENDING" },
     { actor: "customer" },
     { timeRange: "90d" },
+    { scope: "operations" },
+    { category: "network" },
+    { severity: "critical" },
     { page: "0" },
     { page: "1001" },
     { pageSize: "101" },

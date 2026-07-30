@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { securityAuditActions } from "@cloudbridge/contracts";
 import { AdminService } from "../src/admin/admin.service.js";
 
 const reservations = {
@@ -218,6 +219,97 @@ test("audit listing projects an explicit frontend-safe field allowlist", async (
     by: ["targetType"],
     orderBy: { targetType: "asc" },
   });
+});
+
+test("security audit scope filters before paging and returns full-history summary", async () => {
+  const countQueries: Array<Record<string, unknown>> = [];
+  const countResults = [2, 10, 3, 4, 5];
+  let findManyQuery: Record<string, unknown> | null = null;
+  const row = {
+    id: "audit-sites-setting",
+    requestId: "request-sites-setting",
+    action: "settings.storefront.updated",
+    targetType: "SETTINGS",
+    targetId: "storefront",
+    result: "SUCCEEDED" as const,
+    reason: "Approved setting change",
+    createdAt: new Date("2026-07-29T10:00:00.000Z"),
+    actor: {
+      displayName: "Sites administrator",
+      email: "operator@example.com",
+    },
+  };
+  const prisma = {
+    auditEvent: {
+      count: async (query: Record<string, unknown>) => {
+        countQueries.push(query);
+        return countResults[countQueries.length - 1] ?? 0;
+      },
+      findMany: async (query: Record<string, unknown>) => {
+        findManyQuery = query;
+        return [row];
+      },
+      groupBy: async () => [{ targetType: "SETTINGS" }],
+    },
+    $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations),
+  };
+  const service = new AdminService(
+    prisma as never,
+    { record: async () => undefined } as never,
+    reservations as never,
+  );
+
+  const result = await service.auditEvents({
+    page: 1,
+    pageSize: 30,
+    scope: "security",
+    category: "configuration",
+    severity: "medium",
+    timeRange: "30d",
+  });
+
+  assert.deepEqual(result, {
+    data: {
+      items: [row],
+      facets: {
+        targetTypes: ["SETTINGS"],
+        securitySummary: {
+          total: 10,
+          last24Hours: 3,
+          needsReview: 4,
+          deniedOrFailed: 5,
+        },
+      },
+    },
+    meta: {
+      page: 1,
+      pageSize: 30,
+      total: 2,
+      pageCount: 1,
+    },
+  });
+  assert.equal(countQueries.length, 5);
+  assert.ok(findManyQuery);
+  const pageWhere = (findManyQuery as Record<string, unknown>).where;
+  assert.deepEqual(pageWhere, countQueries[0]?.where);
+  const serializedPageWhere = JSON.stringify(pageWhere);
+  assert.match(serializedPageWhere, /settings\.storefront\.updated/u);
+  assert.match(serializedPageWhere, /support\.channel\.updated/u);
+  assert.match(serializedPageWhere, /SUCCEEDED/u);
+  assert.match(serializedPageWhere, /createdAt/u);
+  const scopeWhere = JSON.stringify(countQueries[1]?.where);
+  assert.match(scopeWhere, /DENIED/u);
+  for (const action of [
+    "auth.sites.bootstrap",
+    "order.contact.revealed",
+    "notifications.telegram.intent.updated",
+  ]) {
+    assert.ok(securityAuditActions.includes(action));
+    assert.match(scopeWhere, new RegExp(action.replaceAll(".", "\\."), "u"));
+  }
+  assert.match(JSON.stringify(countQueries[2]?.where), /createdAt/u);
+  assert.doesNotMatch(JSON.stringify(countQueries[3]?.where), /createdAt/u);
+  assert.match(JSON.stringify(countQueries[4]?.where), /FAILED/u);
 });
 
 test("audit CSV export uses the safe allowlist, neutralizes formulas, and audits success", async () => {

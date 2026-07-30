@@ -1,4 +1,7 @@
 import {
+  ArrowsClockwise,
+  CaretLeft,
+  CaretRight,
   Clock,
   Eye,
   LockKey,
@@ -8,12 +11,13 @@ import {
 } from "@phosphor-icons/react";
 import {
   useCallback,
+  useEffect,
   useMemo,
   useState,
 } from "react";
 import {
-  getAudit,
-  type AuditEvent,
+  getAuditPage,
+  type AuditEventPage,
   type Locale,
 } from "../../api";
 import {
@@ -29,9 +33,12 @@ import {
 } from "../../admin-ui";
 import {
   buildSecurityEvents,
-  filterSecurityEvents,
+  defaultSecurityEventQuery,
+  readSecurityEventQuery,
   securityActionLabel,
-  summarizeSecurityEvents,
+  securityEventFilterFromQuery,
+  securityEventQueryFromFilter,
+  securityEventQuerySearch,
   type SecurityEvent,
   type SecurityEventCategory,
   type SecurityEventFilter,
@@ -54,14 +61,6 @@ const severityLabels: Record<SecurityEventSeverity, Record<Locale, string>> = {
   low: { zh: "信息记录", en: "Informational" },
 };
 
-const defaultFilter: SecurityEventFilter = {
-  category: "all",
-  result: "all",
-  search: "",
-  severity: "all",
-  timeRange: "30d",
-};
-
 function SeverityTag({
   event,
   locale,
@@ -77,31 +76,89 @@ function SeverityTag({
 }
 
 export default function SecurityEventsPage({ locale }: { locale: Locale }) {
-  const loader = useCallback((signal: AbortSignal) => getAudit(signal), []);
+  const [query, setQuery] = useState(() => (
+    readSecurityEventQuery(window.location.search)
+  ));
+  const [filter, setFilter] = useState<SecurityEventFilter>(() => (
+    securityEventFilterFromQuery(query)
+  ));
+  const querySearch = useMemo(
+    () => securityEventQuerySearch(query),
+    [query],
+  );
+  const loader = useCallback(
+    (signal: AbortSignal) => getAuditPage(query, signal),
+    [query],
+  );
   const {
     data,
     state,
     reload,
-  } = useCachedAdminResource<AuditEvent[]>("audit", loader);
+  } = useCachedAdminResource<AuditEventPage>(
+    `security-events:${querySearch || "default"}`,
+    loader,
+  );
   const slow = useSlowAdminRequest(state);
-  const [filter, setFilter] = useState<SecurityEventFilter>(defaultFilter);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const events = useMemo(
-    () => buildSecurityEvents(data ?? []),
+    () => buildSecurityEvents(data?.data ?? []),
     [data],
   );
-  const visibleEvents = useMemo(
-    () => filterSecurityEvents(events, filter),
-    [events, filter],
-  );
-  const summary = useMemo(
-    () => summarizeSecurityEvents(events),
-    [events],
-  );
+  const summary = data?.facets.securitySummary;
   const selected = events.find((event) => event.id === selectedId) ?? null;
+  const listBusy = state === "initial-loading" || state === "refreshing";
+  const pageCount = data?.meta.pageCount ?? 0;
 
-  if (!data) {
+  useEffect(() => {
+    const onPopState = () => {
+      const next = readSecurityEventQuery(window.location.search);
+      setQuery(next);
+      setFilter(securityEventFilterFromQuery(next));
+      setSelectedId(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const updateQuery = useCallback((
+    next: typeof query,
+    historyMode: "push" | "replace" = "push",
+  ) => {
+    const search = securityEventQuerySearch(next);
+    const url = `${window.location.pathname}${search ? `?${search}` : ""}`;
+    window.history[historyMode === "push" ? "pushState" : "replaceState"](
+      {
+        ...(window.history.state ?? {}),
+        page: "security-events",
+      },
+      "",
+      url,
+    );
+    setQuery(next);
+    setSelectedId(null);
+  }, []);
+
+  useEffect(() => {
+    if (!data || listBusy || data.meta.page !== query.page) return;
+    const lastAvailablePage = Math.max(1, data.meta.pageCount);
+    if (query.page > lastAvailablePage) {
+      updateQuery({ ...query, page: lastAvailablePage }, "replace");
+    }
+  }, [data, listBusy, query, updateQuery]);
+
+  const applyFilters = (event: React.FormEvent) => {
+    event.preventDefault();
+    updateQuery(securityEventQueryFromFilter(filter));
+  };
+
+  const resetFilters = () => {
+    const next = { ...defaultSecurityEventQuery };
+    setFilter(securityEventFilterFromQuery(next));
+    updateQuery(next);
+  };
+
+  if (!data || !summary) {
     return (
       <section className="admin-panel">
         <PanelState state={state} locale={locale} retry={() => void reload()} />
@@ -117,8 +174,8 @@ export default function SecurityEventsPage({ locale }: { locale: Locale }) {
           <strong>{copy(locale, "真实审计安全信号", "Live audit security signals")}</strong>
           {copy(
             locale,
-            "数据来自平台数据库最近 100 条审计记录。复核优先级由固定规则派生，不代表已经接入威胁检测、SIEM、自动告警或自动账号处置；当前账号的其他会话可在安全中心手动撤销。",
-            "Data comes from the latest 100 platform-database audit records. Review priority is derived by fixed rules and does not mean threat detection, SIEM, automated alerts, or automatic account response is connected. Other sessions for the current account can be revoked manually in Security.",
+            `服务器已在完整审计历史中筛选安全信号，当前条件匹配 ${data.meta.total} 条，第 ${data.meta.page} 页显示 ${events.length} 条。摘要统计完整安全范围；固定复核规则不代表已经接入威胁检测、SIEM、自动告警或自动账号处置。`,
+            `The server filters security signals across the full audit history. The current filter matches ${data.meta.total} records and page ${data.meta.page} shows ${events.length}. Summary cards cover the full security scope; fixed review rules do not mean threat detection, SIEM, automated alerts, or automatic account response is connected.`,
           )}
         </span>
       </div>
@@ -146,10 +203,11 @@ export default function SecurityEventsPage({ locale }: { locale: Locale }) {
         </article>
       </section>
 
-      <section className="admin-panel security-event-filters">
+      <form className="admin-panel security-event-filters" onSubmit={applyFilters}>
         <div className="security-event-severity-filter" aria-label={copy(locale, "复核级别筛选", "Review priority filter")}>
           {(["all", "high", "medium", "low"] as const).map((severity) => (
             <button
+              type="button"
               className={filter.severity === severity ? "is-active" : ""}
               key={severity}
               onClick={() => setFilter((current) => ({ ...current, severity }))}
@@ -165,6 +223,7 @@ export default function SecurityEventsPage({ locale }: { locale: Locale }) {
           <span className="sr-only">{copy(locale, "搜索安全审计信号", "Search security audit signals")}</span>
           <input
             value={filter.search}
+            maxLength={160}
             onChange={(event) => setFilter((current) => ({
               ...current,
               search: event.target.value,
@@ -217,7 +276,27 @@ export default function SecurityEventsPage({ locale }: { locale: Locale }) {
             <option value="all">{copy(locale, "全部记录", "All records")}</option>
           </select>
         </label>
-      </section>
+        <div className="security-event-filter-actions">
+          <button
+            type="button"
+            className="admin-secondary"
+            onClick={resetFilters}
+            disabled={
+              securityEventQuerySearch(securityEventQueryFromFilter(filter)) === ""
+              && querySearch === ""
+            }
+          >
+            {copy(locale, "重置筛选", "Reset filters")}
+          </button>
+          <button type="submit" className="admin-primary" disabled={listBusy}>
+            {copy(locale, "应用筛选", "Apply filters")}
+          </button>
+          <button type="button" className="admin-secondary" onClick={() => void reload()}>
+            <ArrowsClockwise className={state === "refreshing" ? "spin" : ""} size={17} />
+            {copy(locale, "刷新记录", "Refresh records")}
+          </button>
+        </div>
+      </form>
 
       <RefreshNotice
         state={state}
@@ -227,6 +306,19 @@ export default function SecurityEventsPage({ locale }: { locale: Locale }) {
       />
 
       <section className="admin-panel security-event-table-panel">
+        <div className="security-event-table-heading">
+          <div>
+            <small>{copy(locale, "当前筛选", "Current filter")}</small>
+            <h2>{copy(locale, "安全审计信号", "Security audit signals")}</h2>
+          </div>
+          <span>
+            {copy(
+              locale,
+              `第 ${data.meta.page} / ${Math.max(1, data.meta.pageCount)} 页 · 本页 ${events.length} 条`,
+              `Page ${data.meta.page} of ${Math.max(1, data.meta.pageCount)} · ${events.length} on this page`,
+            )}
+          </span>
+        </div>
         <div
           className="security-event-table-wrap"
           tabIndex={0}
@@ -250,7 +342,7 @@ export default function SecurityEventsPage({ locale }: { locale: Locale }) {
               </tr>
             </thead>
             <tbody>
-              {visibleEvents.map((event) => (
+              {events.map((event) => (
                 <tr key={event.id}>
                   <td><code title={event.id}>{event.id.slice(0, 12)}</code></td>
                   <td><code title={event.requestId}>{event.requestId.slice(0, 12)}</code></td>
@@ -265,6 +357,7 @@ export default function SecurityEventsPage({ locale }: { locale: Locale }) {
                   <td title={event.reason ?? undefined}>{event.reason ?? "—"}</td>
                   <td>
                     <button
+                      type="button"
                       className="security-event-detail-button"
                       aria-label={copy(locale, "查看安全审计详情", "View security audit details")}
                       onClick={() => setSelectedId(event.id)}
@@ -276,8 +369,8 @@ export default function SecurityEventsPage({ locale }: { locale: Locale }) {
               ))}
             </tbody>
           </table>
-          {visibleEvents.length === 0 && (
-            <div className="table-empty">
+          {events.length === 0 && (
+            <div className="table-empty" role="status">
               {copy(
                 locale,
                 "没有符合当前筛选的真实安全审计信号。",
@@ -286,6 +379,29 @@ export default function SecurityEventsPage({ locale }: { locale: Locale }) {
             </div>
           )}
         </div>
+        <nav
+          className="security-event-pagination"
+          aria-label={copy(locale, "安全事件分页", "Security event pagination")}
+        >
+          <button
+            type="button"
+            className="admin-secondary"
+            disabled={query.page <= 1 || listBusy}
+            onClick={() => updateQuery({ ...query, page: Math.max(1, query.page - 1) })}
+          >
+            <CaretLeft aria-hidden="true" />
+            {copy(locale, "上一页", "Previous")}
+          </button>
+          <button
+            type="button"
+            className="admin-secondary"
+            disabled={query.page >= pageCount || listBusy}
+            onClick={() => updateQuery({ ...query, page: query.page + 1 })}
+          >
+            {copy(locale, "下一页", "Next")}
+            <CaretRight aria-hidden="true" />
+          </button>
+        </nav>
       </section>
 
       {selected && (

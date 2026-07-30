@@ -1,12 +1,18 @@
 import {
   AUDIT_CSV_EXPORT_LIMIT,
   auditCsvFilename,
+  securityAuditActions,
+  securityAuditActionsForCategory,
+  securityAuditActionsForDefaultSeverity,
   serializeAuditCsv,
   type AdminInventoryRiskItem,
   type AdminInventoryRiskLevel,
   type AdminInventoryRiskSummary,
   type AdminOrderListItem,
   type OrderStatus,
+  type SecurityAuditSummary,
+  type SecurityEventCategory,
+  type SecurityEventSeverity,
 } from "@cloudbridge/contracts";
 import {
   ConflictException,
@@ -540,11 +546,48 @@ export class AdminService {
         orderBy: { targetType: "asc" },
       }),
     ]);
+    let securitySummary: SecurityAuditSummary | undefined;
+    if (query.scope === "security" || query.category || query.severity) {
+      const now = Date.now();
+      const [
+        securityTotal,
+        last24Hours,
+        needsReview,
+        deniedOrFailed,
+      ] = await this.prisma.$transaction([
+        this.prisma.auditEvent.count({
+          where: auditWhere({ scope: "security", timeRange: "all" }, now),
+        }),
+        this.prisma.auditEvent.count({
+          where: auditWhere({ scope: "security", timeRange: "24h" }, now),
+        }),
+        this.prisma.auditEvent.count({
+          where: auditWhere({
+            scope: "security",
+            severity: "high",
+            timeRange: "all",
+          }, now),
+        }),
+        this.prisma.auditEvent.count({
+          where: auditWhere({
+            scope: "security",
+            timeRange: "all",
+          }, now, { deniedOrFailedOnly: true }),
+        }),
+      ]);
+      securitySummary = {
+        total: securityTotal,
+        last24Hours,
+        needsReview,
+        deniedOrFailed,
+      };
+    }
     return {
       data: {
         items: events,
         facets: {
           targetTypes: targetTypes.map((row) => row.targetType),
+          ...(securitySummary ? { securitySummary } : {}),
         },
       },
       meta: { page: query.page, pageSize: query.pageSize, total, pageCount: Math.ceil(total / query.pageSize) },
@@ -727,13 +770,76 @@ export class AdminService {
 
 type AuditFilterInput = Pick<
   AdminAuditQueryDto,
-  "search" | "result" | "actor" | "targetType" | "timeRange"
+  | "search"
+  | "result"
+  | "actor"
+  | "targetType"
+  | "timeRange"
+  | "scope"
+  | "category"
+  | "severity"
 >;
 
-const auditWhere = (query: AuditFilterInput): Prisma.AuditEventWhereInput => {
+const securityScopeWhere = (): Prisma.AuditEventWhereInput => ({
+  OR: [
+    { action: { in: [...securityAuditActions] } },
+    { result: "DENIED" },
+  ],
+});
+
+const securityCategoryWhere = (
+  category: SecurityEventCategory,
+): Prisma.AuditEventWhereInput => {
+  const categoryActions = securityAuditActionsForCategory(category);
+  if (category !== "authorization") {
+    return { action: { in: categoryActions } };
+  }
+  return {
+    OR: [
+      { action: { in: categoryActions } },
+      {
+        AND: [
+          { result: "DENIED" },
+          { action: { notIn: [...securityAuditActions] } },
+        ],
+      },
+    ],
+  };
+};
+
+const securitySeverityWhere = (
+  severity: SecurityEventSeverity,
+): Prisma.AuditEventWhereInput => {
+  const defaultActions = securityAuditActionsForDefaultSeverity(severity);
+  if (severity !== "high") {
+    return {
+      AND: [
+        { result: "SUCCEEDED" },
+        { action: { in: defaultActions } },
+      ],
+    };
+  }
+  return {
+    OR: [
+      { result: { in: ["FAILED", "DENIED"] } },
+      {
+        AND: [
+          { result: "SUCCEEDED" },
+          { action: { in: defaultActions } },
+        ],
+      },
+    ],
+  };
+};
+
+const auditWhere = (
+  query: AuditFilterInput,
+  now = Date.now(),
+  options: { deniedOrFailedOnly?: boolean } = {},
+): Prisma.AuditEventWhereInput => {
   const search = query.search?.normalize("NFKC").trim();
   const timeRange = query.timeRange ?? "all";
-  return {
+  const baseWhere: Prisma.AuditEventWhereInput = {
     ...(query.result ? { result: query.result } : {}),
     ...(query.actor === "administrator"
       ? { actorId: { not: null } }
@@ -743,7 +849,7 @@ const auditWhere = (query: AuditFilterInput): Prisma.AuditEventWhereInput => {
     ...(query.targetType ? { targetType: query.targetType.trim() } : {}),
     ...(timeRange === "all"
       ? {}
-      : { createdAt: { gte: new Date(Date.now() - auditTimeRangeMs[timeRange]) } }),
+      : { createdAt: { gte: new Date(now - auditTimeRangeMs[timeRange]) } }),
     ...(search
       ? {
           OR: [
@@ -766,6 +872,22 @@ const auditWhere = (query: AuditFilterInput): Prisma.AuditEventWhereInput => {
           ],
         }
       : {}),
+  };
+  const usesSecurityScope = query.scope === "security"
+    || query.category !== undefined
+    || query.severity !== undefined
+    || options.deniedOrFailedOnly === true;
+  if (!usesSecurityScope) return baseWhere;
+  return {
+    AND: [
+      baseWhere,
+      securityScopeWhere(),
+      ...(query.category ? [securityCategoryWhere(query.category)] : []),
+      ...(query.severity ? [securitySeverityWhere(query.severity)] : []),
+      ...(options.deniedOrFailedOnly
+        ? [{ result: { in: ["FAILED", "DENIED"] } } satisfies Prisma.AuditEventWhereInput]
+        : []),
+    ],
   };
 };
 
