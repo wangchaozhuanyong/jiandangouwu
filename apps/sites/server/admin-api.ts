@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SHARE_TEMPLATE,
   AUDIT_CSV_EXPORT_CONFIRMATION,
   AUDIT_CSV_EXPORT_LIMIT,
   DEFAULT_INVENTORY_RISK_THRESHOLD,
@@ -21,7 +22,6 @@ import {
   type SecurityEventSeverity,
 } from "@cloudbridge/contracts";
 import {
-  adminPermissions,
   ApiInputError,
   bootstrapOrReadAdmin,
   headerUser,
@@ -34,6 +34,12 @@ import {
   writeAudit,
   type AdminIdentity,
 } from "./http";
+import {
+  adminPermissions,
+  adminRoleDefinition,
+  adminRoleDefinitions,
+  adminRoleForPermissions,
+} from "./access-roles";
 import {
   decryptOrderContact,
   ProtectedDataInvalidError,
@@ -52,8 +58,10 @@ import {
 import {
   deleteManagedMedia,
   listManagedMedia,
+  removeWechatQr,
   replaceMediaReferences,
   uploadManagedMedia,
+  uploadWechatQr,
 } from "./media-api";
 import {
   completeBackupRestoreDrill,
@@ -265,6 +273,19 @@ export async function handleAdminApi(
   if (channelMatch && request.method === "PATCH") {
     const actor = await writeIdentity(env.DB, request, "support.write");
     return success(await updateChannel(env.DB, request, decodeURIComponent(channelMatch[1]), actor));
+  }
+  const channelQrMatch = pathname.match(/^\/v1\/admin\/contact-channels\/([^/]+)\/qr$/u);
+  if (channelQrMatch && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "support.write");
+    const id = decodeURIComponent(channelQrMatch[1]);
+    await uploadWechatQr(env, request, id, actor);
+    return success((await adminChannels(env.DB)).find((item) => item.id === id), { status: 201 });
+  }
+  if (channelQrMatch && request.method === "DELETE") {
+    const actor = await writeIdentity(env.DB, request, "support.write");
+    const id = decodeURIComponent(channelQrMatch[1]);
+    await removeWechatQr(env, request, id, actor);
+    return success((await adminChannels(env.DB)).find((item) => item.id === id));
   }
 
   if (pathname === "/v1/admin/site-settings") {
@@ -593,6 +614,20 @@ export async function handleAdminApi(
     await requireAdmin(env.DB, request, "team.manage");
     return success(await teamOverview(env.DB));
   }
+  if (pathname === "/v1/admin/access/members" && request.method === "POST") {
+    const actor = await writeIdentityAll(env.DB, request, ["team.manage", "roles.manage"]);
+    return success(await createTeamMember(env.DB, request, actor), { status: 201 });
+  }
+  const teamMemberMatch = pathname.match(/^\/v1\/admin\/access\/members\/([^/]+)$/u);
+  if (teamMemberMatch && request.method === "PATCH") {
+    const actor = await writeIdentityAll(env.DB, request, ["team.manage", "roles.manage"]);
+    return success(await updateTeamMember(
+      env.DB,
+      request,
+      decodeURIComponent(teamMemberMatch[1]),
+      actor,
+    ));
+  }
   if (pathname === "/v1/admin/access/roles" && request.method === "GET") {
     await requireAdmin(env.DB, request, "roles.manage");
     return success(await rolesOverview(env.DB));
@@ -784,11 +819,12 @@ async function writeIdentityAll(
 }
 
 function adminUser(identity: AdminIdentity) {
+  const role = adminRoleForPermissions(identity.permissions);
   return {
     id: identity.id,
     email: identity.email,
     displayName: identity.displayName,
-    roles: [{ key: "SUPER_ADMIN", name: { zh: "超级管理员", en: "Super admin" } }],
+    roles: [{ key: role.key, name: role.name }],
     permissions: identity.permissions,
     authProvider: "SITES",
   };
@@ -1345,7 +1381,9 @@ async function updateChannel(
   const label = localizedText(body.label, "label");
   const serviceHours = localizedText(body.serviceHours, "serviceHours");
   const publicAccount = requiredString(body.publicAccount, "publicAccount", 1, 240);
-  const directTarget = nullableString(body.directTarget, "directTarget", 512);
+  const directTarget = current.type === "WECHAT"
+    ? current.directTarget
+    : nullableString(body.directTarget, "directTarget", 512);
   const active = Boolean(body.active);
   const sortOrder = safeInteger(body.sortOrder, "sortOrder", 0);
   const candidate = {
@@ -1461,6 +1499,7 @@ async function adminSettings(db: D1Database) {
   const activeChannels = channels.filter((channel) => channel.active);
   return {
     ...settings,
+    shareTemplate: normalizedShareTemplate(settings.shareTemplate),
     inventoryRiskThreshold: inventoryRiskThresholdValue(settings.inventoryRiskThreshold),
     version: row.version,
     updatedAt: row.updatedAt,
@@ -1475,6 +1514,13 @@ async function updateSettings(db: D1Database, request: Request, actor: AdminIden
   const body = await readJson<Record<string, unknown>>(request);
   const version = safeInteger(body.version, "version", 1);
   const reason = requiredString(body.reason, "reason", 8, 500);
+  const currentRow = await db.prepare(
+    "SELECT value_json AS valueJson, version FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
+  ).first<{ valueJson: string; version: number }>();
+  if (!currentRow || currentRow.version !== version) {
+    throw new ApiInputError("VERSION_CONFLICT", "Settings changed. Refresh and try again.", 409);
+  }
+  const currentSettings = parseJsonRecord(currentRow.valueJson);
   const settings = {
     siteName: localizedText(body.siteName, "siteName"),
     defaultLocale: body.defaultLocale === "en" ? "en" : "zh",
@@ -1490,6 +1536,9 @@ async function updateSettings(db: D1Database, request: Request, actor: AdminIden
     ),
     transitServiceEnabled: Boolean(body.transitServiceEnabled),
     transitServiceUrl: nullableHttpsUrl(body.transitServiceUrl, "transitServiceUrl"),
+    shareTemplate: body.shareTemplate === undefined
+      ? normalizedShareTemplate(currentSettings.shareTemplate)
+      : validatedShareTemplate(body.shareTemplate),
   };
   if (settings.acceptOrders && !settings.supportEnabled) {
     throw new ApiInputError(
@@ -1761,7 +1810,8 @@ async function revealOrderContact(
 
 async function teamOverview(db: D1Database) {
   const members = await db.prepare(
-    `SELECT id, email, display_name AS displayName, status, last_login_at AS lastLoginAt,
+    `SELECT id, email, display_name AS displayName, status,
+      permissions_json AS permissionsJson, last_login_at AS lastLoginAt,
       created_at AS createdAt, updated_at AS updatedAt FROM admin_members
      ORDER BY created_at ASC, id ASC`,
   ).all<{
@@ -1769,41 +1819,243 @@ async function teamOverview(db: D1Database) {
     email: string;
     displayName: string;
     status: string;
+    permissionsJson: string;
     lastLoginAt: string | null;
     createdAt: string;
     updatedAt: string;
   }>();
-  const superRole = {
-    id: "role-super-admin",
-    key: "SUPER_ADMIN",
-    name: { zh: "超级管理员", en: "Super admin" },
-    description: "Sites owner administration",
-  };
   return {
-    members: (members.results ?? []).map((member) => ({
-      ...member,
-      authProvider: "SITES",
-      roles: [superRole],
-    })),
-    availableRoles: [superRole],
+    members: (members.results ?? []).map((member) => {
+      const permissions = safeJsonStringArrayForAccess(member.permissionsJson);
+      const role = adminRoleForPermissions(permissions);
+      return {
+        id: member.id,
+        email: member.email,
+        displayName: member.displayName,
+        status: member.status,
+        lastLoginAt: member.lastLoginAt,
+        createdAt: member.createdAt,
+        updatedAt: member.updatedAt,
+        authProvider: "SITES",
+        roles: [roleSummary(role)],
+      };
+    }),
+    availableRoles: adminRoleDefinitions.map(roleSummary),
   };
 }
 
 async function rolesOverview(db: D1Database) {
-  const memberCount = await count(db, "SELECT COUNT(*) AS count FROM admin_members WHERE status = 'ACTIVE'");
+  const members = await db.prepare(
+    "SELECT permissions_json AS permissionsJson FROM admin_members",
+  ).all<{ permissionsJson: string }>();
+  const roleCounts = new Map<string, number>();
+  for (const member of members.results ?? []) {
+    const role = adminRoleForPermissions(safeJsonStringArrayForAccess(member.permissionsJson));
+    roleCounts.set(role.key, (roleCounts.get(role.key) ?? 0) + 1);
+  }
   return {
-    roles: [{
-      id: "role-super-admin",
-      key: "SUPER_ADMIN",
-      name: { zh: "超级管理员", en: "Super admin" },
-      description: "Sites owner administration",
-      permissions: [...adminPermissions],
-      memberCount,
+    roles: adminRoleDefinitions.map((role) => ({
+      ...roleSummary(role),
+      permissions: [...role.permissions],
+      memberCount: roleCounts.get(role.key) ?? 0,
       updatedAt: new Date().toISOString(),
-      systemProtected: true,
-    }],
+      systemProtected: role.systemProtected,
+      capabilities: role.capabilities,
+      restrictions: role.restrictions,
+    })),
     permissions: adminPermissions.map((key) => ({ key, description: null })),
   };
+}
+
+async function createTeamMember(
+  db: D1Database,
+  request: Request,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  confirmOwnerIdentity(body.confirmationEmail, actor);
+  const displayName = requiredString(body.displayName, "displayName", 1, 120);
+  const email = adminEmail(body.email, "email");
+  const reason = requiredString(body.reason, "reason", 8, 500);
+  const role = assignableRole(body.roleKey);
+  const existing = await db.prepare(
+    "SELECT id FROM admin_members WHERE email = ? LIMIT 1",
+  ).bind(email).first<{ id: string }>();
+  if (existing) {
+    throw new ApiInputError(
+      "ADMIN_MEMBER_EMAIL_EXISTS",
+      "An administrator with this email already exists.",
+      409,
+    );
+  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.prepare(
+    "INSERT INTO admin_members (id, email, display_name, status, permissions_json, last_login_at, created_at, updated_at) VALUES (?, ?, ?, 'INVITED', ?, NULL, ?, ?)",
+  ).bind(
+    id,
+    email,
+    displayName,
+    JSON.stringify(role.permissions),
+    now,
+    now,
+  ).run();
+  await writeAudit(db, {
+    action: "team.member.created",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "ADMIN_USER",
+    targetId: id,
+    reason,
+  });
+  return teamMemberById(db, id);
+}
+
+async function updateTeamMember(
+  db: D1Database,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const current = await db.prepare(
+    `SELECT id, email, display_name AS displayName, status,
+      permissions_json AS permissionsJson, last_login_at AS lastLoginAt,
+      created_at AS createdAt, updated_at AS updatedAt
+     FROM admin_members WHERE id = ? LIMIT 1`,
+  ).bind(id).first<{
+    id: string;
+    email: string;
+    displayName: string;
+    status: string;
+    permissionsJson: string;
+    lastLoginAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>();
+  if (!current) throw new ApiInputError("ADMIN_MEMBER_NOT_FOUND", "The administrator was not found.", 404);
+  if (current.id === actor.id) {
+    throw new ApiInputError(
+      "OWNER_SELF_CHANGE_FORBIDDEN",
+      "The current owner cannot change their own access.",
+      409,
+    );
+  }
+  const currentRole = adminRoleForPermissions(safeJsonStringArrayForAccess(current.permissionsJson));
+  if (currentRole.key === "SUPER_ADMIN") {
+    throw new ApiInputError(
+      "OWNER_PROTECTED",
+      "The owner role is system protected.",
+      409,
+    );
+  }
+
+  const body = await readJson<Record<string, unknown>>(request);
+  confirmOwnerIdentity(body.confirmationEmail, actor);
+  const expectedUpdatedAt = requiredString(body.expectedUpdatedAt, "expectedUpdatedAt", 1, 80);
+  const reason = requiredString(body.reason, "reason", 8, 500);
+  const nextRole = body.roleKey === undefined ? currentRole : assignableRole(body.roleKey);
+  const requestedStatus = body.status;
+  if (
+    requestedStatus !== undefined
+    && requestedStatus !== "ACTIVE"
+    && requestedStatus !== "DISABLED"
+  ) throw fieldError("status");
+  const nextStatus = requestedStatus === undefined
+    ? current.status
+    : requestedStatus === "ACTIVE" && current.status === "INVITED"
+      ? "INVITED"
+      : requestedStatus;
+  const changedRole = nextRole.key !== currentRole.key;
+  const changedStatus = nextStatus !== current.status;
+  if (!changedRole && !changedStatus) {
+    throw new ApiInputError("ADMIN_MEMBER_UNCHANGED", "No administrator access change was requested.", 422);
+  }
+  const now = nextIsoTimestamp(current.updatedAt);
+  const result = await db.prepare(
+    `UPDATE admin_members SET permissions_json = ?, status = ?, updated_at = ?
+     WHERE id = ? AND updated_at = ?`,
+  ).bind(
+    JSON.stringify(nextRole.permissions),
+    nextStatus,
+    now,
+    id,
+    expectedUpdatedAt,
+  ).run();
+  if (changes(result) !== 1) {
+    throw new ApiInputError(
+      "VERSION_CONFLICT",
+      "The administrator changed. Refresh and try again.",
+      409,
+    );
+  }
+  await writeAudit(db, {
+    action: changedRole
+      ? "team.member.roles.update"
+      : nextStatus === "DISABLED"
+        ? "team.member.disabled"
+        : "team.member.enabled",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "ADMIN_USER",
+    targetId: id,
+    reason,
+  });
+  return teamMemberById(db, id);
+}
+
+async function teamMemberById(db: D1Database, id: string) {
+  const overview = await teamOverview(db);
+  const member = overview.members.find((item) => item.id === id);
+  if (!member) throw new ApiInputError("ADMIN_MEMBER_NOT_FOUND", "The administrator was not found.", 404);
+  return member;
+}
+
+function roleSummary(role: (typeof adminRoleDefinitions)[number]) {
+  return {
+    id: `role-${role.key.toLocaleLowerCase().replaceAll("_", "-")}`,
+    key: role.key,
+    name: role.name,
+    description: role.description,
+    assignable: role.assignable,
+  };
+}
+
+function safeJsonStringArrayForAccess(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function assignableRole(value: unknown) {
+  const key = typeof value === "string" ? value : "";
+  const role = adminRoleDefinition(key);
+  if (!role || !role.assignable) throw fieldError("roleKey");
+  return role;
+}
+
+function confirmOwnerIdentity(value: unknown, actor: AdminIdentity): void {
+  const confirmation = adminEmail(value, "confirmationEmail");
+  if (confirmation !== actor.email.toLocaleLowerCase()) {
+    throw new ApiInputError(
+      "OWNER_CONFIRMATION_MISMATCH",
+      "The confirmation email does not match the current owner.",
+      422,
+      [{
+        field: "confirmationEmail",
+        code: "MISMATCH",
+        message: "Enter the current owner email.",
+      }],
+    );
+  }
+}
+
+function adminEmail(value: unknown, field: string): string {
+  const email = requiredString(value, field, 3, 254).toLocaleLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(email)) throw fieldError(field);
+  return email;
 }
 
 async function manualPaymentEvents(db: D1Database, url: URL): Promise<Response> {
@@ -2020,13 +2272,15 @@ function heroItem(row: HeroRow) {
 }
 
 function channelItem(row: ChannelRow) {
+  const qrImageUrl = row.type === "WECHAT" ? row.directTarget : null;
   return {
     id: row.id,
     type: row.type,
     mode: row.mode,
     label: { zh: row.labelZh, en: row.labelEn },
     publicAccount: row.publicAccount,
-    directTarget: row.directTarget,
+    directTarget: row.type === "WECHAT" ? null : row.directTarget,
+    qrImageUrl,
     serviceHours: { zh: row.serviceHoursZh, en: row.serviceHoursEn },
     active: Boolean(row.active),
     sortOrder: row.sortOrder,
@@ -2533,6 +2787,34 @@ function localizedText(value: unknown, field: string): { zh: string; en: string 
   };
 }
 
+function normalizedShareTemplate(value: unknown): { zh: string; en: string } {
+  const record = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const candidate = {
+    zh: typeof record.zh === "string" && record.zh.trim() ? record.zh.trim() : DEFAULT_SHARE_TEMPLATE.zh,
+    en: typeof record.en === "string" && record.en.trim() ? record.en.trim() : DEFAULT_SHARE_TEMPLATE.en,
+  };
+  try {
+    return validatedShareTemplate(candidate);
+  } catch {
+    return { ...DEFAULT_SHARE_TEMPLATE };
+  }
+}
+
+function validatedShareTemplate(value: unknown): { zh: string; en: string } {
+  const template = localizedText(value, "shareTemplate");
+  for (const localized of [template.zh, template.en]) {
+    if (localized.length > 500) throw fieldError("shareTemplate");
+    for (const match of localized.matchAll(/\{([^{}]+)\}/gu)) {
+      if (match[1] !== "productName" && match[1] !== "price") {
+        throw fieldError("shareTemplate");
+      }
+    }
+  }
+  return template;
+}
+
 function requiredString(
   value: unknown,
   field: string,
@@ -2620,6 +2902,14 @@ function fieldError(field: string): ApiInputError {
 
 function changes(result: { meta?: { changes?: number; rows_written?: number } }): number {
   return Number(result.meta?.changes ?? result.meta?.rows_written ?? 0);
+}
+
+function nextIsoTimestamp(previous: string): string {
+  const previousMs = Date.parse(previous);
+  const nextMs = Number.isFinite(previousMs)
+    ? Math.max(Date.now(), previousMs + 1)
+    : Date.now();
+  return new Date(nextMs).toISOString();
 }
 
 async function count(db: D1Database, query: string): Promise<number> {

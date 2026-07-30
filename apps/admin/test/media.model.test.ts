@@ -134,6 +134,7 @@ test("media summary reports unique paths, references, source counts, and unsafe 
     totalReferences: 3,
     heroReferences: 1,
     productReferences: 2,
+    supportReferences: 0,
     invalidPaths: 1,
     managedObjects: 0,
     unreferencedManagedObjects: 0,
@@ -159,6 +160,7 @@ test("media inventory merges R2 metadata with references and preserves unreferen
       storageStatus: "AVAILABLE",
       productReferences: 1,
       heroReferences: 0,
+      supportReferences: 0,
     },
     {
       key: "uploads/2026/07/223e4567-e89b-12d3-a456-426614174000-unused.png",
@@ -171,6 +173,7 @@ test("media inventory merges R2 metadata with references and preserves unreferen
       storageStatus: "AVAILABLE",
       productReferences: 0,
       heroReferences: 0,
+      supportReferences: 0,
     },
   ]);
 
@@ -185,6 +188,7 @@ test("media inventory merges R2 metadata with references and preserves unreferen
     totalReferences: 1,
     heroReferences: 0,
     productReferences: 1,
+    supportReferences: 0,
     invalidPaths: 0,
     managedObjects: 2,
     unreferencedManagedObjects: 1,

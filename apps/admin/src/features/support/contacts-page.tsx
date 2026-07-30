@@ -11,6 +11,8 @@ import {
   EnvelopeSimple,
   NotePencil,
   QrCode,
+  Trash,
+  UploadSimple,
   TelegramLogo,
   WarningCircle,
   WhatsappLogo,
@@ -39,8 +41,10 @@ import {
 import { helpTriggerLabel } from "../../help-content";
 import {
   getContactChannels,
+  removeWechatQr,
   reorderContactChannels,
   updateContactChannel,
+  uploadWechatQr,
 } from "./api";
 
 const copy = (locale: Locale, zh: string, en: string) => locale === "zh" ? zh : en;
@@ -203,6 +207,12 @@ export default function ContactsPage({ canWrite, locale }: { canWrite: boolean; 
                 <dl>
                   <div><dt>{copy(locale, "服务时间", "Service hours")}</dt><dd>{channel.serviceHours[locale]}</dd></div>
                   <div><dt>{copy(locale, "渠道模式", "Channel mode")}</dt><dd>{channel.mode}</dd></div>
+                  {channel.type === "WECHAT" && (
+                    <div>
+                      <dt>{copy(locale, "微信二维码", "WeChat QR")}</dt>
+                      <dd>{channel.qrImageUrl ? copy(locale, "已上传", "Uploaded") : copy(locale, "未上传（仍可复制微信号）", "Not uploaded (account copy remains available)")}</dd>
+                    </div>
+                  )}
                 </dl>
                 {canWrite && (
                   <div className="real-card-actions">
@@ -284,15 +294,97 @@ function ContactChannelDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [targetError, setTargetError] = useState("");
+  const [qrFile, setQrFile] = useState<File | null>(null);
+  const [qrReason, setQrReason] = useState("");
+  const [qrScanned, setQrScanned] = useState(false);
+  const [qrBusy, setQrBusy] = useState(false);
+  const [qrError, setQrError] = useState("");
+  const [qrPreviewUrl, setQrPreviewUrl] = useState("");
   const targetErrorId = useId();
   const dirty = JSON.stringify(form) !== JSON.stringify(initialForm);
-  useUnsavedChanges(dirty);
-  useAdminPageDirty(dirty);
+  const qrDirty = Boolean(qrFile) || Boolean(qrReason.trim()) || qrScanned;
+  useUnsavedChanges(dirty || qrDirty);
+  useAdminPageDirty(dirty || qrDirty);
+
+  useEffect(() => {
+    if (!qrFile) {
+      setQrPreviewUrl("");
+      return undefined;
+    }
+    const url = URL.createObjectURL(qrFile);
+    setQrPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [qrFile]);
 
   const requestClose = useCallback(() => {
-    if (dirty && !window.confirm(copy(locale, "尚有未保存内容，确定关闭吗？", "Discard unsaved changes?"))) return;
+    if ((dirty || qrDirty) && !window.confirm(copy(locale, "尚有未保存内容，确定关闭吗？", "Discard unsaved changes?"))) return;
     onClose();
-  }, [dirty, locale, onClose]);
+  }, [dirty, locale, onClose, qrDirty]);
+
+  const saveQr = async () => {
+    if (!qrFile || qrBusy || dirty) return;
+    const reason = qrReason.trim();
+    if (qrFile.size < 1 || qrFile.size > 5_000_000) {
+      setQrError(copy(locale, "二维码图片必须小于 5MB。", "The QR image must be smaller than 5 MB."));
+      return;
+    }
+    if (reason.length < 8 || reason.length > 500) {
+      setQrError(copy(locale, "请填写至少 8 个字符的上传原因。", "Enter an upload reason of at least 8 characters."));
+      return;
+    }
+    if (!qrScanned) {
+      setQrError(copy(locale, "请先用真实微信扫码确认这张图片可用。", "Scan the image with WeChat and confirm it works first."));
+      return;
+    }
+    setQrBusy(true);
+    setQrError("");
+    try {
+      const saved = (await uploadWechatQr(item.id, qrFile, item.version, reason)).data;
+      notify(copy(locale, "微信二维码已上传并记录审计。", "WeChat QR uploaded and audited."));
+      onSaved(saved);
+    } catch (requestError) {
+      const message = requestError instanceof ApiError && requestError.status === 409
+        ? copy(locale, "渠道已被其他管理员修改，请重新加载后再上传。", "The channel changed elsewhere. Reload before uploading.")
+        : requestError instanceof ApiError && requestError.status === 413
+          ? copy(locale, "二维码图片超过 5MB。", "The QR image exceeds 5 MB.")
+          : requestError instanceof ApiError && requestError.code === "MEDIA_FILE_TYPE_INVALID"
+            ? copy(locale, "文件内容不是有效的 PNG、JPEG 或 WebP 图片。", "The file is not a genuine PNG, JPEG, or WebP image.")
+            : copy(locale, "二维码未上传，请检查文件和业务原因。", "The QR image was not uploaded. Check the file and reason.");
+      setQrError(message);
+      notify(message, "error");
+    } finally {
+      setQrBusy(false);
+    }
+  };
+
+  const removeQr = async () => {
+    if (!item.qrImageUrl || qrBusy || dirty) return;
+    const reason = qrReason.trim();
+    if (reason.length < 8 || reason.length > 500) {
+      setQrError(copy(locale, "请填写至少 8 个字符的移除原因。", "Enter a removal reason of at least 8 characters."));
+      return;
+    }
+    if (!window.confirm(copy(
+      locale,
+      "移除后客户端不再显示二维码，但仍可复制微信号。R2 文件会保留在媒体库中。",
+      "The storefront will stop showing the QR image but account copy remains available. The R2 file stays in the media library.",
+    ))) return;
+    setQrBusy(true);
+    setQrError("");
+    try {
+      const saved = (await removeWechatQr(item.id, item.version, reason)).data;
+      notify(copy(locale, "微信二维码引用已移除。", "WeChat QR reference removed."));
+      onSaved(saved);
+    } catch (requestError) {
+      const message = requestError instanceof ApiError && requestError.status === 409
+        ? copy(locale, "渠道已被其他管理员修改，请重新加载后再移除。", "The channel changed elsewhere. Reload before removing.")
+        : copy(locale, "二维码引用未移除。", "The QR reference was not removed.");
+      setQrError(message);
+      notify(message, "error");
+    } finally {
+      setQrBusy(false);
+    }
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -417,6 +509,81 @@ function ContactChannelDialog({
             required
           />
         </label>
+        {item.type === "WECHAT" && (
+          <section className="wechat-qr-editor" aria-labelledby="wechat-qr-title">
+            <div className="wechat-qr-editor-heading">
+              <div>
+                <strong id="wechat-qr-title">{copy(locale, "微信二维码", "WeChat QR image")}</strong>
+                <small>{copy(locale, "真实图片会写入 Sites R2；系统不会宣称已扫码验证。", "The genuine image is stored in Sites R2; the system never claims it was scan-verified.")}</small>
+              </div>
+              {(qrPreviewUrl || item.qrImageUrl) && (
+                <img alt={copy(locale, "待确认的微信二维码预览", "WeChat QR preview pending confirmation")} src={qrPreviewUrl || item.qrImageUrl || ""} />
+              )}
+            </div>
+            <label>
+              <span>{item.qrImageUrl ? copy(locale, "替换二维码图片", "Replace QR image") : copy(locale, "上传二维码图片", "Upload QR image")}</span>
+              <input
+                accept="image/png,image/jpeg,image/webp"
+                disabled={qrBusy || dirty}
+                onChange={(event) => {
+                  setQrFile(event.target.files?.[0] ?? null);
+                  setQrScanned(false);
+                  setQrError("");
+                }}
+                type="file"
+              />
+            </label>
+            <label>
+              <span>{copy(locale, "二维码操作原因（至少 8 个字符）", "QR change reason (at least 8 characters)")}</span>
+              <textarea
+                disabled={qrBusy || dirty}
+                maxLength={500}
+                minLength={8}
+                onChange={(event) => {
+                  setQrReason(event.target.value);
+                  setQrError("");
+                }}
+                rows={2}
+                value={qrReason}
+              />
+            </label>
+            {qrFile && (
+              <label className="checkbox-field">
+                <input
+                  checked={qrScanned}
+                  disabled={qrBusy || dirty}
+                  onChange={(event) => setQrScanned(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>{copy(locale, "我已用真实微信扫码确认该二维码可用", "I scanned this QR with WeChat and confirmed it works")}</span>
+              </label>
+            )}
+            {dirty && (
+              <small className="field-note">{copy(locale, "请先保存或撤销上方渠道资料修改，再操作二维码。", "Save or discard the channel fields above before changing the QR image.")}</small>
+            )}
+            {qrError && <p className="form-error" role="alert"><WarningCircle />{qrError}</p>}
+            <div className="wechat-qr-actions">
+              <button
+                className="admin-secondary"
+                disabled={!qrFile || !qrScanned || qrBusy || dirty}
+                onClick={() => void saveQr()}
+                type="button"
+              >
+                <UploadSimple size={17} />{qrBusy ? copy(locale, "正在处理", "Working") : copy(locale, "上传并应用", "Upload and apply")}
+              </button>
+              {item.qrImageUrl && (
+                <button
+                  className="admin-danger"
+                  disabled={qrBusy || dirty}
+                  onClick={() => void removeQr()}
+                  type="button"
+                >
+                  <Trash size={17} />{copy(locale, "移除二维码", "Remove QR")}
+                </button>
+              )}
+            </div>
+          </section>
+        )}
         <label>
           <span className="admin-field-title">
             {copy(locale, "安全跳转地址", "Approved direct target")}
@@ -446,7 +613,7 @@ function ContactChannelDialog({
         {error && <p className="form-error" role="alert"><WarningCircle />{error}</p>}
         <div className="dialog-actions">
           <button type="button" onClick={requestClose}>{copy(locale, "取消", "Cancel")}</button>
-          <button className="admin-primary" disabled={busy || !dirty}>{busy ? copy(locale, "正在保存", "Saving") : copy(locale, "保存", "Save")}</button>
+          <button className="admin-primary" disabled={busy || !dirty || qrDirty}>{busy ? copy(locale, "正在保存", "Saving") : copy(locale, "保存", "Save")}</button>
         </div>
       </form>
     </Dialog>

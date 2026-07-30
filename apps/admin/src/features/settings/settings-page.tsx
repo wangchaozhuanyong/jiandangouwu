@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SHARE_TEMPLATE,
   INVENTORY_RISK_THRESHOLD_MAX,
   INVENTORY_RISK_THRESHOLD_MIN,
   type AdminStorefrontSettings,
@@ -34,7 +35,7 @@ import {
 import { helpTriggerLabel } from "../../help-content";
 import { getSiteSettings, updateSiteSettings } from "./api";
 
-type SettingsSection = "brand" | "access" | "inventory" | "seo";
+type SettingsSection = "brand" | "access" | "inventory" | "share" | "seo";
 
 const copy = (locale: Locale, zh: string, en: string) => locale === "zh" ? zh : en;
 const policyVersionPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/u;
@@ -52,6 +53,7 @@ export const editableSettings = (
   inventoryRiskThreshold: settings.inventoryRiskThreshold,
   transitServiceEnabled: settings.transitServiceEnabled,
   transitServiceUrl: settings.transitServiceUrl,
+  shareTemplate: settings.shareTemplate ?? DEFAULT_SHARE_TEMPLATE,
   reason: "",
 });
 
@@ -65,6 +67,7 @@ const comparableSettings = (settings: UpdateStorefrontSettingsInput) => ({
   inventoryRiskThreshold: settings.inventoryRiskThreshold,
   transitServiceEnabled: settings.transitServiceEnabled,
   transitServiceUrl: settings.transitServiceUrl,
+  shareTemplate: settings.shareTemplate,
 });
 
 type SettingsValidationResult =
@@ -85,6 +88,10 @@ export const validateSettings = (
     seoDescription: {
       zh: form.seoDescription.zh.trim(),
       en: form.seoDescription.en.trim(),
+    },
+    shareTemplate: {
+      zh: form.shareTemplate.zh.trim(),
+      en: form.shareTemplate.en.trim(),
     },
     policyVersion: form.policyVersion.trim(),
     transitServiceUrl: form.transitServiceUrl?.trim() || null,
@@ -116,6 +123,26 @@ export const validateSettings = (
       ok: false,
       section: "seo",
       message: copy(locale, "中英文 SEO 描述均为必填，且不能只包含空格。", "Both SEO descriptions are required and cannot be blank."),
+    };
+  }
+  const unknownSharePlaceholder = [normalized.shareTemplate.zh, normalized.shareTemplate.en]
+    .some((template) => Array.from(template.matchAll(/\{([^{}]+)\}/gu))
+      .some((match) => match[1] !== "productName" && match[1] !== "price"));
+  if (
+    !normalized.shareTemplate.zh
+    || !normalized.shareTemplate.en
+    || normalized.shareTemplate.zh.length > 500
+    || normalized.shareTemplate.en.length > 500
+    || unknownSharePlaceholder
+  ) {
+    return {
+      ok: false,
+      section: "share",
+      message: copy(
+        locale,
+        "中英文分享文案均为必填，最长 500 个字符，且只能使用 {productName} 和 {price} 占位符。",
+        "Both share templates are required, limited to 500 characters, and may use only {productName} and {price}.",
+      ),
     };
   }
   if (!policyVersionPattern.test(normalized.policyVersion)) {
@@ -242,6 +269,15 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
         locale,
         "设置工作台低库存风险队列的阈值。该设置只改变运营摘要，不修改商品库存或客户端购买状态。",
         "Sets the threshold for the workspace low-stock queue. It changes only the operations summary, not product stock or storefront purchase state.",
+      ),
+    },
+    {
+      id: "share",
+      label: copy(locale, "商品分享", "Product sharing"),
+      help: copy(
+        locale,
+        "设置商品详情页分享时使用的中英文文案。系统会替换商品名称和价格，并自动附加当前商品的干净网址。",
+        "Sets the bilingual copy used when sharing a product. The system replaces product name and price, then appends the clean current product URL.",
       ),
     },
     {
@@ -456,8 +492,8 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
                   checked={form.transitServiceEnabled}
                   help={copy(
                     locale,
-                    "控制独立的中转站服务入口。只有明确关闭时客户端才隐藏该入口；它不会替代客服渠道。",
-                    "Controls the separate transit-service entry. The storefront hides it only when explicitly disabled, and it never replaces support channels.",
+                    "控制首页右下角独立漂浮的中转站服务入口。其他客户端页面不显示该入口；它不会替代客服渠道。",
+                    "Controls the separate floating transit-service entry at the bottom-right of the home page. It stays hidden on other storefront pages and never replaces support channels.",
                   )}
                   helpLabel={helpTriggerLabel(locale, copy(locale, "显示中转站服务", "Show transit service"))}
                   label={copy(locale, "显示中转站服务", "Show transit service")}
@@ -502,6 +538,50 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
                   </span>
                   <input value={form.policyVersion} onChange={(event) => setForm({ ...form, policyVersion: event.target.value })} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}" maxLength={80} required />
                 </label>
+              </>
+            )}
+
+            {section === "share" && (
+              <>
+                <div className="order-readiness-note is-ready" role="note">
+                  <Globe size={18} aria-hidden="true" />
+                  <div>
+                    <strong>{copy(locale, "网址由系统自动附加", "The URL is appended automatically")}</strong>
+                    <small>
+                      {copy(
+                        locale,
+                        "可使用 {productName} 和 {price}；其他花括号占位符会被拒绝保存。",
+                        "You may use {productName} and {price}; other brace placeholders are rejected.",
+                      )}
+                    </small>
+                  </div>
+                </div>
+                <label>
+                  <span>{copy(locale, "中文分享文案", "Chinese share template")}</span>
+                  <textarea
+                    rows={4}
+                    value={form.shareTemplate.zh}
+                    onChange={(event) => setForm({ ...form, shareTemplate: { ...form.shareTemplate, zh: event.target.value } })}
+                    maxLength={500}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>{copy(locale, "英文分享文案", "English share template")}</span>
+                  <textarea
+                    rows={4}
+                    value={form.shareTemplate.en}
+                    onChange={(event) => setForm({ ...form, shareTemplate: { ...form.shareTemplate, en: event.target.value } })}
+                    maxLength={500}
+                    required
+                  />
+                </label>
+                <div className="settings-share-preview">
+                  <small>{copy(locale, "当前语言预览", "Current language preview")}</small>
+                  <p>{form.shareTemplate[locale]
+                    .replaceAll("{productName}", copy(locale, "商品名称", "Product name"))
+                    .replaceAll("{price}", "€19.12")}</p>
+                </div>
               </>
             )}
 
@@ -565,7 +645,8 @@ export default function SettingsPage({ canWrite, locale }: { canWrite: boolean; 
             <div><dt>{copy(locale, "新订单", "New orders")}</dt><dd>{form.acceptOrders ? copy(locale, "接受", "Accepted") : copy(locale, "暂停", "Paused")}</dd></div>
             <div><dt>{copy(locale, "客服入口", "Support access")}</dt><dd>{form.supportEnabled ? copy(locale, "显示", "Visible") : copy(locale, "隐藏", "Hidden")}</dd></div>
             <div><dt>{copy(locale, "库存风险阈值", "Inventory risk threshold")}</dt><dd>1–{form.inventoryRiskThreshold}</dd></div>
-            <div><dt>{copy(locale, "中转站", "Transit service")}</dt><dd>{form.transitServiceEnabled ? copy(locale, "显示", "Visible") : copy(locale, "隐藏", "Hidden")}</dd></div>
+            <div><dt>{copy(locale, "中转站", "Transit service")}</dt><dd>{form.transitServiceEnabled ? copy(locale, "首页显示", "Home only") : copy(locale, "隐藏", "Hidden")}</dd></div>
+            <div><dt>{copy(locale, "分享文案", "Share copy")}</dt><dd>{copy(locale, "已配置", "Configured")}</dd></div>
             <div><dt>{copy(locale, "政策版本", "Policy version")}</dt><dd>{form.policyVersion}</dd></div>
           </dl>
           <div className="design-settings-warning">

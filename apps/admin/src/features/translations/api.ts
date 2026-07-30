@@ -150,6 +150,7 @@ export async function saveTranslationEntry(
     inventoryRiskThreshold: source.inventoryRiskThreshold,
     transitServiceEnabled: source.transitServiceEnabled,
     transitServiceUrl: source.transitServiceUrl,
+    shareTemplate: source.shareTemplate,
     reason,
   });
 }

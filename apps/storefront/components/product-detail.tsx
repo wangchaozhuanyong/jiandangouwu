@@ -3,14 +3,23 @@
 import {
   ArrowLeft,
   CheckCircle,
+  Copy,
   Headset,
   LockKey,
+  ShareNetwork,
   WarningCircle,
+  X,
 } from "@phosphor-icons/react";
-import type { Locale, OrderReceipt, ProductDetail } from "@cloudbridge/contracts";
+import {
+  DEFAULT_SHARE_TEMPLATE,
+  type Locale,
+  type OrderReceipt,
+  type ProductDetail,
+} from "@cloudbridge/contracts";
 import Link from "next/link";
 import {
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -23,6 +32,12 @@ import {
 } from "../lib/api";
 import { copy } from "../lib/copy";
 import { storefrontResponsiveImage } from "../lib/responsive-images";
+import {
+  cleanProductUrl,
+  copyProductShare,
+  renderProductShareTemplate,
+  tryNativeProductShare,
+} from "../lib/product-share";
 import {
   resolveAsyncViewState,
   UX_TIMINGS,
@@ -39,6 +54,7 @@ import {
 } from "../lib/order-validation";
 import { useExperience } from "./experience-provider";
 import { ResilientImage } from "./resilient-image";
+import { ContactChannelPicker } from "./contact-channel-picker";
 import { CurrencyPicker } from "./storefront-controls";
 
 export function ProductDetailView({
@@ -71,9 +87,12 @@ export function ProductDetailView({
   const [fieldError, setFieldError] = useState<"contact" | "policy" | "">("");
   const [slow, setSlow] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [compactNav, setCompactNav] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const lastLoadedCurrency = useRef(initialProduct ? "CNY" : "");
   const contactRef = useRef<HTMLInputElement>(null);
   const policyRef = useRef<HTMLInputElement>(null);
+  const topSentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!config || config.currencies.some((item) => item.code === currency)) return;
@@ -130,6 +149,17 @@ export function ProductDetailView({
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [draft.accepted, draft.contact, receipt]);
+
+  useEffect(() => {
+    const sentinel = topSentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => setCompactNav(!entry?.isIntersecting),
+      { rootMargin: "-1px 0px 0px", threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
 
   const focusField = (field: HTMLInputElement | null) => {
     window.requestAnimationFrame(() => {
@@ -226,14 +256,44 @@ export function ProductDetailView({
   const accepted = draft.accepted;
   const orderAvailability = resolveOrderAvailability(config);
   const canOrder = orderAvailability === "available";
+  const shareText = product
+    ? renderProductShareTemplate(
+      config?.settings.shareTemplate?.[locale] ?? DEFAULT_SHARE_TEMPLATE[locale],
+      product.name,
+      `${product.price.amount} ${product.price.currency}`,
+    )
+    : "";
+  const shareProduct = async () => {
+    if (!product) return;
+    const url = cleanProductUrl(window.location.href);
+    const result = await tryNativeProductShare(
+      typeof navigator.share === "function" ? navigator.share.bind(navigator) : undefined,
+      { title: product.name, text: shareText, url },
+    );
+    if (result === "shared" || result === "cancelled") return;
+    setShareOpen(true);
+  };
 
   return (
     <main className="detail-page">
-      <Link className="back-link" href={backHref}><ArrowLeft size={17} /> {t.backHome}</Link>
+      <div className="detail-top-sentinel" ref={topSentinelRef} aria-hidden="true" />
+      {compactNav && (
+        <nav className="detail-compact-nav is-visible">
+          <Link aria-label={t.backHome} href={backHref}><ArrowLeft aria-hidden="true" size={20} /></Link>
+          <strong>{product?.name ?? t.serviceLabel}</strong>
+          <button aria-label={locale === "zh" ? "分享商品" : "Share product"} disabled={!product} onClick={() => void shareProduct()} type="button">
+            <ShareNetwork aria-hidden="true" size={20} />
+          </button>
+        </nav>
+      )}
       {!product && viewState === "initial-loading" ? (
-        <div className="detail-skeleton" aria-label={t.loading} />
+        <div className="detail-skeleton-wrap">
+          <Link className="detail-overlay-button is-back" href={backHref} aria-label={t.backHome}><ArrowLeft size={20} /></Link>
+          <div className="detail-skeleton" aria-label={t.loading} />
+        </div>
       ) : !product ? (
         <div className="catalog-state is-error" role="alert">
+          <Link className="detail-error-back" href={backHref}><ArrowLeft size={17} /> {t.backHome}</Link>
           <WarningCircle aria-hidden="true" />
           <h1>{viewState === "offline" ? t.offline : t.loadError}</h1>
           <button onClick={retryProduct}>{t.retry}</button>
@@ -251,6 +311,19 @@ export function ProductDetailView({
               fallbackLabel={t.imageUnavailable}
               {...storefrontResponsiveImage(product.imageUrl, "product")}
             />
+            <div className="detail-image-actions">
+              <Link className="detail-overlay-button" href={backHref} aria-label={t.backHome}>
+                <ArrowLeft aria-hidden="true" size={20} />
+              </Link>
+              <button
+                aria-label={locale === "zh" ? "分享商品" : "Share product"}
+                className="detail-overlay-button"
+                onClick={() => void shareProduct()}
+                type="button"
+              >
+                <ShareNetwork aria-hidden="true" size={20} />
+              </button>
+            </div>
           </section>
           <section className="detail-copy">
             <h1>{product.name}</h1>
@@ -308,9 +381,14 @@ export function ProductDetailView({
                 )}
                 <label>
                   <span>{t.contactChannel}</span>
-                  <select disabled={!canOrder} value={channel} onChange={(event) => updateDraft({ channel: event.target.value as typeof channel })}>
-                    {config?.channels.map((item) => <option value={item.type} key={item.type}>{item.label} · {item.serviceHours}</option>)}
-                  </select>
+                  <ContactChannelPicker
+                    ariaLabel={t.contactChannel}
+                    channels={config?.channels ?? []}
+                    disabled={!canOrder}
+                    locale={locale}
+                    onChange={(nextChannel) => updateDraft({ channel: nextChannel })}
+                    value={channel}
+                  />
                 </label>
                 <label>
                   <span>{t.contactValue}</span>
@@ -369,6 +447,116 @@ export function ProductDetailView({
           </section>
         </div>
       )}
+      {shareOpen && product && (
+        <ProductShareSheet
+          locale={locale}
+          onClose={() => setShareOpen(false)}
+          productName={product.name}
+          text={shareText}
+          url={cleanProductUrl(window.location.href)}
+        />
+      )}
     </main>
+  );
+}
+
+function ProductShareSheet({
+  locale,
+  onClose,
+  productName,
+  text,
+  url,
+}: {
+  locale: Locale;
+  onClose: () => void;
+  productName: string;
+  text: string;
+  url: string;
+}) {
+  const titleId = useId();
+  const panelRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const [status, setStatus] = useState("");
+  const zh = locale === "zh";
+
+  useEffect(() => {
+    const returnFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.requestAnimationFrame(() => closeRef.current?.focus());
+    const keyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = [...(panelRef.current?.querySelectorAll<HTMLButtonElement>(
+        "button:not([disabled])",
+      ) ?? [])];
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", keyDown);
+    return () => {
+      document.removeEventListener("keydown", keyDown);
+      document.body.style.overflow = previousOverflow;
+      returnFocus?.focus();
+    };
+  }, [onClose]);
+
+  const copyShare = async () => {
+    setStatus("");
+    try {
+      const copied = await copyProductShare(
+        navigator.clipboard?.writeText?.bind(navigator.clipboard),
+        text,
+        url,
+      );
+      setStatus(copied
+        ? (zh ? "文案与链接已复制。" : "Copy and link copied.")
+        : (zh ? "复制失败，请手动选择下方内容。" : "Copy failed. Select the content below manually."));
+    } catch {
+      setStatus(zh ? "复制失败，请手动选择下方内容。" : "Copy failed. Select the content below manually.");
+    }
+  };
+
+  return (
+    <div
+      className="product-share-layer"
+      onPointerDown={(event) => {
+        if (event.currentTarget === event.target) onClose();
+      }}
+    >
+      <section aria-labelledby={titleId} aria-modal="true" className="product-share-sheet" ref={panelRef} role="dialog">
+        <i aria-hidden="true" />
+        <header>
+          <div>
+            <small>{zh ? "分享商品" : "Share product"}</small>
+            <h2 id={titleId}>{productName}</h2>
+          </div>
+          <button aria-label={zh ? "关闭分享" : "Close share"} onClick={onClose} ref={closeRef} type="button">
+            <X aria-hidden="true" size={18} />
+          </button>
+        </header>
+        <div className="product-share-preview">
+          <p>{text}</p>
+          <code>{url}</code>
+        </div>
+        <button className="product-share-copy" onClick={() => void copyShare()} type="button">
+          <Copy aria-hidden="true" size={18} />
+          {zh ? "复制文案与链接" : "Copy text and link"}
+        </button>
+        <span aria-live="polite" role="status">{status}</span>
+      </section>
+    </div>
   );
 }

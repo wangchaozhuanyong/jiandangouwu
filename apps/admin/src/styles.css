@@ -2235,3 +2235,145 @@
 .admin-surface.admin-surface table td {
   font-size: var(--admin-font-table);
 }
+
+/* Access, sharing, and WeChat QR upgrades */
+.team-table--managed .table-head,
+.team-table--managed .table-row {
+  min-width: 980px;
+  grid-template-columns: 150px minmax(220px,1.4fr) 130px 150px 170px 132px;
+}
+.team-table--managed .table-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: visible;
+}
+.team-table--managed .table-row-actions > button {
+  min-width: 88px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: #3c687a;
+  background: #f7fafb;
+  font-weight: 700;
+}
+.access-owner-lock {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #6c7f89;
+  background: #eef3f5;
+  font-size: var(--admin-font-caption);
+  font-weight: 800;
+}
+.access-confirmation-note {
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: 24px minmax(0,1fr);
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid #cde3e9;
+  border-radius: 11px;
+  color: #557587;
+  background: #f2f8fa;
+  font-size: var(--admin-font-meta);
+  line-height: 1.6;
+}
+.access-confirmation-note > svg { margin-top: 1px; color: #218ba4; }
+.access-confirmation-note strong { display: block; margin-bottom: 3px; color: #264b5f; }
+.access-role-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 12px;
+  margin-bottom: 13px;
+}
+.access-role-card {
+  min-height: 252px;
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+  color: inherit;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.access-role-card:hover,
+.access-role-card.is-selected {
+  border-color: #9ecfd9;
+  box-shadow: 0 15px 38px rgba(31,103,121,.11);
+}
+.access-role-card.is-selected { box-shadow: inset 0 3px #2ca1b8, 0 15px 38px rgba(31,103,121,.11); }
+.access-role-card-heading { display: grid; grid-template-columns: minmax(0,1fr) 46px; gap: 12px; }
+.access-role-card-heading strong,
+.access-role-card-heading small { display: block; }
+.access-role-card-heading strong { color: var(--ink); font-family: var(--serif); font-size: 19px; }
+.access-role-card-heading small { margin-top: 7px; color: #7b929f; font-size: var(--admin-font-meta); line-height: 1.55; }
+.access-role-card-heading > b {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: #1c7e95;
+  background: #eaf5f8;
+  font-family: var(--serif);
+  font-size: 20px;
+}
+.access-role-card-summary { display: grid; gap: 13px; margin-top: auto; padding-top: 18px; }
+.access-role-card-summary > span { display: grid; gap: 5px; }
+.access-role-card-summary small { color: #879ca7; font-size: var(--admin-font-caption); font-weight: 800; }
+.access-role-card-summary > span > span { color: #486777; font-size: var(--admin-font-meta); line-height: 1.45; }
+.access-role-detail { width: 100%; }
+.access-role-detail .panel-heading p { margin: 6px 0 0; max-width: 760px; color: #738a97; text-transform: none; letter-spacing: normal; font-weight: 500; line-height: 1.6; }
+.access-role-member-count { flex: none; display: grid; justify-items: end; }
+.access-role-member-count strong { color: #1d6f84; font-family: var(--serif); font-size: 25px; }
+.access-role-member-count small { color: #8ca0aa; font-size: var(--admin-font-caption); }
+.access-role-explanation-grid {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 1px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--line-soft);
+}
+.access-role-explanation-grid section { padding: 20px; background: #fff; }
+.access-role-explanation-grid h3 { margin: 0 0 12px; color: #315668; font-size: var(--admin-font-strong); }
+.access-role-explanation-grid ul { display: grid; gap: 9px; margin: 0; padding-left: 18px; color: #637d8b; font-size: var(--admin-font-body); line-height: 1.55; }
+.access-technical-details { padding: 16px 20px 20px; }
+.access-technical-details summary { min-height: 44px; display: flex; align-items: center; color: #607c8c; cursor: pointer; font-size: var(--admin-font-meta); font-weight: 800; }
+.access-technical-details .access-permission-grid { grid-template-columns: repeat(3,minmax(0,1fr)); padding-top: 10px; }
+.access-technical-details code { min-width: 0; padding: 9px 10px; overflow: hidden; border-radius: 8px; color: #426474; background: #f2f6f7; font-size: var(--admin-font-caption); text-overflow: ellipsis; white-space: nowrap; }
+.settings-share-preview { padding: 14px; border: 1px dashed #b8d7df; border-radius: 10px; background: #f4f9fa; }
+.settings-share-preview small { color: #78919e; font-weight: 800; }
+.settings-share-preview p { margin: 8px 0 0; color: #315567; font-size: var(--admin-font-body); line-height: 1.65; }
+.wechat-qr-editor { display: grid; gap: 13px; padding: 15px; border: 1px solid #cfe1e7; border-radius: 13px; background: #f5f9fa; }
+.wechat-qr-editor-heading { display: grid; grid-template-columns: minmax(0,1fr) 92px; align-items: center; gap: 14px; }
+.wechat-qr-editor-heading strong,
+.wechat-qr-editor-heading small { display: block; }
+.wechat-qr-editor-heading strong { color: #294d5f; font-size: var(--admin-font-strong); }
+.wechat-qr-editor-heading small { margin-top: 4px; color: #718a97; font-size: var(--admin-font-meta); line-height: 1.55; }
+.wechat-qr-editor-heading img { width: 92px; height: 92px; object-fit: contain; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.wechat-qr-editor textarea { min-height: 72px; }
+.wechat-qr-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.wechat-qr-actions button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border-radius: 9px; }
+.field-note { color: #8b672d; font-size: var(--admin-font-meta); line-height: 1.55; }
+
+@media (max-width: 1180px) {
+  .access-role-card-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width: 700px) {
+  .access-role-card-grid { grid-template-columns: 1fr; }
+  .access-role-card { min-height: 220px; }
+  .access-role-explanation-grid { grid-template-columns: 1fr; }
+  .access-technical-details .access-permission-grid { grid-template-columns: 1fr; }
+  .wechat-qr-editor-heading { grid-template-columns: minmax(0,1fr) 76px; }
+  .wechat-qr-editor-heading img { width: 76px; height: 76px; }
+  .wechat-qr-actions { display: grid; grid-template-columns: 1fr; }
+  .wechat-qr-actions button { width: 100%; }
+}

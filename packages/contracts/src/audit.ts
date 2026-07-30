@@ -77,6 +77,16 @@ export const securityAuditActionProfiles: Readonly<Record<string, SecurityAuditA
     defaultSeverity: "medium",
     label: { zh: "成员角色已变更", en: "Member roles changed" },
   },
+  "team.member.created": {
+    category: "authorization",
+    defaultSeverity: "medium",
+    label: { zh: "员工访问已预授权", en: "Staff access pre-authorized" },
+  },
+  "team.member.activated": {
+    category: "authorization",
+    defaultSeverity: "medium",
+    label: { zh: "员工首次登录已激活", en: "Staff first sign-in activated" },
+  },
   "team.member.enabled": {
     category: "authorization",
     defaultSeverity: "medium",
@@ -151,6 +161,16 @@ export const securityAuditActionProfiles: Readonly<Record<string, SecurityAuditA
     category: "configuration",
     defaultSeverity: "medium",
     label: { zh: "客服渠道已变更", en: "Support channel changed" },
+  },
+  "support.channel.qr.uploaded": {
+    category: "configuration",
+    defaultSeverity: "medium",
+    label: { zh: "微信客服二维码已上传", en: "WeChat support QR uploaded" },
+  },
+  "support.channel.qr.removed": {
+    category: "configuration",
+    defaultSeverity: "medium",
+    label: { zh: "微信客服二维码已移除", en: "WeChat support QR removed" },
   },
   "telegram.new_order.settings.update": {
     category: "configuration",

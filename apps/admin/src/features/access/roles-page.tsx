@@ -15,7 +15,6 @@ import {
 import {
   PanelState,
   RefreshNotice,
-  StatusPill,
 } from "../../admin-ui";
 
 const copy = (locale: Locale, zh: string, en: string): string => locale === "zh" ? zh : en;
@@ -39,11 +38,11 @@ export default function RolesPage({
       <div className="access-boundary-note" role="note">
         <ShieldCheck size={19} />
         <span>
-          <strong>{copy(locale, "ChatGPT 平台角色边界", "ChatGPT platform role boundary")}</strong>
+          <strong>{copy(locale, "邮箱预授权，不发送邀请邮件", "Email pre-authorization, without invitation email")}</strong>
           {copy(
             locale,
-            "Sites 管理员与权限由 ChatGPT 管理；本页只读展示当前身份投影，不创建、编辑或删除平台角色。",
-            "Sites administrators and permissions are managed by ChatGPT. This page only displays the current identity projection and does not create, edit, or delete platform roles.",
+            "角色决定员工登录 CloudBridge 后能看到和操作的内容。只有预授权邮箱通过同一邮箱登录 ChatGPT 后，账户才会首次激活。",
+            "Roles control what staff can see and do after signing in to CloudBridge. A pre-authorized account activates only after the same email signs in through ChatGPT.",
           )}
         </span>
       </div>
@@ -53,42 +52,62 @@ export default function RolesPage({
         retry={() => void resource.reload()}
         slow={slow}
       />
-      <div className="design-role-layout access-role-layout">
-        <section className="admin-panel design-role-list">
-          <div className="access-role-list-toolbar">
-            <span>
-              <small>{copy(locale, "角色数量", "Roles")}</small>
-              <strong>{data.roles.length}</strong>
+      <div className="access-role-card-grid">
+        {data.roles.map((role) => (
+          <button
+            className={`admin-panel access-role-card${selected?.id === role.id ? " is-selected" : ""}`}
+            key={role.id}
+            onClick={() => setSelectedId(role.id)}
+            type="button"
+          >
+            <span className="access-role-card-heading">
+              <span>
+                <strong>{role.name[locale]}</strong>
+                <small>{role.description[locale]}</small>
+              </span>
+              <b>{role.memberCount}</b>
             </span>
-          </div>
-          {data.roles.map((role) => (
-            <button
-              className={selected?.id === role.id ? "is-selected" : ""}
-              key={role.id}
-              onClick={() => setSelectedId(role.id)}
-              type="button"
-            >
-              <span><strong>{role.name[locale]}</strong><small>{role.key}</small></span>
-              <StatusPill status="PLATFORM_MANAGED" locale={locale} />
-            </button>
-          ))}
-        </section>
+            <span className="access-role-card-summary">
+              <span>
+                <small>{copy(locale, "能做什么", "Can do")}</small>
+                {role.capabilities.slice(0, 2).map((item) => <span key={item.en}>✓ {item[locale]}</span>)}
+              </span>
+              <span>
+                <small>{copy(locale, "不能做什么", "Cannot do")}</small>
+                {role.restrictions.slice(0, 2).map((item) => <span key={item.en}>— {item[locale]}</span>)}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="design-role-layout access-role-layout">
         <section className="admin-panel access-role-detail">
           {selected
             ? (
                 <>
                   <div className="panel-heading">
-                    <div><h2>{selected.name[locale]}</h2><p>{selected.description ?? "—"}</p></div>
-                    <StatusPill status="READ_ONLY" locale={locale} />
+                    <div><h2>{selected.name[locale]}</h2><p>{selected.description[locale]}</p></div>
+                    <span className="access-role-member-count">
+                      <strong>{selected.memberCount}</strong>
+                      <small>{copy(locale, "位成员", "members")}</small>
+                    </span>
                   </div>
-                  <dl>
-                    <div><dt>{copy(locale, "角色键", "Role key")}</dt><dd><code>{selected.key}</code></dd></div>
-                    <div><dt>{copy(locale, "成员数", "Members")}</dt><dd>{selected.memberCount}</dd></div>
-                    <div><dt>{copy(locale, "权限数", "Permissions")}</dt><dd>{selected.permissions.length}</dd></div>
-                  </dl>
-                  <div className="access-permission-grid">
-                    {selected.permissions.map((permission) => <code key={permission}>{permission}</code>)}
+                  <div className="access-role-explanation-grid">
+                    <section>
+                      <h3>{copy(locale, "能做什么", "What this role can do")}</h3>
+                      <ul>{selected.capabilities.map((item) => <li key={item.en}>{item[locale]}</li>)}</ul>
+                    </section>
+                    <section>
+                      <h3>{copy(locale, "限制", "Restrictions")}</h3>
+                      <ul>{selected.restrictions.map((item) => <li key={item.en}>{item[locale]}</li>)}</ul>
+                    </section>
                   </div>
+                  <details className="access-technical-details">
+                    <summary>{copy(locale, `技术权限详情（${selected.permissions.length} 项）`, `Technical permissions (${selected.permissions.length})`)}</summary>
+                    <div className="access-permission-grid">
+                      {selected.permissions.map((permission) => <code key={permission}>{permission}</code>)}
+                    </div>
+                  </details>
                 </>
               )
             : <PanelState state="empty" locale={locale} retry={() => void resource.reload()} />}

@@ -66,6 +66,32 @@ test("正式客户端商品卡片与详情标题不显示分类或 kicker 微标
   assert.doesNotMatch(home, /stockQuantity <= 3/u);
 });
 
+test("正式客户端商品区标题在所有视口保持左主标题右副标题", () => {
+  const home = read("apps/storefront/components/storefront-home.tsx");
+  const css = read("apps/storefront/app/globals.css");
+
+  assert.match(
+    home,
+    /className="catalog-heading"[\s\S]*?<h2>\{t\.catalogTitle\}<\/h2>[\s\S]*?<p>\{t\.catalogSubtitle\}<\/p>/u,
+  );
+  assert.match(
+    css,
+    /\.catalog-heading \{ display: grid; grid-template-columns: auto 1px minmax\(300px, 490px\); align-items: stretch;/u,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 760px\)[\s\S]*?\.catalog-heading \{\s*grid-template-columns: minmax\(0, 1fr\) 1px minmax\(190px, \.82fr\);\s*align-items: stretch;/u,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 390px\)[\s\S]*?\.catalog-heading \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);\s*align-items: stretch;/u,
+  );
+  assert.doesNotMatch(
+    css,
+    /@media \(max-width: 760px\)[\s\S]*?\.catalog-heading \{ display: block; \}/u,
+  );
+});
+
 test("正式客户端刷新公开配置、恢复订单冲突并保持移动端卡片节奏", () => {
   const shell = read("apps/storefront/components/site-shell.tsx");
   const detail = read("apps/storefront/components/product-detail.tsx");
@@ -78,8 +104,10 @@ test("正式客户端刷新公开配置、恢复订单冲突并保持移动端�
   assert.match(shell, /initialConfig=\{config\}/u);
   assert.match(shell, /t\.navServices[\s\S]*?t\.terms[\s\S]*?t\.privacy[\s\S]*?<button[\s\S]*?t\.navSupport/u);
   assert.doesNotMatch(shell, /\{supportEnabled && \([\s\S]*?t\.navSupport/u);
-  assert.match(shell, /transit-service-notice\$\{isProductDetail \? " is-detail"/u);
-  assert.match(shell, /\{children\}[\s\S]*?transit-service-entry[\s\S]*?\{!isProductDetail && \(/u);
+  assert.match(shell, /const isHome = pathname === `\/\$\{locale\}` \|\| pathname === `\/\$\{locale\}\/`/u);
+  assert.match(shell, /\{children\}[\s\S]*?\{isHome && transitEnabled && \([\s\S]*?className="transit-service-entry"[\s\S]*?\{!isProductDetail && \(/u);
+  assert.match(shell, /if \(!transitEnabled \|\| !isHome\) setTransitNotice\(""\)/u);
+  assert.doesNotMatch(shell, /transit-service-entry\$\{isProductDetail/u);
   assert.match(detail, /resolveOrderAvailability\(config\) !== "available"/u);
   assert.match(detail, /error instanceof ApiRequestError && error\.status === 409/u);
   assert.match(detail, /Promise\.all\(\[\s*getConfig\(locale\),\s*getProduct\(slug, locale, currency\)/u);
@@ -88,8 +116,10 @@ test("正式客户端刷新公开配置、恢复订单冲突并保持移动端�
   assert.match(css, /\.product-copy \{[^}]*grid-template-rows:\s*52px 68px 72px;/u);
   assert.match(css, /@media \(max-width: 390px\)[\s\S]*?\.product-copy \{ grid-template-rows:\s*40px 68px 72px;/u);
   assert.match(css, /\.product-purchase \{[^}]*height:\s*72px;/u);
-  assert.match(css, /\.transit-service-notice\.is-detail/u);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.transit-service-entry:not\(\.is-detail\) \{ position: relative;[^}]*right: auto;[^}]*bottom: auto;/u);
+  assert.match(css, /\.transit-service-entry \{[^}]*position:\s*fixed;/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.transit-service-entry \{ right:\s*12px;[^}]*bottom:\s*max\(12px,\s*env\(safe-area-inset-bottom\)\);/u);
+  assert.doesNotMatch(css, /\.transit-service-(?:entry|notice)\.is-detail/u);
+  assert.doesNotMatch(css, /\.transit-service-entry(?::not\([^)]*\))? \{[^}]*position:\s*relative;/u);
   assert.match(css, /\.brand \{[^}]*min-width:\s*0;/u);
   assert.match(css, /\.brand strong \{[^}]*text-overflow:\s*ellipsis;/u);
 });
@@ -115,9 +145,9 @@ test("遗留后台登录入口首屏直接挂载且关键控制具备 44px 点�
   assert.match(home, /onPointerDown=/u);
   assert.match(storefrontCss, /\.hero-dots button \{ width: 44px; height: 44px;/u);
   assert.match(storefrontCss, /\.hero-dots button::before/u);
-  assert.match(storefrontCss, /@media \(max-width: 760px\)[\s\S]*?\.language-picker \{ width: 128px; height: 44px; \}/u);
-  assert.match(storefrontCss, /@media \(max-width: 390px\)[\s\S]*?\.language-picker \{ width: 94px; \}[\s\S]*?\.language-picker__trigger > svg:first-child \{ display: none; \}/u);
-  assert.doesNotMatch(storefrontCss, /\.language-picker__trigger strong \{[^}]*text-overflow:\s*ellipsis;/u);
+  assert.match(storefrontCss, /\.theme-toggle, \.language-picker \{ width: 48px; height: 48px;/u);
+  assert.match(storefrontCss, /@media \(max-width: 760px\)[\s\S]*?\.theme-toggle, \.language-picker \{ width: 44px; height: 44px;/u);
+  assert.doesNotMatch(storefrontCss, /\.language-picker__trigger/u);
   assert.match(storefrontCss, /\.capability-rail \{[^}]*padding:\s*0;[^}]*border:\s*1px solid var\(--frame-line\);/u);
   assert.doesNotMatch(storefrontCss, /\.capability-rail \{[^}]*padding:\s*1px;/u);
   assert.match(storefrontCss, /@media \(max-width: 760px\)[\s\S]*?\.capability-rail \{[^}]*grid-template-columns:\s*round\(down,\s*calc\(\(100% - 1px\) \/ 2\),\s*1px\)\s+minmax\(0,\s*1fr\);/u);

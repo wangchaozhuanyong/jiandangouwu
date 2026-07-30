@@ -51,6 +51,7 @@ import {
   pageFromPath,
   pagePath,
   ADMIN_NAVIGATION,
+  canAccessAdminPage,
   findAdminNavigationGroup,
   toggleAdminNavigationGroup,
   type AdminNavigationGroupId,
@@ -233,17 +234,27 @@ function AuthenticatedAdmin({
   const workspaceRef = useRef<HTMLElement>(null);
 
   const go = useCallback((next: Page, historyMode: "push" | "replace" = "push") => {
+    if (!canAccessAdminPage(next, user.permissions)) {
+      notify(locale === "zh" ? "当前账号没有访问这个页面的权限。" : "This account cannot access that page.", "error");
+      return;
+    }
     if (next !== page && !confirmNavigation(locale)) return;
     if (next !== page) {
       window.history[historyMode === "push" ? "pushState" : "replaceState"]({ page: next }, "", pagePath(next));
       setPage(next);
     }
     setMenuOpen(false);
-  }, [confirmNavigation, locale, page, setPage]);
+  }, [confirmNavigation, locale, notify, page, setPage, user.permissions]);
 
   useEffect(() => {
     const onPopState = () => {
       const next = pageFromPath(window.location.pathname);
+      if (!canAccessAdminPage(next, user.permissions)) {
+        window.history.replaceState({ page: "dashboard" }, "", pagePath("dashboard"));
+        setPage("dashboard");
+        notify(locale === "zh" ? "该页面需要其他权限，已返回工作台。" : "That page needs another permission. Returned to the workspace.", "error");
+        return;
+      }
       if (next !== page && !confirmNavigation(locale)) {
         window.history.pushState({ page }, "", pagePath(page));
         return;
@@ -252,7 +263,13 @@ function AuthenticatedAdmin({
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [confirmNavigation, locale, page, setPage]);
+  }, [confirmNavigation, locale, notify, page, setPage, user.permissions]);
+
+  useEffect(() => {
+    if (canAccessAdminPage(page, user.permissions)) return;
+    window.history.replaceState({ page: "dashboard" }, "", pagePath("dashboard"));
+    setPage("dashboard");
+  }, [page, setPage, user.permissions]);
 
   useEffect(() => {
     setExpandedGroup(findAdminNavigationGroup(page)?.id ?? null);
@@ -324,9 +341,11 @@ function AuthenticatedAdmin({
               );
             }
 
+            const visibleItems = entry.items.filter((item) => canAccessAdminPage(item, user.permissions));
+            if (visibleItems.length === 0) return null;
             const Icon = groupNavigationIcons[entry.id];
             const isExpanded = expandedGroup === entry.id;
-            const containsCurrentPage = entry.items.some((item) => item === page);
+            const containsCurrentPage = visibleItems.some((item) => item === page);
             const regionId = `admin-navigation-${entry.id}`;
 
             return (
@@ -343,7 +362,7 @@ function AuthenticatedAdmin({
                 </button>
                 {isExpanded && (
                   <div className="admin-nav-children" id={regionId}>
-                    {entry.items.map((item) => {
+                    {visibleItems.map((item) => {
                       const ItemIcon = pageNavigationIcons[item];
                       return (
                         <button
@@ -517,7 +536,7 @@ function PageOutlet({
   if (page === "contacts") return <ContactsPage canWrite={user.permissions.includes("support.write")} locale={locale} />;
   if (page === "settings") return <SettingsPage canWrite={user.permissions.includes("settings.write")} locale={locale} />;
   if (page === "team") {
-    return <TeamPage locale={locale} />;
+    return <TeamPage currentUserEmail={user.email} locale={locale} />;
   }
   if (page === "roles") {
     return <RolesPage locale={locale} />;

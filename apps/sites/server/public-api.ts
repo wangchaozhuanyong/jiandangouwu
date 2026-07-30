@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SHARE_TEMPLATE,
   DEFAULT_INVENTORY_RISK_THRESHOLD,
   INVENTORY_RISK_THRESHOLD_MAX,
   INVENTORY_RISK_THRESHOLD_MIN,
@@ -193,7 +194,11 @@ export async function storefrontConfig(
     supportEnabled,
     acceptOrders: storedSettings.acceptOrders && supportEnabled,
   };
-  const channels = supportEnabled ? configuredChannels : [];
+  const channels = supportEnabled ? configuredChannels.map((channel) => ({
+    ...channel,
+    directTarget: channel.type === "WECHAT" ? null : channel.directTarget,
+    qrImageUrl: channel.type === "WECHAT" ? channel.directTarget : null,
+  })) : [];
 
   return { heroes, currencies, channels, settings };
 }
@@ -748,6 +753,7 @@ function parseSettings(value: string | undefined) {
     inventoryRiskThreshold: DEFAULT_INVENTORY_RISK_THRESHOLD,
     transitServiceEnabled: true,
     transitServiceUrl: null,
+    shareTemplate: DEFAULT_SHARE_TEMPLATE,
   };
   if (!value) return fallback;
   try {
@@ -761,6 +767,7 @@ function parseSettings(value: string | undefined) {
       ...parsed,
       siteName: { ...fallback.siteName, ...parsed.siteName },
       seoDescription: { ...fallback.seoDescription, ...parsed.seoDescription },
+      shareTemplate: { ...fallback.shareTemplate, ...parsed.shareTemplate },
       policyVersion,
       acceptOrders: parsed.acceptOrders === true,
       supportEnabled: parsed.supportEnabled === true,

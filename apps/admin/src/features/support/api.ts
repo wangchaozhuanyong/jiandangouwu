@@ -14,6 +14,31 @@ export const updateContactChannel = (id: string, body: UpdateContactChannelInput
     body: JSON.stringify(body),
   });
 
+export const uploadWechatQr = (
+  id: string,
+  file: File,
+  version: number,
+  reason: string,
+) => {
+  const form = new FormData();
+  form.set("file", file);
+  form.set("version", String(version));
+  form.set("reason", reason);
+  return request<AdminContactChannel>(`/admin/contact-channels/${encodeURIComponent(id)}/qr`, {
+    method: "POST",
+    body: form,
+  });
+};
+
+export const removeWechatQr = (
+  id: string,
+  version: number,
+  reason: string,
+) => request<AdminContactChannel>(`/admin/contact-channels/${encodeURIComponent(id)}/qr`, {
+  method: "DELETE",
+  body: JSON.stringify({ version, reason }),
+});
+
 export const reorderContactChannels = (body: ReorderContactChannelsInput) =>
   request<AdminContactChannel[]>("/admin/contact-channels/order", {
     method: "PATCH",

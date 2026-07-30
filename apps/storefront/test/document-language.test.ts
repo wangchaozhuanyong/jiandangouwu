@@ -37,6 +37,6 @@ test("the proxy overwrites the internal locale header and the root layout reads 
   assert.match(proxy, /resolveDocumentLocale\(request\.nextUrl\.pathname\)/u);
   assert.match(layout, /await headers\(\)/u);
   assert.match(layout, /requestHeaders\.get\(DOCUMENT_LOCALE_HEADER\)/u);
-  assert.match(layout, /<html lang=\{documentLanguage\}>/u);
+  assert.match(layout, /<html[\s\S]*?lang=\{documentLanguage\}[\s\S]*?>/u);
   assert.doesNotMatch(layout, /<html lang="zh-CN">/u);
 });

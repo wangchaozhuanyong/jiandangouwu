@@ -8,6 +8,7 @@ const channel = (
 ): StorefrontChannel => ({
   label: input.type,
   account: "account",
+  qrImageUrl: null,
   serviceHours: "09:00 - 18:00",
   ...input,
 });
