@@ -299,6 +299,284 @@ test("role permission changes protect SUPER_ADMIN and audit committed permission
   });
 });
 
+test("role creation validates permissions and audits the committed role", async () => {
+  const permissions = [
+    { id: "permission-read", key: "orders.read" },
+    { id: "permission-write", key: "orders.write" },
+  ];
+  const committedRole = {
+    ...role("role-review", "ORDER_REVIEWER"),
+    nameZh: "订单复核员",
+    nameEn: "Order reviewer",
+    description: "复核人工订单",
+    updatedAt: new Date("2026-07-29T11:00:00.000Z"),
+    permissions: permissions.map((permission) => ({ permission })),
+    _count: { users: 0 },
+  };
+  let createdRoleData: Record<string, unknown> | undefined;
+  let createdPermissionData: unknown;
+  const auditEvents: Array<{ event: Record<string, unknown>; client: unknown }> = [];
+  const transaction = {
+    role: {
+      findUnique: async () => null,
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        createdRoleData = data;
+        return { id: "role-review" };
+      },
+      findUniqueOrThrow: async () => committedRole,
+    },
+    permission: {
+      findMany: async () => permissions,
+    },
+    rolePermission: {
+      createMany: async ({ data }: { data: unknown }) => {
+        createdPermissionData = data;
+      },
+    },
+  };
+  const service = new AccessService({
+    $transaction: async (
+      callback: (client: typeof transaction) => unknown,
+      options: Record<string, unknown>,
+    ) => {
+      assert.equal(options.isolationLevel, "Serializable");
+      return callback(transaction);
+    },
+  } as never, {
+    record: async (event: Record<string, unknown>, client: unknown) => {
+      auditEvents.push({ event, client });
+    },
+  } as never, sessionStore as never);
+
+  const created = await service.createRole({
+    key: "ORDER_REVIEWER",
+    nameZh: "订单复核员",
+    nameEn: "Order reviewer",
+    description: "复核人工订单",
+    permissionKeys: ["orders.read", "orders.write"],
+    reason: "新增订单复核职责角色",
+  }, recentActor());
+
+  assert.equal(created.key, "ORDER_REVIEWER");
+  assert.deepEqual(createdRoleData, {
+    key: "ORDER_REVIEWER",
+    nameZh: "订单复核员",
+    nameEn: "Order reviewer",
+    description: "复核人工订单",
+  });
+  assert.deepEqual(createdPermissionData, [
+    { roleId: "role-review", permissionId: "permission-read" },
+    { roleId: "role-review", permissionId: "permission-write" },
+  ]);
+  assert.equal(auditEvents[0]?.client, transaction);
+  assert.equal(auditEvents[0]?.event.action, "access.role.created");
+  assert.deepEqual(auditEvents[0]?.event.afterData, {
+    key: "ORDER_REVIEWER",
+    nameZh: "订单复核员",
+    nameEn: "Order reviewer",
+    description: "复核人工订单",
+    permissions: ["orders.read", "orders.write"],
+  });
+});
+
+test("role metadata changes keep the key stable and use CAS with transactional audit", async () => {
+  const currentRole = {
+    ...role("role-review", "ORDER_REVIEWER"),
+    nameZh: "订单复核员",
+    nameEn: "Order reviewer",
+    description: null,
+    updatedAt: new Date("2026-07-29T10:00:00.000Z"),
+    permissions: [{ permission: { id: "permission-read", key: "orders.read" } }],
+    _count: { users: 0 },
+  };
+  const committedRole = {
+    ...currentRole,
+    nameZh: "订单审核员",
+    nameEn: "Order auditor",
+    description: "复核人工订单",
+    updatedAt: new Date("2026-07-29T11:00:00.000Z"),
+  };
+  let updateWhere: Record<string, unknown> | undefined;
+  let updateData: Record<string, unknown> | undefined;
+  const auditEvents: Array<{ event: Record<string, unknown>; client: unknown }> = [];
+  const transaction = {
+    role: {
+      findUnique: async () => currentRole,
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: Record<string, unknown>;
+        data: Record<string, unknown>;
+      }) => {
+        updateWhere = where;
+        updateData = data;
+        return { count: 1 };
+      },
+      findUniqueOrThrow: async () => committedRole,
+    },
+  };
+  const service = new AccessService({
+    role: {
+      findUnique: async () => ({ key: "ORDER_REVIEWER" }),
+    },
+    $transaction: async (
+      callback: (client: typeof transaction) => unknown,
+    ) => callback(transaction),
+  } as never, {
+    record: async (event: Record<string, unknown>, client: unknown) => {
+      auditEvents.push({ event, client });
+    },
+  } as never, sessionStore as never);
+
+  const updated = await service.updateRoleMetadata("role-review", {
+    nameZh: "订单审核员",
+    nameEn: "Order auditor",
+    description: "复核人工订单",
+    expectedUpdatedAt: currentRole.updatedAt.toISOString(),
+    reason: "角色职责名称需要调整",
+  }, recentActor());
+
+  assert.equal(updated.key, "ORDER_REVIEWER");
+  assert.equal(updated.name.zh, "订单审核员");
+  assert.deepEqual(updateWhere, {
+    id: "role-review",
+    updatedAt: currentRole.updatedAt,
+  });
+  assert.equal(updateData?.nameZh, "订单审核员");
+  assert.equal(updateData?.nameEn, "Order auditor");
+  assert.equal(updateData?.description, "复核人工订单");
+  assert.equal(auditEvents[0]?.client, transaction);
+  assert.deepEqual(auditEvents[0]?.event.beforeData, {
+    nameZh: "订单复核员",
+    nameEn: "Order reviewer",
+    description: null,
+  });
+});
+
+test("role deletion protects SUPER_ADMIN and refuses roles that still have members", async () => {
+  const deniedEvents: Array<Record<string, unknown>> = [];
+  const protectedService = new AccessService({
+    role: {
+      findUnique: async () => ({ key: "SUPER_ADMIN" }),
+    },
+  } as never, {
+    record: async (event: Record<string, unknown>) => {
+      deniedEvents.push(event);
+    },
+  } as never, sessionStore as never);
+  await assert.rejects(
+    protectedService.deleteRole("role-super", {
+      expectedUpdatedAt: "2026-07-29T10:00:00.000Z",
+      reason: "系统角色删除请求必须拒绝",
+    }, recentActor()),
+    ForbiddenException,
+  );
+  assert.equal(deniedEvents[0]?.action, "access.role.deleted");
+  assert.equal(deniedEvents[0]?.result, "DENIED");
+
+  let deleteCalled = false;
+  const assignedRole = {
+    ...role("role-review", "ORDER_REVIEWER"),
+    updatedAt: new Date("2026-07-29T10:00:00.000Z"),
+    permissions: [{ permission: { id: "permission-read", key: "orders.read" } }],
+    _count: { users: 1 },
+  };
+  const transaction = {
+    role: {
+      findUnique: async () => assignedRole,
+      deleteMany: async () => {
+        deleteCalled = true;
+        return { count: 1 };
+      },
+    },
+  };
+  const assignedService = new AccessService({
+    role: {
+      findUnique: async () => ({ key: "ORDER_REVIEWER" }),
+    },
+    $transaction: async (
+      callback: (client: typeof transaction) => unknown,
+    ) => callback(transaction),
+  } as never, { record: async () => undefined } as never, sessionStore as never);
+  await assert.rejects(
+    assignedService.deleteRole("role-review", {
+      expectedUpdatedAt: assignedRole.updatedAt.toISOString(),
+      reason: "该角色计划停止使用需要删除",
+    }, recentActor()),
+    ConflictException,
+  );
+  assert.equal(deleteCalled, false);
+});
+
+test("empty role deletion uses CAS and audits the final role projection", async () => {
+  const currentRole = {
+    ...role("role-review", "ORDER_REVIEWER"),
+    nameZh: "订单复核员",
+    nameEn: "Order reviewer",
+    description: "复核人工订单",
+    updatedAt: new Date("2026-07-29T10:00:00.000Z"),
+    permissions: [
+      { permission: { id: "permission-read", key: "orders.read" } },
+      { permission: { id: "permission-write", key: "orders.write" } },
+    ],
+    _count: { users: 0 },
+  };
+  let deleteWhere: Record<string, unknown> | undefined;
+  const auditEvents: Array<{ event: Record<string, unknown>; client: unknown }> = [];
+  const transaction = {
+    role: {
+      findUnique: async () => currentRole,
+      deleteMany: async ({ where }: { where: Record<string, unknown> }) => {
+        deleteWhere = where;
+        return { count: 1 };
+      },
+    },
+  };
+  const service = new AccessService({
+    role: {
+      findUnique: async () => ({ key: "ORDER_REVIEWER" }),
+    },
+    $transaction: async (
+      callback: (client: typeof transaction) => unknown,
+      options: Record<string, unknown>,
+    ) => {
+      assert.equal(options.isolationLevel, "Serializable");
+      return callback(transaction);
+    },
+  } as never, {
+    record: async (event: Record<string, unknown>, client: unknown) => {
+      auditEvents.push({ event, client });
+    },
+  } as never, sessionStore as never);
+
+  const deleted = await service.deleteRole("role-review", {
+    expectedUpdatedAt: currentRole.updatedAt.toISOString(),
+    reason: "该空角色已经停止使用需要删除",
+  }, recentActor());
+
+  assert.deepEqual(deleted, {
+    id: "role-review",
+    key: "ORDER_REVIEWER",
+    name: { zh: "订单复核员", en: "Order reviewer" },
+  });
+  assert.deepEqual(deleteWhere, {
+    id: "role-review",
+    updatedAt: currentRole.updatedAt,
+  });
+  assert.equal(auditEvents[0]?.client, transaction);
+  assert.equal(auditEvents[0]?.event.action, "access.role.deleted");
+  assert.deepEqual(auditEvents[0]?.event.beforeData, {
+    key: "ORDER_REVIEWER",
+    nameZh: "订单复核员",
+    nameEn: "Order reviewer",
+    description: "复核人工订单",
+    permissions: ["orders.read", "orders.write"],
+    memberCount: 0,
+  });
+  assert.deepEqual(auditEvents[0]?.event.afterData, { deleted: true });
+});
+
 test("member disabling revokes authentication state and audits the committed status", async () => {
   const current = member("member", [role("role-order", "ORDER_SUPPORT")]);
   const committed = {

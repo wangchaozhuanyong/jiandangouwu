@@ -2,6 +2,7 @@ import type {
   AdminAccessRoleSummary,
   AdminMemberLifecycleAction,
   AdminMemberLifecycleResult,
+  AdminRoleDeletionResult,
   AdminRoleDetail,
   AdminRolesOverview,
   AdminTeamMember,
@@ -20,8 +21,11 @@ import type { AdminActor } from "../common/admin-actor.js";
 import { Prisma } from "../generated/prisma/client.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type {
+  CreateRoleDto,
+  DeleteRoleDto,
   UpdateMemberLifecycleDto,
   UpdateMemberRolesDto,
+  UpdateRoleMetadataDto,
   UpdateRolePermissionsDto,
 } from "./access.dto.js";
 
@@ -460,6 +464,311 @@ export class AccessService {
         throw new ConflictException(
           "Administrator account changed. Reload before continuing.",
         );
+      }
+      throw error;
+    }
+  }
+
+  async createRole(
+    input: CreateRoleDto,
+    actor: AdminActor,
+  ): Promise<AdminRoleDetail> {
+    await this.requireRecentAuthentication(
+      actor,
+      "access.role.created",
+      "Role",
+      input.key,
+      input.reason,
+    );
+    if (input.key === SYSTEM_ROLE_KEY) {
+      await this.audit.record({
+        actorId: actor.userId,
+        action: "access.role.created",
+        targetType: "Role",
+        targetId: input.key,
+        result: "DENIED",
+        requestId: actor.requestId,
+        reason: input.reason,
+        ip: actor.ip,
+      });
+      throw new ForbiddenException("The super administrator role is system protected.");
+    }
+
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const [existing, permissions] = await Promise.all([
+          transaction.role.findUnique({
+            where: { key: input.key },
+            select: { id: true },
+          }),
+          transaction.permission.findMany({
+            where: { key: { in: input.permissionKeys } },
+            select: { id: true, key: true },
+          }),
+        ]);
+        if (existing) throw new ConflictException("Role key already exists.");
+        if (permissions.length !== input.permissionKeys.length) {
+          throw new BadRequestException("One or more permissions do not exist.");
+        }
+        const created = await transaction.role.create({
+          data: {
+            key: input.key,
+            nameZh: input.nameZh,
+            nameEn: input.nameEn,
+            description: input.description || null,
+          },
+          select: { id: true },
+        });
+        await transaction.rolePermission.createMany({
+          data: permissions.map(({ id: permissionId }) => ({
+            roleId: created.id,
+            permissionId,
+          })),
+        });
+        const permissionKeys = permissions.map(({ key }) => key).sort();
+        await this.audit.record({
+          actorId: actor.userId,
+          action: "access.role.created",
+          targetType: "Role",
+          targetId: created.id,
+          result: "SUCCEEDED",
+          requestId: actor.requestId,
+          reason: input.reason,
+          afterData: {
+            key: input.key,
+            nameZh: input.nameZh,
+            nameEn: input.nameEn,
+            description: input.description || null,
+            permissions: permissionKeys,
+          },
+          ip: actor.ip,
+        }, transaction);
+        const committed = await transaction.role.findUniqueOrThrow({
+          where: { id: created.id },
+          include: {
+            permissions: { include: { permission: true } },
+            _count: { select: { users: true } },
+          },
+        });
+        return roleView(committed);
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError
+        && error.code === "P2002"
+      ) {
+        throw new ConflictException("Role key already exists.");
+      }
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError
+        && error.code === "P2034"
+      ) {
+        throw new ConflictException("Role creation conflicted with another change.");
+      }
+      throw error;
+    }
+  }
+
+  async updateRoleMetadata(
+    roleId: string,
+    input: UpdateRoleMetadataDto,
+    actor: AdminActor,
+  ): Promise<AdminRoleDetail> {
+    await this.requireRecentAuthentication(
+      actor,
+      "access.role.metadata.update",
+      "Role",
+      roleId,
+      input.reason,
+    );
+    const candidate = await this.prisma.role.findUnique({
+      where: { id: roleId },
+      select: { key: true },
+    });
+    if (!candidate) throw new NotFoundException("Role not found.");
+    if (candidate.key === SYSTEM_ROLE_KEY) {
+      await this.audit.record({
+        actorId: actor.userId,
+        action: "access.role.metadata.update",
+        targetType: "Role",
+        targetId: roleId,
+        result: "DENIED",
+        requestId: actor.requestId,
+        reason: input.reason,
+        ip: actor.ip,
+      });
+      throw new ForbiddenException("The super administrator role is system protected.");
+    }
+
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const current = await transaction.role.findUnique({
+          where: { id: roleId },
+          include: {
+            permissions: { include: { permission: true } },
+            _count: { select: { users: true } },
+          },
+        });
+        if (!current) throw new NotFoundException("Role not found.");
+        const nextDescription = input.description || null;
+        if (
+          current.nameZh === input.nameZh
+          && current.nameEn === input.nameEn
+          && current.description === nextDescription
+        ) {
+          throw new BadRequestException("Role metadata has not changed.");
+        }
+        const nextUpdatedAt = new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1));
+        const changed = await transaction.role.updateMany({
+          where: {
+            id: roleId,
+            updatedAt: new Date(input.expectedUpdatedAt),
+          },
+          data: {
+            nameZh: input.nameZh,
+            nameEn: input.nameEn,
+            description: nextDescription,
+            updatedAt: nextUpdatedAt,
+          },
+        });
+        if (changed.count !== 1) {
+          throw new ConflictException("Role changed. Reload before saving.");
+        }
+        await this.audit.record({
+          actorId: actor.userId,
+          action: "access.role.metadata.update",
+          targetType: "Role",
+          targetId: roleId,
+          result: "SUCCEEDED",
+          requestId: actor.requestId,
+          reason: input.reason,
+          beforeData: {
+            nameZh: current.nameZh,
+            nameEn: current.nameEn,
+            description: current.description,
+          },
+          afterData: {
+            nameZh: input.nameZh,
+            nameEn: input.nameEn,
+            description: nextDescription,
+          },
+          ip: actor.ip,
+        }, transaction);
+        const committed = await transaction.role.findUniqueOrThrow({
+          where: { id: roleId },
+          include: {
+            permissions: { include: { permission: true } },
+            _count: { select: { users: true } },
+          },
+        });
+        return roleView(committed);
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError
+        && error.code === "P2034"
+      ) {
+        throw new ConflictException("Role changed. Reload before saving.");
+      }
+      throw error;
+    }
+  }
+
+  async deleteRole(
+    roleId: string,
+    input: DeleteRoleDto,
+    actor: AdminActor,
+  ): Promise<AdminRoleDeletionResult> {
+    await this.requireRecentAuthentication(
+      actor,
+      "access.role.deleted",
+      "Role",
+      roleId,
+      input.reason,
+    );
+    const candidate = await this.prisma.role.findUnique({
+      where: { id: roleId },
+      select: { key: true },
+    });
+    if (!candidate) throw new NotFoundException("Role not found.");
+    if (candidate.key === SYSTEM_ROLE_KEY) {
+      await this.audit.record({
+        actorId: actor.userId,
+        action: "access.role.deleted",
+        targetType: "Role",
+        targetId: roleId,
+        result: "DENIED",
+        requestId: actor.requestId,
+        reason: input.reason,
+        ip: actor.ip,
+      });
+      throw new ForbiddenException("The super administrator role is system protected.");
+    }
+
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const current = await transaction.role.findUnique({
+          where: { id: roleId },
+          include: {
+            permissions: { include: { permission: true } },
+            _count: { select: { users: true } },
+          },
+        });
+        if (!current) throw new NotFoundException("Role not found.");
+        if (current._count.users > 0) {
+          throw new ConflictException(
+            "Remove every member from the role before deleting it.",
+          );
+        }
+        const deleted = await transaction.role.deleteMany({
+          where: {
+            id: roleId,
+            updatedAt: new Date(input.expectedUpdatedAt),
+          },
+        });
+        if (deleted.count !== 1) {
+          throw new ConflictException("Role changed. Reload before deleting.");
+        }
+        const result: AdminRoleDeletionResult = {
+          id: current.id,
+          key: current.key,
+          name: { zh: current.nameZh, en: current.nameEn },
+        };
+        await this.audit.record({
+          actorId: actor.userId,
+          action: "access.role.deleted",
+          targetType: "Role",
+          targetId: roleId,
+          result: "SUCCEEDED",
+          requestId: actor.requestId,
+          reason: input.reason,
+          beforeData: {
+            key: current.key,
+            nameZh: current.nameZh,
+            nameEn: current.nameEn,
+            description: current.description,
+            permissions: current.permissions
+              .map(({ permission }) => permission.key)
+              .sort(),
+            memberCount: current._count.users,
+          },
+          afterData: { deleted: true },
+          ip: actor.ip,
+        }, transaction);
+        return result;
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError
+        && error.code === "P2034"
+      ) {
+        throw new ConflictException("Role changed. Reload before deleting.");
       }
       throw error;
     }

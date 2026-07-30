@@ -68,6 +68,12 @@ export type AdminRoleDetail = AdminAccessRoleSummary & {
   systemProtected: boolean;
 };
 
+export type AdminRoleDeletionResult = {
+  id: string;
+  key: string;
+  name: LocalizedText;
+};
+
 export type AdminRolesOverview = {
   roles: AdminRoleDetail[];
   permissions: AdminPermissionSummary[];

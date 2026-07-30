@@ -5,6 +5,7 @@ import type {
   AdminMemberLifecycleAction,
   AdminMemberLifecycleResult,
   AdminOrderListItem,
+  AdminRoleDeletionResult,
   AdminRoleDetail,
   AdminRolesOverview,
   AdminSessionOverview,
@@ -17,6 +18,7 @@ export type {
   AdminAccessRoleSummary,
   AdminPermissionSummary,
   AdminRoleDetail,
+  AdminRoleDeletionResult,
   AdminRolesOverview,
   AdminSessionOverview,
   AdminSessionSummary,
@@ -427,12 +429,51 @@ export const updateMemberLifecycle = async (
 export const getRolesOverview = async (signal?: AbortSignal) => (
   await request<AdminRolesOverview>("/admin/access/roles", { signal })
 ).data;
+export const createRole = async (
+  input: {
+    key: string;
+    nameZh: string;
+    nameEn: string;
+    description: string;
+    permissionKeys: string[];
+    reason: string;
+  },
+) => (
+  await request<AdminRoleDetail>("/admin/access/roles", {
+    method: "POST",
+    body: JSON.stringify(input),
+  })
+).data;
+export const updateRoleMetadata = async (
+  roleId: string,
+  input: {
+    nameZh: string;
+    nameEn: string;
+    description: string;
+    expectedUpdatedAt: string;
+    reason: string;
+  },
+) => (
+  await request<AdminRoleDetail>(`/admin/access/roles/${roleId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  })
+).data;
 export const updateRolePermissions = async (
   roleId: string,
   input: { permissionKeys: string[]; expectedUpdatedAt: string; reason: string },
 ) => (
   await request<AdminRoleDetail>(`/admin/access/roles/${roleId}/permissions`, {
     method: "PATCH",
+    body: JSON.stringify(input),
+  })
+).data;
+export const deleteRole = async (
+  roleId: string,
+  input: { expectedUpdatedAt: string; reason: string },
+) => (
+  await request<AdminRoleDeletionResult>(`/admin/access/roles/${roleId}`, {
+    method: "DELETE",
     body: JSON.stringify(input),
   })
 ).data;

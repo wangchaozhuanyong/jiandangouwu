@@ -521,7 +521,13 @@ function PageOutlet({
     );
   }
   if (page === "roles") {
-    return <RolesPage canWrite={user.authProvider !== "SITES" && user.permissions.includes("roles.manage")} locale={locale} />;
+    return (
+      <RolesPage
+        canWrite={user.authProvider !== "SITES" && user.permissions.includes("roles.manage")}
+        locale={locale}
+        sitesRuntime={user.authProvider === "SITES"}
+      />
+    );
   }
   if (page === "translations") {
     return <TranslationsPage locale={locale} permissions={user.permissions} />;

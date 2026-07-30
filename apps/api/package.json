@@ -14,6 +14,7 @@
     "db:seed": "node --env-file-if-exists=../../.env --import tsx prisma/seed.ts",
     "verify:admin-lifecycle": "node --env-file-if-exists=../../.env --import tsx scripts/verify-admin-lifecycle.ts",
     "verify:admin-sessions": "node --env-file-if-exists=../../.env --import tsx scripts/verify-admin-sessions.ts",
+    "verify:role-lifecycle": "node --env-file-if-exists=../../.env --import tsx scripts/verify-role-lifecycle.ts",
     "verify:inventory-risk": "node --env-file-if-exists=../../.env --import tsx scripts/verify-inventory-risk.ts",
     "verify:order-reservations": "node --env-file-if-exists=../../.env --import tsx scripts/verify-order-reservations.ts",
     "test": "npm run build && node --import tsx --test \"test/**/*.test.ts\""

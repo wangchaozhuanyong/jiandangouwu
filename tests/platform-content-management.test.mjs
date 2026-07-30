@@ -117,6 +117,9 @@ test("团队和角色页面使用真实 MySQL 权限模型与安全写入", () =
   assert.match(controller, /@Controller\("admin\/access"\)/u);
   assert.match(controller, /@RequirePermissions\("team\.manage"\)/u);
   assert.match(controller, /@RequirePermissions\("roles\.manage"\)/u);
+  assert.match(controller, /@Post\("roles"\)/u);
+  assert.match(controller, /@Patch\("roles\/:id"\)/u);
+  assert.match(controller, /@Delete\("roles\/:id"\)/u);
   assert.match(service, /RECENT_AUTH_WINDOW_MS/u);
   assert.match(service, /Administrators cannot change their own roles/u);
   assert.match(service, /last active super administrator/u);
@@ -129,6 +132,10 @@ test("团队和角色页面使用真实 MySQL 权限模型与安全写入", () =
   assert.doesNotMatch(sessions, /\.keys\(/u);
   assert.match(service, /TransactionIsolationLevel\.Serializable/u);
   assert.match(service, /result:\s*"SUCCEEDED"[\s\S]*?beforeData:[\s\S]*?afterData:/u);
+  assert.match(service, /access\.role\.created/u);
+  assert.match(service, /access\.role\.metadata\.update/u);
+  assert.match(service, /access\.role\.deleted/u);
+  assert.match(service, /Remove every member from the role before deleting it/u);
   assert.match(guard, /currentUser[\s\S]*?currentPermissions/u);
   assert.match(guard, /synchronizePermissions/u);
 
@@ -138,7 +145,11 @@ test("团队和角色页面使用真实 MySQL 权限模型与安全写入", () =
   assert.match(team, /sitesRuntime/u);
   assert.match(team, /RESET_TOTP/u);
   assert.match(roles, /getRolesOverview/u);
+  assert.match(roles, /createRole/u);
+  assert.match(roles, /updateRoleMetadata/u);
   assert.match(roles, /updateRolePermissions/u);
+  assert.match(roles, /deleteRole/u);
+  assert.match(roles, /sitesRuntime/u);
   assert.match(team, /window\.confirm/u);
   assert.match(roles, /window\.confirm/u);
   assert.doesNotMatch(`${team}\n${roles}`, /界面设计预览|Interface design preview/u);
