@@ -124,6 +124,7 @@ test("审计日志页面使用服务端筛选与完整历史分页并只展示�
   assert.match(css, /\.audit-log-table\s*\{[^}]*min-width:\s*1740px;/u);
   assert.match(css, /\.audit-log-detail-button\s*\{\s*width:\s*44px;\s*height:\s*44px;/u);
   assert.match(css, /\.audit-log-pagination\s*\{[^}]*display:\s*flex;/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.audit-export-form \.dialog-actions\s*\{\s*margin:\s*0 -18px -18px;\s*\}/u);
   assert.doesNotMatch(css, /\.admin-content\s*\{[^}]*animation:[^;}]*\bboth\b/u);
 });
 
