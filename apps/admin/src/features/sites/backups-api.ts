@@ -56,7 +56,7 @@ export type SitesBackupReadiness = {
     checkedAt: string | null;
   }>;
   externalAlerting: {
-    state: "NOT_CONNECTED";
+    state: "MISSING_SECRETS" | "UNVERIFIED" | "DISABLED" | "CONNECTED";
     configuredChannels: number;
     lastDeliveryVerifiedAt: string | null;
   };

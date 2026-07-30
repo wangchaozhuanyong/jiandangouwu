@@ -245,8 +245,8 @@ export default function MediaPage({
               value={String(summary.totalReferences)}
               detail={copy(
                 locale,
-                `${summary.productReferences} 商品 · ${summary.heroReferences} 轮播`,
-                `${summary.productReferences} products · ${summary.heroReferences} heroes`,
+                `${summary.productReferences} 商品 · ${summary.heroReferences} 轮播 · ${summary.supportReferences} 客服`,
+                `${summary.productReferences} products · ${summary.heroReferences} heroes · ${summary.supportReferences} support`,
               )}
             />
             <MediaStat
@@ -343,7 +343,7 @@ export default function MediaPage({
       {selected && !operation && (
         <MediaDetailDialog
           asset={selected}
-          canDelete={canDelete && Boolean(selected.managed) && selected.references.length === 0}
+          canDelete={canDelete && Boolean(selected.managed) && mediaReferenceCount(selected) === 0}
           canReplace={canReplace && selected.references.length > 0}
           locale={locale}
           onClose={() => setSelected(null)}
@@ -475,12 +475,12 @@ function MediaCard({
         <div className="media-kind-tags">
           <span>{asset.managed ? copy(locale, "R2 上传", "R2 upload") : copy(locale, "打包静态图", "Bundled asset")}</span>
           {asset.kinds.map((item) => <span key={item}>{kindLabels[item][locale]}</span>)}
-          {asset.managed && asset.references.length === 0 && (
+          {asset.managed && mediaReferenceCount(asset) === 0 && (
             <span className="is-unreferenced">{copy(locale, "未引用", "Unreferenced")}</span>
           )}
         </div>
         <p>
-          <strong>{asset.references.length}</strong>
+          <strong>{mediaReferenceCount(asset)}</strong>
           {copy(locale, " 条数据库引用", " database references")}
           {probe?.state === "ready" && probe.width && probe.height
             ? ` · ${probe.width} × ${probe.height}`
@@ -544,7 +544,7 @@ function MediaDetailDialog({
             <div><dt>{copy(locale, "公开路径", "Public path")}</dt><dd><code>{asset.imageKey}</code></dd></div>
             <div><dt>{copy(locale, "存储来源", "Storage source")}</dt><dd>{asset.managed ? "Sites R2" : copy(locale, "网站构建包", "Site bundle")}</dd></div>
             <div><dt>{copy(locale, "使用类型", "Usage types")}</dt><dd>{asset.kinds.length > 0 ? asset.kinds.map((item) => kindLabels[item][locale]).join(" / ") : copy(locale, "当前未引用", "Currently unreferenced")}</dd></div>
-            <div><dt>{copy(locale, "引用数量", "Reference count")}</dt><dd>{asset.references.length}</dd></div>
+            <div><dt>{copy(locale, "引用数量", "Reference count")}</dt><dd>{mediaReferenceCount(asset)}</dd></div>
             <div><dt>{copy(locale, "图片尺寸", "Image dimensions")}</dt><dd>{probe?.state === "ready" && probe.width && probe.height ? `${probe.width} × ${probe.height}` : copy(locale, "当前未验证", "Not verified")}</dd></div>
             <div><dt>{copy(locale, "文件大小", "File size")}</dt><dd>{asset.managed ? formatBytes(asset.managed.byteSize, locale) : copy(locale, "构建包未采集", "Not collected from bundle")}</dd></div>
             <div><dt>{copy(locale, "上传账号", "Uploaded by")}</dt><dd>{asset.managed?.uploadedByEmail ?? "—"}</dd></div>
@@ -598,7 +598,7 @@ function MediaDetailDialog({
               </tr>
             </thead>
             <tbody>
-              {asset.references.length === 0 ? (
+              {mediaReferenceCount(asset) === 0 ? (
                 <tr><td colSpan={5}>{copy(locale, "当前没有数据库引用，可以安全删除这个 R2 文件。", "There are no database references, so this R2 file may be safely deleted.")}</td></tr>
               ) : asset.references.map((reference) => (
                 <tr key={`${reference.kind}:${reference.id}`}>
@@ -804,7 +804,7 @@ function MediaDeleteDialog({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (busy) return;
-    if (asset.references.length > 0) {
+    if (mediaReferenceCount(asset) > 0) {
       setError(copy(locale, "图片仍有数据库引用，不能删除。", "This image still has database references and cannot be deleted."));
       return;
     }
@@ -877,6 +877,10 @@ function MediaDeleteDialog({
       </form>
     </Dialog>
   );
+}
+
+function mediaReferenceCount(asset: ReferencedMediaAsset): number {
+  return asset.references.length + (asset.managed?.supportReferences ?? 0);
 }
 
 function mediaError(error: unknown, locale: Locale): string {

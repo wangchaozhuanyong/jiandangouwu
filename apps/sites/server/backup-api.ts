@@ -17,6 +17,11 @@ import {
   sitesDataAdditionalDataV3,
   sitesDataKeyId,
 } from "./data-protection";
+import {
+  backupAlertDeliveryInsert,
+} from "./system-alert-core";
+import { getSystemAlertReadiness } from "./system-alerts";
+import { chinaDateKey } from "./time";
 import type { D1Database, D1Result, SitesEnv } from "./types";
 
 type BackupMode = "AUTOMATIC" | "MANUAL";
@@ -114,7 +119,7 @@ type RestoreDrillResult = {
   completedAt: string;
 };
 
-const schemaVersion = 3;
+const schemaVersion = 4;
 const maximumBackupBytes = 20 * 1024 * 1024;
 const recentBackupWindowMs = 26 * 60 * 60_000;
 const recentIsolatedRestoreDrillWindowMs = 30 * 24 * 60 * 60_000;
@@ -138,12 +143,16 @@ const snapshotTablesV2 = [
   "products",
   "site_settings",
 ] as const;
-const snapshotTables = [
+const snapshotTablesV3 = [
   ...snapshotTablesV2,
   "data_key_versions",
   "exchange_rate_sync_runs",
   "privacy_requests",
   "telegram_deliveries",
+] as const;
+const snapshotTables = [
+  ...snapshotTablesV3,
+  "system_alert_deliveries",
 ] as const;
 
 export async function listBackupSnapshots(db: D1Database) {
@@ -205,7 +214,7 @@ export async function createPreRotationBackup(
 }
 
 export async function ensureDailyBackup(env: SitesEnv): Promise<void> {
-  const date = new Date().toISOString().slice(0, 10);
+  const date = chinaDateKey(new Date());
   const scheduleKey = `daily:${date}`;
   const existing = await env.DB.prepare(
     "SELECT id FROM backup_snapshots WHERE schedule_key = ? LIMIT 1",
@@ -220,10 +229,10 @@ export async function ensureDailyBackup(env: SitesEnv): Promise<void> {
 }
 
 export async function getBackupReadiness(
-  db: D1Database,
+  env: SitesEnv,
   now = new Date(),
 ) {
-  const backups = await listBackupSnapshots(db);
+  const backups = await listBackupSnapshots(env.DB);
   const checkedAt = now.toISOString();
   const latestVerified = backups.find((backup) => backup.status === "VERIFIED") ?? null;
   const latestAutomatic = backups.find(
@@ -238,13 +247,29 @@ export async function getBackupReadiness(
   const recentFailureBoundary = new Date(now.getTime() - recentFailureWindowMs).toISOString();
   const staleCreatingBoundary = new Date(now.getTime() - staleCreatingWindowMs).toISOString();
   const [failedRecentRow, staleCreatingRow] = await Promise.all([
-    db.prepare(
+    env.DB.prepare(
       "SELECT COUNT(*) AS count FROM backup_snapshots WHERE status = 'FAILED' AND created_at >= ?",
     ).bind(recentFailureBoundary).first<{ count: number }>(),
-    db.prepare(
+    env.DB.prepare(
       "SELECT COUNT(*) AS count FROM backup_snapshots WHERE status = 'CREATING' AND created_at <= ?",
     ).bind(staleCreatingBoundary).first<{ count: number }>(),
   ]);
+  const staleCreating = backups.filter(
+    (backup) => (
+      backup.status === "CREATING"
+      && backup.createdAt <= staleCreatingBoundary
+    ),
+  );
+  for (const backup of staleCreating) {
+    await backupAlertDeliveryInsert(env.DB, {
+      dedupeKey: `backup:stale:${backup.id}`,
+      eventType: "BACKUP_STALE",
+      backupId: backup.id,
+      errorCode: "BACKUP_CREATE_STALE",
+      createdAt: checkedAt,
+    }).run();
+  }
+  const alertReadiness = await getSystemAlertReadiness(env, "BACKUP");
   const failedRecentCount = Number(failedRecentRow?.count ?? 0);
   const staleCreatingCount = Number(staleCreatingRow?.count ?? 0);
   const recentVerified = isRecent(
@@ -252,14 +277,19 @@ export async function getBackupReadiness(
     now,
     recentBackupWindowMs,
   );
-  const automaticToday = latestAutomatic?.createdAt.slice(0, 10) === checkedAt.slice(0, 10);
+  const automaticToday = latestAutomatic
+    ? chinaDateKey(latestAutomatic.createdAt) === chinaDateKey(checkedAt)
+    : false;
   const isolatedRestoreDrillRecent = isRecent(
     latestIsolatedRestoreDrill?.restoreValidatedAt,
     now,
     recentIsolatedRestoreDrillWindowMs,
   );
   const noRecentFailures = failedRecentCount === 0 && staleCreatingCount === 0;
-  const externalAlertingConnected = false;
+  const externalAlertingConnected = (
+    alertReadiness.connectionState === "CONNECTED"
+    && Boolean(alertReadiness.lastDeliveryVerifiedAt)
+  );
   const gates = [
     {
       code: "RECENT_VERIFIED_BACKUP",
@@ -284,7 +314,7 @@ export async function getBackupReadiness(
     {
       code: "EXTERNAL_ALERT_DELIVERY",
       state: externalAlertingConnected ? "PASS" : "FAIL",
-      checkedAt: null,
+      checkedAt: alertReadiness.lastDeliveryVerifiedAt,
     },
   ] as const;
   return {
@@ -301,9 +331,9 @@ export async function getBackupReadiness(
     staleCreatingCount,
     gates,
     externalAlerting: {
-      state: "NOT_CONNECTED",
-      configuredChannels: 0,
-      lastDeliveryVerifiedAt: null,
+      state: alertReadiness.connectionState,
+      configuredChannels: alertReadiness.configuredChannels,
+      lastDeliveryVerifiedAt: alertReadiness.lastDeliveryVerifiedAt,
     },
   };
 }
@@ -650,7 +680,7 @@ export async function downloadBackupSnapshot(
   headers.set("content-type", "application/vnd.cloudbridge.backup+json");
   headers.set(
     "content-disposition",
-    `attachment; filename="cloudbridge-backup-${row.createdAt.slice(0, 10)}-${row.id.slice(0, 8)}.cbk"`,
+    `attachment; filename="cloudbridge-backup-${chinaDateKey(row.createdAt)}-${row.id.slice(0, 8)}.cbk"`,
   );
   headers.set("cache-control", "private, no-store");
   headers.set("x-content-type-options", "nosniff");
@@ -737,13 +767,37 @@ async function createBackup(
     useCurrentKey?: boolean;
   },
 ) {
-  requireSitesDataKey(
-    env.CLOUDBRIDGE_DATA_KEY_NEXT ?? env.CLOUDBRIDGE_DATA_KEY,
-    "BACKUP",
-  );
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
-  const objectKey = `backups/${createdAt.slice(0, 10)}/${id}.cbk`;
+  const objectKey = `backups/${chinaDateKey(createdAt)}/${id}.cbk`;
+  try {
+    requireSitesDataKey(
+      env.CLOUDBRIDGE_DATA_KEY_NEXT ?? env.CLOUDBRIDGE_DATA_KEY,
+      "BACKUP",
+    );
+  } catch (error) {
+    const errorCode = error instanceof ApiInputError
+      ? error.code
+      : "BACKUP_CREATE_FAILED";
+    const alertInserted = await backupAlertDeliveryInsert(env.DB, {
+      dedupeKey: `backup:${input.scheduleKey}:${errorCode}`,
+      eventType: "BACKUP_FAILURE",
+      backupId: input.scheduleKey,
+      errorCode,
+      createdAt,
+    }).run();
+    if (changes(alertInserted) === 1) {
+      await writeAudit(env.DB, {
+        action: "backup.snapshot.created",
+        result: "FAILED",
+        actor: input.actor,
+        targetType: "BACKUP_SCHEDULE",
+        targetId: input.scheduleKey,
+        reason: input.reason,
+      });
+    }
+    throw error;
+  }
   const inserted = await env.DB.prepare(
     `INSERT OR IGNORE INTO backup_snapshots
       (id, schedule_key, mode, status, object_key, schema_version,
@@ -845,6 +899,13 @@ async function createBackup(
       targetId: id,
       reason: input.reason,
     });
+    await backupAlertDeliveryInsert(env.DB, {
+      dedupeKey: `backup:${input.scheduleKey}:${errorCode}`,
+      eventType: "BACKUP_FAILURE",
+      backupId: id,
+      errorCode,
+      createdAt: new Date().toISOString(),
+    }).run();
     if (error instanceof ApiInputError) throw error;
     throw new ApiInputError("BACKUP_CREATE_FAILED", "The encrypted backup could not be created.", 500);
   }
@@ -1030,12 +1091,12 @@ function validateSnapshot(
 ): void {
   if (
     payload.format !== "cloudbridge-d1-snapshot"
-    || ![2, schemaVersion].includes(payload.schemaVersion)
+    || ![2, 3, schemaVersion].includes(payload.schemaVersion)
     || !payload.tables
   ) {
     throw new ApiInputError("BACKUP_PAYLOAD_INVALID", "The backup payload is invalid.", 409);
   }
-  const requiredTables = payload.schemaVersion === 2 ? snapshotTablesV2 : snapshotTables;
+  const requiredTables = snapshotTablesForVersion(payload.schemaVersion);
   for (const table of requiredTables) {
     const rows = payload.tables[table];
     if (!Array.isArray(rows) || rows.length !== expectedCounts[table]) {
@@ -1072,6 +1133,7 @@ async function validateRestorePayload(
   uniqueIndex(rows.product_translations, ["product_id", "locale"]);
   const products = uniqueIndex(rows.products, ["id"]);
   uniqueIndex(rows.site_settings, ["key"]);
+  uniqueIndex(rows.system_alert_deliveries, ["id"]);
   uniqueIndex(rows.telegram_deliveries, ["id"]);
 
   let relationshipChecks = 0;
@@ -1155,7 +1217,7 @@ async function validateRestorePayload(
 
   return {
     kind: "LOGICAL_PACKAGE",
-    tableCount: snapshotTables.length,
+    tableCount: snapshotTablesForVersion(payload.schemaVersion).length,
     recordCount: Object.values(rows).reduce((sum, tableRows) => sum + tableRows.length, 0),
     relationshipChecks,
     encryptedContactChecks,
@@ -1171,14 +1233,20 @@ function snapshotRows(
   table: (typeof snapshotTables)[number],
 ): ReadonlyArray<Record<string, unknown>> {
   const rows = payload.tables[table];
-  if (
-    payload.schemaVersion === 2
-    && !snapshotTablesV2.includes(table as (typeof snapshotTablesV2)[number])
-  ) {
+  const availableTables = snapshotTablesForVersion(payload.schemaVersion);
+  if (!availableTables.includes(table)) {
     return [];
   }
   if (!Array.isArray(rows)) throw restoreValidationError("BACKUP_RESTORE_STRUCTURE_INVALID");
   return rows;
+}
+
+function snapshotTablesForVersion(
+  version: number,
+): readonly string[] {
+  if (version === 2) return snapshotTablesV2;
+  if (version === 3) return snapshotTablesV3;
+  return snapshotTables;
 }
 
 function uniqueIndex(

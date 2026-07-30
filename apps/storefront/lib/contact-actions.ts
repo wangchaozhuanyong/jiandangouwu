@@ -37,7 +37,13 @@ export function resolveContactTarget(
   if (
     channel.type === "QQ"
     && channel.mode === "DIRECT_WITH_FALLBACK"
-    && /^mqqwpa:\/\/im\/chat\?chat_type=wpa&uin=\d{5,15}$/u.test(target)
-  ) return target;
+  ) {
+    const match = target.match(
+      /^mqqwpa:\/\/im\/chat\?chat_type=wpa&uin=(\d{5,15})$/u,
+    );
+    if (match?.[1] === channel.account.trim()) {
+      return `https://wpa.qq.com/msgrd?v=3&uin=${match[1]}&site=qq&menu=yes`;
+    }
+  }
   return null;
 }

@@ -38,6 +38,7 @@ const snapshotTables = [
   "data_key_versions",
   "exchange_rate_sync_runs",
   "privacy_requests",
+  "system_alert_deliveries",
   "telegram_deliveries",
 ];
 
@@ -53,6 +54,7 @@ const insertOrder = [
   "data_key_versions",
   "exchange_rate_sync_runs",
   "privacy_requests",
+  "system_alert_deliveries",
   "category_translations",
   "exchange_rates",
   "hero_translations",
@@ -67,6 +69,7 @@ const deleteOrder = [
   "order_status_history",
   "telegram_deliveries",
   "orders",
+  "system_alert_deliveries",
   "product_translations",
   "products",
   "category_translations",

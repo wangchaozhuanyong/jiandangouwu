@@ -19,6 +19,10 @@ const settings: AdminStorefrontSettings = {
   inventoryRiskThreshold: 7,
   transitServiceEnabled: false,
   transitServiceUrl: null,
+  shareTemplate: {
+    zh: "推荐 {productName}，当前价格 {price}。",
+    en: "See {productName}, currently {price}.",
+  },
   version: 4,
   updatedAt: "2026-07-29T00:00:00.000Z",
   orderReadiness: {
@@ -53,5 +57,23 @@ test("settings validation accepts only integer inventory thresholds from 1 to 99
       assert.equal(result.section, "inventory");
       assert.match(result.message, /integer from 1 to 99/u);
     }
+  }
+});
+
+test("settings validation accepts only the supported product share placeholders", () => {
+  const valid = validateSettings(validForm(), "zh", 0);
+  assert.equal(valid.ok, true);
+
+  const invalid = validateSettings({
+    ...validForm(),
+    shareTemplate: {
+      zh: "推荐 {productName}，折扣 {discount}",
+      en: "See {productName} with {discount}",
+    },
+  }, "zh", 0);
+  assert.equal(invalid.ok, false);
+  if (!invalid.ok) {
+    assert.equal(invalid.section, "share");
+    assert.match(invalid.message, /只能使用/u);
   }
 });

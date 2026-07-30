@@ -27,3 +27,13 @@ test("the order form and localized guidance use the shared minimum", () => {
   assert.match(copy.zh.contactError, /至少 4 个字符/u);
   assert.match(copy.en.contactError, /at least 4 characters/u);
 });
+
+test("the order form does not require a policy acceptance checkbox", () => {
+  const detail = readFileSync(
+    new URL("../components/product-detail.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(detail, /type="checkbox"/u);
+  assert.doesNotMatch(detail, /draft\.accepted/u);
+  assert.doesNotMatch(detail, /policyError|policyAccept/u);
+});

@@ -1,22 +1,6 @@
 import type { D1Database } from "./types";
-
-export const adminPermissions = [
-  "catalog.read",
-  "catalog.write",
-  "orders.read",
-  "orders.write",
-  "contacts.reveal",
-  "currencies.write",
-  "team.manage",
-  "roles.manage",
-  "audit.read",
-  "content.read",
-  "content.write",
-  "support.read",
-  "support.write",
-  "settings.read",
-  "settings.write",
-] as const;
+import { adminPermissions } from "./access-roles";
+import { securityAlertDeliveryInsert } from "./system-alert-core";
 
 export type HeaderUser = {
   email: string;
@@ -160,13 +144,43 @@ export async function bootstrapOrReadAdmin(
       targetId: id,
       reason: "First owner-only Sites administrator bootstrap",
     });
-  } else {
+  } else if (member.status === "INVITED") {
+    const now = new Date().toISOString();
+    const activation = await db.prepare(
+      "UPDATE admin_members SET display_name = ?, status = 'ACTIVE', last_login_at = ?, updated_at = ? WHERE id = ? AND status = 'INVITED'",
+    ).bind(user.displayName, now, now, member.id).run();
+    if (Number(activation.meta?.changes ?? activation.meta?.rows_written ?? 0) === 1) {
+      member = {
+        ...member,
+        displayName: user.displayName,
+        status: "ACTIVE",
+      };
+      await writeAudit(db, {
+        action: "team.member.activated",
+        result: "SUCCEEDED",
+        actor: user,
+        targetType: "ADMIN_USER",
+        targetId: member.id,
+        reason: "Pre-authorized member completed first ChatGPT sign-in",
+      });
+    } else {
+      member = await db.prepare(
+        "SELECT id, email, display_name AS displayName, status, permissions_json AS permissionsJson FROM admin_members WHERE email = ? LIMIT 1",
+      ).bind(user.email).first<{
+        id: string;
+        email: string;
+        displayName: string;
+        status: string;
+        permissionsJson: string;
+      }>();
+    }
+  } else if (member.status === "ACTIVE") {
     await db.prepare(
       "UPDATE admin_members SET display_name = ?, last_login_at = ?, updated_at = ? WHERE id = ?",
     ).bind(user.displayName, new Date().toISOString(), new Date().toISOString(), member.id).run();
   }
 
-  if (member.status !== "ACTIVE") return null;
+  if (!member || member.status !== "ACTIVE") return null;
   return {
     id: member.id,
     email: member.email,
@@ -225,7 +239,8 @@ export async function writeAudit(
   },
 ): Promise<void> {
   const id = crypto.randomUUID();
-  await db.prepare(
+  const createdAt = new Date().toISOString();
+  const auditInsert = db.prepare(
     "INSERT INTO audit_events (id, trace_id, action, result, actor_email, actor_display_name, target_type, target_id, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).bind(
     id,
@@ -237,8 +252,21 @@ export async function writeAudit(
     input.targetType ?? null,
     input.targetId ?? null,
     input.reason ?? null,
-    new Date().toISOString(),
-  ).run();
+    createdAt,
+  );
+  const alertInsert = securityAlertDeliveryInsert(db, {
+    auditId: id,
+    action: input.action,
+    result: input.result,
+    targetType: input.targetType ?? null,
+    targetId: input.targetId ?? null,
+    createdAt,
+  });
+  if (alertInsert) {
+    await db.batch([auditInsert, alertInsert]);
+    return;
+  }
+  await auditInsert.run();
 }
 
 export function parsePage(url: URL, defaults = { page: 1, pageSize: 30 }): {

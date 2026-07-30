@@ -12,7 +12,6 @@ import {
 type OrderDraft = {
   channel: "WHATSAPP" | "EMAIL" | "TELEGRAM" | "WECHAT" | "QQ";
   contact: string;
-  accepted: boolean;
   idempotencyKey: string | null;
 };
 
@@ -35,7 +34,6 @@ type ExperienceContextValue = {
 const DEFAULT_DRAFT: OrderDraft = {
   channel: "WHATSAPP",
   contact: "",
-  accepted: false,
   idempotencyKey: null,
 };
 

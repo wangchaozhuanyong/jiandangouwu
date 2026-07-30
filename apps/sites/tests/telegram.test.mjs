@@ -65,7 +65,7 @@ test("Telegram connection uses real API receipts and keeps secrets out of D1", a
   }
 });
 
-test("Telegram queue is idempotent, masked, retryable, and terminal after six attempts", async () => {
+test("Telegram queue keeps contacts encrypted at rest, sends the full contact, and retries safely", async () => {
   const { sqlite, db } = createTestDatabase();
   const env = {
     DB: db,
@@ -75,8 +75,12 @@ test("Telegram queue is idempotent, masked, retryable, and terminal after six at
     TELEGRAM_ORDER_CHAT_ID: "-1001234567890",
   };
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (url) => {
+  const sentMessages = [];
+  globalThis.fetch = async (url, init) => {
     const method = String(url).split("/").at(-1);
+    if (method === "sendMessage") {
+      sentMessages.push(JSON.parse(String(init?.body ?? "{}")));
+    }
     const result = method === "getMe"
       ? { username: "cloudbridge_order_bot" }
       : method === "getChat"
@@ -96,6 +100,8 @@ test("Telegram queue is idempotent, masked, retryable, and terminal after six at
         "PRODUCT",
         "AMOUNT",
         "CURRENCY",
+        "STATUS",
+        "CREATED_AT",
         "MASKED_CONTACT",
       ],
       reason: "Enable verified Telegram order delivery",
@@ -118,7 +124,7 @@ test("Telegram queue is idempotent, masked, retryable, and terminal after six at
       amount: "89.00",
       currency: "MYR",
       status: "MANUAL_PENDING",
-      createdAt: new Date(Date.now() - 1_000).toISOString(),
+      createdAt: "2026-07-29T16:30:45.000Z",
       contactChannel: "EMAIL",
       maskedContact: "cu***@example.test",
     };
@@ -135,6 +141,14 @@ test("Telegram queue is idempotent, masked, retryable, and terminal after six at
     assert.equal(delivery.status, "DELIVERED");
     assert.equal(delivery.telegramMessageId, "77");
     assert.equal(delivery.attemptCount, 1);
+    assert.match(sentMessages.at(-1)?.text ?? "", /状态：待人工确认/u);
+    assert.doesNotMatch(sentMessages.at(-1)?.text ?? "", /状态：MANUAL_PENDING/u);
+    assert.match(
+      sentMessages.at(-1)?.text ?? "",
+      /创建时间：2026-07-30 00:30:45（中国标准时间 UTC\+8）/u,
+    );
+    assert.match(sentMessages.at(-1)?.text ?? "", /联系方式：customer@example\.test/u);
+    assert.doesNotMatch(sentMessages.at(-1)?.text ?? "", /cu\*\*\*@example\.test/u);
 
     await seedOrder(sqlite, {
       id: "order-telegram-rate-limit",

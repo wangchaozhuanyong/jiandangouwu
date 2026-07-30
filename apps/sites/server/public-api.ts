@@ -1,10 +1,16 @@
 import {
+  DEFAULT_SHARE_TEMPLATE,
   DEFAULT_INVENTORY_RISK_THRESHOLD,
   INVENTORY_RISK_THRESHOLD_MAX,
   INVENTORY_RISK_THRESHOLD_MIN,
   isConfiguredContactChannel,
+  type CategorySummary,
   type ContactChannelMode,
   type ContactChannelType,
+  type Locale,
+  type ProductDetail,
+  type ProductSummary,
+  type StorefrontConfig,
 } from "@cloudbridge/contracts";
 import {
   ApiInputError,
@@ -23,10 +29,20 @@ import {
   processTelegramDeliveries,
   telegramDeliveryInsert,
 } from "./telegram";
-import type { D1Database, SitesEnv, SitesExecutionContext } from "./types";
+import { chinaDateKey } from "./time";
+import type {
+  D1Database,
+  D1PreparedStatement,
+  D1Result,
+  SitesEnv,
+  SitesExecutionContext,
+} from "./types";
 
-type Locale = "zh" | "en";
 type Money = { amount: string; currency: string };
+
+const configCacheControl = "public, max-age=15, s-maxage=60, stale-while-revalidate=120";
+const categoriesCacheControl = "public, max-age=60, s-maxage=300, stale-while-revalidate=600";
+const productCacheControl = "public, max-age=5, s-maxage=15, stale-while-revalidate=30";
 
 type ProductRow = {
   id: string;
@@ -64,31 +80,35 @@ export async function handlePublicApi(
 ): Promise<Response | null> {
   const url = new URL(request.url);
   if (request.method === "GET" && pathname === "/v1/storefront/config") {
-    return success(await storefrontConfig(env.DB, localeFrom(url)));
+    return publicSuccess(
+      await storefrontConfig(env.DB, localeFrom(url)),
+      configCacheControl,
+    );
   }
   if (request.method === "GET" && pathname === "/v1/categories") {
-    return success(await storefrontCategories(env.DB, localeFrom(url)));
+    return publicSuccess(
+      await storefrontCategories(env.DB, localeFrom(url)),
+      categoriesCacheControl,
+    );
   }
   if (request.method === "GET" && pathname === "/v1/products") {
-    await reconcileExpiredOrders(env.DB);
-    const locale = localeFrom(url);
-    const { page, pageSize, offset } = parsePage(url, { page: 1, pageSize: 48 });
-    const currency = currencyFrom(url);
-    const category = url.searchParams.get("category")?.trim().slice(0, 80) ?? "";
-    const search = normalizeSearch(url.searchParams.get("search") ?? "");
+    scheduleExpiredOrderReconciliation(env.DB, context);
+    const input = storefrontListingInput(url);
     const result = await storefrontProducts(env.DB, {
-      locale,
-      currency,
-      category,
-      search,
-      pageSize,
-      offset,
+      locale: input.locale,
+      currency: input.currency,
+      category: input.category,
+      search: input.search,
+      pageSize: input.pageSize,
+      offset: input.offset,
     });
-    return success(result.items, { meta: pageMeta(page, pageSize, result.total) });
+    return publicSuccess(result.items, productCacheControl, {
+      meta: pageMeta(input.page, input.pageSize, result.total),
+    });
   }
   const productMatch = pathname.match(/^\/v1\/products\/([^/]+)$/u);
   if (request.method === "GET" && productMatch) {
-    await reconcileExpiredOrders(env.DB);
+    scheduleExpiredOrderReconciliation(env.DB, context);
     const product = await storefrontProduct(
       env.DB,
       decodeURIComponent(productMatch[1]),
@@ -96,7 +116,7 @@ export async function handlePublicApi(
       currencyFrom(url),
     );
     if (!product) throw new ApiInputError("PRODUCT_NOT_FOUND", "Product was not found.", 404);
-    return success(product);
+    return publicSuccess(product, productCacheControl);
   }
   if (request.method === "POST" && pathname === "/v1/orders") {
     await reconcileExpiredOrders(env.DB);
@@ -105,21 +125,41 @@ export async function handlePublicApi(
   return null;
 }
 
-async function storefrontConfig(db: D1Database, locale: Locale) {
+export async function storefrontConfig(
+  db: D1Database,
+  locale: Locale,
+): Promise<StorefrontConfig> {
   const localeCode = locale.toUpperCase();
-  const settingsRow = await db.prepare(
-    "SELECT value_json AS valueJson FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
-  ).first<{ valueJson: string }>();
+  const [settingsResult, heroesResult, currenciesResult, channelsResult] =
+    await db.batch<unknown>([
+      db.prepare(
+        "SELECT value_json AS valueJson FROM site_settings WHERE key = 'storefront.settings' LIMIT 1",
+      ),
+      db.prepare(
+        `SELECT h.key, h.image_key AS imageUrl, h.target_slug AS targetSlug, h.tone,
+          t.eyebrow, t.title, t.body, t.cta
+         FROM heroes h
+         JOIN hero_translations t ON t.hero_id = h.id AND t.locale = ?
+         WHERE h.status = 'ACTIVE'
+         ORDER BY h.sort_order ASC, h.id ASC`,
+      ).bind(localeCode),
+      db.prepare(
+        `SELECT code, token, CASE WHEN ? = 'ZH' THEN name_zh ELSE name_en END AS name, digits
+         FROM currencies WHERE active = 1 ORDER BY sort_order ASC, code ASC`,
+      ).bind(localeCode),
+      db.prepare(
+        `SELECT type, mode,
+          CASE WHEN ? = 'ZH' THEN label_zh ELSE label_en END AS label,
+          public_account AS account, direct_target AS directTarget,
+          CASE WHEN ? = 'ZH' THEN service_hours_zh ELSE service_hours_en END AS serviceHours
+         FROM merchant_channels WHERE active = 1 ORDER BY sort_order ASC, id ASC`,
+      ).bind(localeCode, localeCode),
+    ]);
+  const settingsRow = settingsResult?.results?.[0] as
+    | { valueJson: string }
+    | undefined;
   const storedSettings = parseSettings(settingsRow?.valueJson);
-
-  const heroRows = (await db.prepare(
-    `SELECT h.key, h.image_key AS imageUrl, h.target_slug AS targetSlug, h.tone,
-      t.eyebrow, t.title, t.body, t.cta
-     FROM heroes h
-     JOIN hero_translations t ON t.hero_id = h.id AND t.locale = ?
-     WHERE h.status = 'ACTIVE'
-     ORDER BY h.sort_order ASC, h.id ASC`,
-  ).bind(localeCode).all<{
+  const heroRows = (heroesResult?.results ?? []) as Array<{
     key: string;
     imageUrl: string;
     targetSlug: string | null;
@@ -128,7 +168,7 @@ async function storefrontConfig(db: D1Database, locale: Locale) {
     title: string;
     body: string;
     cta: string;
-  }>()).results ?? [];
+  }>;
   const heroes = heroRows.map((hero) => ({
     ...hero,
     eyebrow: normalizeLegacyLineBreaks(hero.eyebrow),
@@ -136,24 +176,13 @@ async function storefrontConfig(db: D1Database, locale: Locale) {
     body: normalizeLegacyLineBreaks(hero.body),
     cta: normalizeLegacyLineBreaks(hero.cta),
   }));
-
-  const currencies = (await db.prepare(
-    `SELECT code, token, CASE WHEN ? = 'ZH' THEN name_zh ELSE name_en END AS name, digits
-     FROM currencies WHERE active = 1 ORDER BY sort_order ASC, code ASC`,
-  ).bind(localeCode).all<{
+  const currencies = (currenciesResult?.results ?? []) as Array<{
     code: string;
     token: string;
     name: string;
     digits: number;
-  }>()).results ?? [];
-
-  const activeChannels = (await db.prepare(
-    `SELECT type, mode,
-      CASE WHEN ? = 'ZH' THEN label_zh ELSE label_en END AS label,
-      public_account AS account, direct_target AS directTarget,
-      CASE WHEN ? = 'ZH' THEN service_hours_zh ELSE service_hours_en END AS serviceHours
-     FROM merchant_channels WHERE active = 1 ORDER BY sort_order ASC, id ASC`,
-  ).bind(localeCode, localeCode).all<PublicChannelRow>()).results ?? [];
+  }>;
+  const activeChannels = (channelsResult?.results ?? []) as PublicChannelRow[];
   const configuredChannels = activeChannels.filter((channel) => isConfiguredContactChannel({
     type: channel.type,
     mode: channel.mode,
@@ -166,12 +195,19 @@ async function storefrontConfig(db: D1Database, locale: Locale) {
     supportEnabled,
     acceptOrders: storedSettings.acceptOrders && supportEnabled,
   };
-  const channels = supportEnabled ? configuredChannels : [];
+  const channels = supportEnabled ? configuredChannels.map((channel) => ({
+    ...channel,
+    directTarget: channel.type === "WECHAT" ? null : channel.directTarget,
+    qrImageUrl: channel.type === "WECHAT" ? channel.directTarget : null,
+  })) : [];
 
   return { heroes, currencies, channels, settings };
 }
 
-async function storefrontCategories(db: D1Database, locale: Locale) {
+export async function storefrontCategories(
+  db: D1Database,
+  locale: Locale,
+): Promise<CategorySummary[]> {
   const rows = await db.prepare(
     `SELECT c.id, c.slug, t.name, c.sort_order AS "order"
      FROM categories c
@@ -187,7 +223,7 @@ async function storefrontCategories(db: D1Database, locale: Locale) {
   return rows.results ?? [];
 }
 
-async function storefrontProducts(
+export async function storefrontProducts(
   db: D1Database,
   input: {
     locale: Locale;
@@ -197,7 +233,7 @@ async function storefrontProducts(
     pageSize: number;
     offset: number;
   },
-): Promise<{ items: unknown[]; total: number }> {
+): Promise<{ items: ProductSummary[]; total: number }> {
   const localeCode = input.locale.toUpperCase();
   const conditions = ["p.status = 'ACTIVE'"];
   const bindings: unknown[] = [localeCode, localeCode];
@@ -211,16 +247,16 @@ async function storefrontProducts(
     bindings.push(pattern, pattern, pattern);
   }
   const where = conditions.join(" AND ");
-  const countRow = await db.prepare(
+  const countStatement = db.prepare(
     `SELECT COUNT(*) AS total
      FROM products p
      JOIN product_translations pt ON pt.product_id = p.id AND pt.locale = ?
      JOIN categories c ON c.id = p.category_id
      JOIN category_translations ct ON ct.category_id = c.id AND ct.locale = ?
      WHERE ${where}`,
-  ).bind(...bindings).first<{ total: number }>();
+  ).bind(...bindings);
 
-  const rows = await db.prepare(
+  const rowsStatement = db.prepare(
     `SELECT p.id, p.slug, p.category_id AS categoryId, c.slug AS categorySlug,
       ct.name AS categoryName, c.sort_order AS categoryOrder,
       pt.name, pt.kicker, pt.description, p.image_key AS imageKey,
@@ -234,23 +270,36 @@ async function storefrontProducts(
      WHERE ${where}
      ORDER BY p.sort_order ASC, p.id ASC
      LIMIT ? OFFSET ?`,
-  ).bind(...bindings, input.pageSize, input.offset).all<ProductRow>();
+  ).bind(...bindings, input.pageSize, input.offset);
 
-  const pricing = await pricingContext(db, input.currency);
+  const [currencyStatement, referenceStatement] = pricingStatements(
+    db,
+    input.currency,
+  );
+  const [countResult, rowsResult, currencyResult, referenceResult] =
+    await db.batch<unknown>([
+      countStatement,
+      rowsStatement,
+      currencyStatement,
+      referenceStatement,
+    ]);
+  const countRow = countResult?.results?.[0] as { total: number } | undefined;
+  const rows = (rowsResult?.results ?? []) as ProductRow[];
+  const pricing = pricingContextFromResults(currencyResult, referenceResult);
   return {
-    items: (rows.results ?? []).map((row) => productSummary(row, pricing)),
+    items: rows.map((row) => productSummary(row, pricing)),
     total: Number(countRow?.total ?? 0),
   };
 }
 
-async function storefrontProduct(
+export async function storefrontProduct(
   db: D1Database,
   slug: string,
   locale: Locale,
   currency: string,
-) {
+): Promise<ProductDetail | null> {
   const localeCode = locale.toUpperCase();
-  const row = await db.prepare(
+  const productStatement = db.prepare(
     `SELECT p.id, p.slug, p.category_id AS categoryId, c.slug AS categorySlug,
       ct.name AS categoryName, c.sort_order AS categoryOrder,
       pt.name, pt.kicker, pt.description, p.image_key AS imageKey,
@@ -263,9 +312,17 @@ async function storefrontProduct(
      JOIN category_translations ct ON ct.category_id = c.id AND ct.locale = ?
      WHERE p.slug = ? AND p.status = 'ACTIVE'
      LIMIT 1`,
-  ).bind(localeCode, localeCode, slug).first<ProductRow>();
+  ).bind(localeCode, localeCode, slug);
+  const [currencyStatement, referenceStatement] = pricingStatements(db, currency);
+  const [productResult, currencyResult, referenceResult] =
+    await db.batch<unknown>([
+      productStatement,
+      currencyStatement,
+      referenceStatement,
+    ]);
+  const row = productResult?.results?.[0] as ProductRow | undefined;
   if (!row) return null;
-  const pricing = await pricingContext(db, currency);
+  const pricing = pricingContextFromResults(currencyResult, referenceResult);
   return {
     ...productSummary(row, pricing),
     description: row.description,
@@ -385,7 +442,7 @@ async function createOrder(
   const reservedUntil = new Date(now.getTime() + 30 * 60_000).toISOString();
   const id = crypto.randomUUID();
   const historyId = crypto.randomUUID();
-  const orderNumber = `CB${now.toISOString().slice(0, 10).replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase()}`;
+  const orderNumber = `CB${chinaDateKey(now).replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase()}`;
   const referenceAmount = currency === "USDT"
     ? null
     : {
@@ -513,24 +570,49 @@ async function orderReceiptByIdempotency(db: D1Database, idempotencyKey: string)
   };
 }
 
-async function pricingContext(db: D1Database, currency: string) {
-  const currencyRow = await db.prepare(
+type PricingContext = {
+  currency: string;
+  digits: number;
+  rate: string;
+  referenceDigits: number;
+  referenceRate: string;
+};
+
+function pricingStatements(
+  db: D1Database,
+  currency: string,
+): [D1PreparedStatement, D1PreparedStatement] {
+  return [
+    db.prepare(
     `SELECT c.code, c.digits, r.rate
      FROM currencies c
      JOIN exchange_rates r ON r.to_code = c.code AND r.from_code = 'MYR'
      WHERE c.code = ? AND c.active = 1
      ORDER BY r.effective_at DESC LIMIT 1`,
-  ).bind(currency).first<{ code: string; digits: number; rate: string }>();
+    ).bind(currency),
+    db.prepare(
+      `SELECT c.digits, r.rate
+       FROM currencies c
+       JOIN exchange_rates r ON r.to_code = c.code AND r.from_code = 'MYR'
+       WHERE c.code = 'USDT' AND c.active = 1
+       ORDER BY r.effective_at DESC LIMIT 1`,
+    ),
+  ];
+}
+
+function pricingContextFromResults(
+  currencyResult: D1Result<unknown> | undefined,
+  referenceResult: D1Result<unknown> | undefined,
+): PricingContext {
+  const currencyRow = currencyResult?.results?.[0] as
+    | { code: string; digits: number; rate: string }
+    | undefined;
   if (!currencyRow) {
     throw new ApiInputError("CURRENCY_UNAVAILABLE", "The selected currency is unavailable.", 422);
   }
-  const reference = await db.prepare(
-    `SELECT c.digits, r.rate
-     FROM currencies c
-     JOIN exchange_rates r ON r.to_code = c.code AND r.from_code = 'MYR'
-     WHERE c.code = 'USDT' AND c.active = 1
-     ORDER BY r.effective_at DESC LIMIT 1`,
-  ).first<{ digits: number; rate: string }>();
+  const reference = referenceResult?.results?.[0] as
+    | { digits: number; rate: string }
+    | undefined;
   return {
     currency: currencyRow.code,
     digits: currencyRow.digits,
@@ -540,10 +622,22 @@ async function pricingContext(db: D1Database, currency: string) {
   };
 }
 
+async function pricingContext(
+  db: D1Database,
+  currency: string,
+): Promise<PricingContext> {
+  const [currencyStatement, referenceStatement] = pricingStatements(db, currency);
+  const [currencyResult, referenceResult] = await db.batch<unknown>([
+    currencyStatement,
+    referenceStatement,
+  ]);
+  return pricingContextFromResults(currencyResult, referenceResult);
+}
+
 function productSummary(
   row: ProductRow,
-  pricing: Awaited<ReturnType<typeof pricingContext>>,
-) {
+  pricing: PricingContext,
+): ProductSummary {
   const price: Money = {
     amount: multiplyDecimal(row.basePrice, pricing.rate, pricing.digits),
     currency: pricing.currency,
@@ -576,6 +670,64 @@ function productSummary(
   };
 }
 
+export function storefrontListingInput(url: URL): {
+  locale: Locale;
+  currency: string;
+  category: string;
+  search: string;
+  page: number;
+  pageSize: number;
+  offset: number;
+} {
+  const { page, pageSize, offset } = parsePage(url, {
+    page: 1,
+    pageSize: 48,
+  });
+  return {
+    locale: localeFrom(url),
+    currency: currencyFrom(url),
+    category: url.searchParams.get("category")?.trim().slice(0, 80) ?? "",
+    search: normalizeSearch(url.searchParams.get("search") ?? ""),
+    page,
+    pageSize,
+    offset,
+  };
+}
+
+let lastReconciliationStartedAt = 0;
+let activeReconciliation: Promise<unknown> | null = null;
+
+export function scheduleExpiredOrderReconciliation(
+  db: D1Database,
+  context?: SitesExecutionContext,
+): void {
+  if (!context) return;
+  const now = Date.now();
+  if (activeReconciliation || now - lastReconciliationStartedAt < 30_000) return;
+  lastReconciliationStartedAt = now;
+  activeReconciliation = reconcileExpiredOrders(db)
+    .catch((error: unknown) => {
+      console.error("[cloudbridge] Expired order reconciliation failed", error);
+    })
+    .finally(() => {
+      activeReconciliation = null;
+    });
+  context.waitUntil(activeReconciliation);
+}
+
+function publicSuccess<T>(
+  data: T,
+  cacheControl: string,
+  options?: {
+    meta?: { page: number; pageSize: number; total: number; pageCount: number };
+  },
+): Response {
+  const response = success(data, options);
+  response.headers.set("cache-control", cacheControl);
+  response.headers.set("vary", "accept-encoding");
+  return response;
+}
+
 function localeFrom(url: URL): Locale {
   return url.searchParams.get("locale") === "en" ? "en" : "zh";
 }
@@ -602,6 +754,7 @@ function parseSettings(value: string | undefined) {
     inventoryRiskThreshold: DEFAULT_INVENTORY_RISK_THRESHOLD,
     transitServiceEnabled: true,
     transitServiceUrl: null,
+    shareTemplate: DEFAULT_SHARE_TEMPLATE,
   };
   if (!value) return fallback;
   try {
@@ -615,6 +768,7 @@ function parseSettings(value: string | undefined) {
       ...parsed,
       siteName: { ...fallback.siteName, ...parsed.siteName },
       seoDescription: { ...fallback.seoDescription, ...parsed.seoDescription },
+      shareTemplate: { ...fallback.shareTemplate, ...parsed.shareTemplate },
       policyVersion,
       acceptOrders: parsed.acceptOrders === true,
       supportEnabled: parsed.supportEnabled === true,

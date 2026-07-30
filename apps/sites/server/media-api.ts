@@ -5,8 +5,10 @@ import type {
 import {
   ApiInputError,
   readJson,
+  writeAudit,
   type AdminIdentity,
 } from "./http";
+import { chinaDateKey } from "./time";
 import type {
   D1Database,
   D1PreparedStatement,
@@ -25,6 +27,7 @@ type MediaRow = {
   createdAt: string;
   productReferences: number;
   heroReferences: number;
+  supportReferences: number;
 };
 
 type ValidatedUpload = {
@@ -48,7 +51,9 @@ export async function listManagedMedia(
     `SELECT m.key, m.content_type AS contentType, m.byte_size AS byteSize,
       m.uploaded_by_email AS uploadedByEmail, m.created_at AS createdAt,
       (SELECT COUNT(*) FROM products p WHERE p.image_key = '/media/' || m.key) AS productReferences,
-      (SELECT COUNT(*) FROM heroes h WHERE h.image_key = '/media/' || m.key) AS heroReferences
+      (SELECT COUNT(*) FROM heroes h WHERE h.image_key = '/media/' || m.key) AS heroReferences,
+      (SELECT COUNT(*) FROM merchant_channels c
+        WHERE c.type = 'WECHAT' AND c.direct_target = '/media/' || m.key) AS supportReferences
      FROM media_objects m ORDER BY m.created_at DESC, m.key ASC`,
   ).all<MediaRow>()).results ?? [];
 
@@ -97,7 +102,90 @@ export async function uploadManagedMedia(
     storageStatus: "AVAILABLE",
     productReferences: 0,
     heroReferences: 0,
+    supportReferences: 0,
   };
+}
+
+export async function uploadWechatQr(
+  env: SitesEnv,
+  request: Request,
+  channelId: string,
+  actor: AdminIdentity,
+): Promise<void> {
+  const form = await readMediaForm(request);
+  const reason = requiredReason(form.get("reason"));
+  const version = requiredFormVersion(form.get("version"));
+  const current = await readWechatChannel(env.DB, channelId);
+  if (current.version !== version) {
+    throw new ApiInputError("VERSION_CONFLICT", "The contact channel changed. Refresh and try again.", 409);
+  }
+  const upload = await validateUpload(form.get("file"));
+  const createdAt = new Date().toISOString();
+  const auditId = crypto.randomUUID();
+
+  await env.MEDIA.put(upload.key, upload.bytes, {
+    httpMetadata: { contentType: upload.contentType },
+  });
+  try {
+    const results = await env.DB.batch([
+      insertMediaStatement(env.DB, upload, actor.email, createdAt),
+      env.DB.prepare(
+        `UPDATE merchant_channels SET direct_target = ?, version = version + 1,
+          updated_at = ? WHERE id = ? AND type = 'WECHAT' AND version = ?`,
+      ).bind(upload.path, createdAt, channelId, version),
+      auditStatement(env.DB, {
+        action: "support.channel.qr.uploaded",
+        actor,
+        targetId: channelId,
+        targetType: "MERCHANT_CHANNEL",
+        reason,
+        eventId: auditId,
+      }),
+    ]);
+    if (changes(results[1]) !== 1) {
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM media_objects WHERE key = ?").bind(upload.key),
+        env.DB.prepare("DELETE FROM audit_events WHERE id = ?").bind(auditId),
+      ]);
+      await env.MEDIA.delete(upload.key);
+      throw new ApiInputError("VERSION_CONFLICT", "The contact channel changed. Refresh and try again.", 409);
+    }
+  } catch (error) {
+    await env.MEDIA.delete(upload.key);
+    throw error;
+  }
+}
+
+export async function removeWechatQr(
+  env: SitesEnv,
+  request: Request,
+  channelId: string,
+  actor: AdminIdentity,
+): Promise<void> {
+  const body = await readJson<{ version?: unknown; reason?: unknown }>(request);
+  const version = requiredJsonVersion(body.version);
+  const reason = requiredReason(body.reason);
+  const current = await readWechatChannel(env.DB, channelId);
+  if (current.version !== version) {
+    throw new ApiInputError("VERSION_CONFLICT", "The contact channel changed. Refresh and try again.", 409);
+  }
+  if (!current.directTarget) return;
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(
+    `UPDATE merchant_channels SET direct_target = NULL, version = version + 1,
+      updated_at = ? WHERE id = ? AND type = 'WECHAT' AND version = ?`,
+  ).bind(now, channelId, version).run();
+  if (changes(result) !== 1) {
+    throw new ApiInputError("VERSION_CONFLICT", "The contact channel changed. Refresh and try again.", 409);
+  }
+  await writeAudit(env.DB, {
+    action: "support.channel.qr.removed",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "MERCHANT_CHANNEL",
+    targetId: channelId,
+    reason,
+  });
 }
 
 export async function replaceMediaReferences(
@@ -172,6 +260,7 @@ export async function replaceMediaReferences(
       storageStatus: "AVAILABLE",
       productReferences: replacedProducts,
       heroReferences: replacedHeroes,
+      supportReferences: 0,
     },
     replacedReferences: {
       products: replacedProducts,
@@ -195,7 +284,7 @@ export async function deleteManagedMedia(
   }
   const path = `/media/${key}`;
   const references = await referenceCounts(env.DB, path);
-  if (references.products + references.heroes > 0) {
+  if (references.products + references.heroes + references.support > 0) {
     throw new ApiInputError(
       "MEDIA_OBJECT_IN_USE",
       "Referenced media cannot be deleted. Replace its references first.",
@@ -285,9 +374,7 @@ async function validateUpload(value: FormDataEntryValue | null): Promise<Validat
       ? "webp"
       : "jpg";
   const slug = safeFileSlug(value.name);
-  const now = new Date();
-  const year = String(now.getUTCFullYear());
-  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const [year, month] = chinaDateKey(new Date()).split("-");
   const key = `uploads/${year}/${month}/${crypto.randomUUID()}-${slug}.${extension}`;
   return {
     key,
@@ -367,18 +454,22 @@ function requiredReason(value: unknown): string {
 async function referenceCounts(
   db: D1Database,
   path: string,
-): Promise<{ products: number; heroes: number }> {
-  const [products, heroes] = await Promise.all([
+): Promise<{ products: number; heroes: number; support: number }> {
+  const [products, heroes, support] = await Promise.all([
     db.prepare("SELECT COUNT(*) AS count FROM products WHERE image_key = ?")
       .bind(path)
       .first<{ count: number }>(),
     db.prepare("SELECT COUNT(*) AS count FROM heroes WHERE image_key = ?")
       .bind(path)
       .first<{ count: number }>(),
+    db.prepare(
+      "SELECT COUNT(*) AS count FROM merchant_channels WHERE type = 'WECHAT' AND direct_target = ?",
+    ).bind(path).first<{ count: number }>(),
   ]);
   return {
     products: Number(products?.count ?? 0),
     heroes: Number(heroes?.count ?? 0),
+    support: Number(support?.count ?? 0),
   };
 }
 
@@ -386,7 +477,7 @@ async function mediaRow(db: D1Database, key: string): Promise<MediaRow | null> {
   return db.prepare(
     `SELECT key, content_type AS contentType, byte_size AS byteSize,
       uploaded_by_email AS uploadedByEmail, created_at AS createdAt,
-      0 AS productReferences, 0 AS heroReferences
+      0 AS productReferences, 0 AS heroReferences, 0 AS supportReferences
      FROM media_objects WHERE key = ? LIMIT 1`,
   ).bind(key).first<MediaRow>();
 }
@@ -406,6 +497,7 @@ function mediaObject(
     storageStatus,
     productReferences: Number(row.productReferences),
     heroReferences: Number(row.heroReferences),
+    supportReferences: Number(row.supportReferences),
   };
 }
 
@@ -432,19 +524,50 @@ function auditStatement(
     action: string;
     actor: AdminIdentity;
     targetId: string;
+    targetType?: "MEDIA_OBJECT" | "MERCHANT_CHANNEL";
     reason: string;
+    eventId?: string;
   },
 ): D1PreparedStatement {
   return db.prepare(
-    "INSERT INTO audit_events (id, trace_id, action, result, actor_email, actor_display_name, target_type, target_id, reason, created_at) VALUES (?, ?, ?, 'SUCCEEDED', ?, ?, 'MEDIA_OBJECT', ?, ?, ?)",
+    "INSERT INTO audit_events (id, trace_id, action, result, actor_email, actor_display_name, target_type, target_id, reason, created_at) VALUES (?, ?, ?, 'SUCCEEDED', ?, ?, ?, ?, ?, ?)",
   ).bind(
-    crypto.randomUUID(),
+    input.eventId ?? crypto.randomUUID(),
     crypto.randomUUID(),
     input.action,
     input.actor.email,
     input.actor.displayName,
+    input.targetType ?? "MEDIA_OBJECT",
     input.targetId,
     input.reason,
     new Date().toISOString(),
   );
+}
+
+async function readWechatChannel(
+  db: D1Database,
+  channelId: string,
+): Promise<{ version: number; directTarget: string | null }> {
+  const channel = await db.prepare(
+    "SELECT version, direct_target AS directTarget FROM merchant_channels WHERE id = ? AND type = 'WECHAT' LIMIT 1",
+  ).bind(channelId).first<{ version: number; directTarget: string | null }>();
+  if (!channel) {
+    throw new ApiInputError("WECHAT_CHANNEL_NOT_FOUND", "The WeChat channel was not found.", 404);
+  }
+  return channel;
+}
+
+function requiredFormVersion(value: FormDataEntryValue | null): number {
+  return requiredJsonVersion(typeof value === "string" ? Number(value) : value);
+}
+
+function requiredJsonVersion(value: unknown): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 1) {
+    throw new ApiInputError("INVALID_VERSION", "A valid channel version is required.", 422);
+  }
+  return Number(value);
+}
+
+function changes(result: { meta?: { changes?: number; rows_written?: number } } | undefined): number {
+  return Number(result?.meta?.changes ?? result?.meta?.rows_written ?? 0);
 }

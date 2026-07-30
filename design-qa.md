@@ -1,5 +1,106 @@
 # CloudBridge 完整设计补全 QA
 
+## 2026-07-30 正式客户端页脚固定四入口
+
+### 视觉真值与实现范围
+
+- 用户参考图：`/var/folders/y2/73zzsdhn3d78m_qqhkb2lrq80000gn/T/codex-clipboard-446ea108-1f16-443c-96c8-5de1982b09ea.png`，原始像素为 1360 × 265；图中页脚导航只显示服务、服务条款、隐私说明，右下角为空。
+- 本轮采用“联系我们 / Contact us”作为第四入口，顺序固定为服务、服务条款、隐私说明、联系我们，保持既有品牌区、2 × 2 桌面网格、移动端全宽行和法律说明不变。
+- “联系我们”复用现有客服抽屉；即使没有可用渠道也保留入口，并在抽屉中直接显示真实不可用或加载错误状态，不伪造客服已启用。
+
+### 浏览器证据
+
+- 桌面 1440 × 1024 CSS：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-footer-four-grid-1440-zh-fixed.jpg`。
+- 中文移动端 390 × 844 CSS：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-footer-four-rows-390-zh-fixed.jpg`。
+- 英文移动端 320 × 844 CSS：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-footer-four-rows-320-en-fixed.jpg`。
+- 用户截图与桌面实现同屏对比：`/Users/wangchao/.codex/visualizations/2026/07/30/019fb129-d229-7ac1-b94c-44ebb5fa11cb/cloudbridge-footer-before-after.jpg`。
+
+### 全视图、聚焦区域与五项视觉表面
+
+- 全视图：1440、390、320 均无页面级横向溢出；桌面页脚为完整四宫格，移动端为四条全宽导航行。
+- 聚焦比较：桌面品牌区和前三项位置保持不变，只填补参考图右下角空位；四项的列宽与行高一致，没有出现半格留白。
+- 字体与排版：复用既有页脚字号、字重和中英文排版；“联系我们 / Contact us”在 320px 下完整显示。
+- 间距与布局：桌面内容宽 1240px、页脚高 280px；390px 内容宽 351px、320px 内容宽 281px，移动端四行均为 58px。
+- 颜色与视觉变量：复用既有深海军蓝、边框、文字和青色箭头，没有新增视觉变量或高亮色。
+- 图片与素材：继续复用 `/assets/cloudbridge-logo.png`，未新增或替换图片、图标、Logo。
+- 文案与内容：第四项中文为“联系我们”，英文为“Contact us”；法律说明和前三项文案不变。
+
+### 交互、控制台与比较历史
+
+- 中文“联系我们”按钮可打开“联系客服”对话框，关闭按钮可正常关闭。
+- 本地公开配置接口不可用时，抽屉显示“暂时无法读取客服渠道 / 请检查网络后重新加载”，没有把错误状态伪装成可用渠道。
+- 320px 英文页面控制台 warning/error 为 0。
+- 首轮截图使用了视口坐标作为文档裁剪坐标，截取到错误区域；改用元素文档坐标重新生成 1440、390、320 三份聚焦证据后完成对比。
+
+### Findings
+
+- P0：0。
+- P1：0。
+- P2：0。
+- P3：0。
+
+### 自动检查
+
+- `npm run test --workspace @cloudbridge/storefront`：14/14 通过。
+- `node --test tests/platform-ux.test.mjs`：14/14 通过。
+- `npm run check`：完整通过；首次沙箱内执行仅因 Wrangler 无权写日志和监听本机临时端口失败，获准在沙箱外原命令复跑后全部通过。
+- `npm run build:sites`：通过。
+- `git diff --check`：通过。
+
+final result: passed
+
+## 2026-07-30 商品区左右标题布局
+
+### 视觉真值与实现证据
+
+- 用户问题截图：`/var/folders/y2/73zzsdhn3d78m_qqhkb2lrq80000gn/T/codex-clipboard-71f085b5-9451-41dc-b350-9a059a5ff531.png`，513 × 160px，展示修改前主标题与副标题上下堆叠的状态。
+- 用户明确目标：主标题保持左侧，说明副标题保持右侧。
+- 浏览器实现截图：
+  - `artifacts/design-qa/catalog-heading-512-light.png`，497 × 796px 浏览器截图，对应 512 × 820 CSS 视口。
+  - `artifacts/design-qa/catalog-heading-390-dark.png`，375 × 820px 浏览器截图，对应 390 × 844 CSS 视口。
+  - `artifacts/design-qa/catalog-heading-320-dark.png`，305 × 820px 浏览器截图，对应 320 × 844 CSS 视口。
+- 顶部对齐复查截图：
+  - `artifacts/design-qa/catalog-heading-512-top-aligned-light.png`，485 × 80px 聚焦截图，对应 512 × 820 CSS 视口与 1× 密度。
+  - `artifacts/design-qa/catalog-heading-320-top-aligned.png`，293 × 47px 聚焦截图，对应 320 × 844 CSS 视口与 1× 密度。
+- 同屏聚焦对照：`artifacts/design-qa/comparison-catalog-heading-512.png`，1009 × 160px；左侧为问题截图，右侧为实现后的浅色商品区标题。
+- 顶部对齐同屏对照：`artifacts/design-qa/comparison-catalog-heading-top-aligned.png`，997 × 160px；左侧为用户问题截图，右侧为最终顶部对齐实现。
+- 截图使用浏览器默认 1× 密度；对照图统一为 160px 高，没有通过不同密度制造比例差异。
+
+### 五项视觉表面
+
+- 字体与排版：复用现有衬线主标题和无衬线说明文字；约 500px 视口保留 43px 主标题，390/320px 使用响应式缩放，说明文字维持次级层级。
+- 间距与布局：512px 下为 228.875px / 1px / 190px 三轨结构；390px 和 320px 隐藏中间竖线并使用等宽双栏。左右两栏统一拉伸到同一行高，标题和说明从同一上边界开始，副标题不再垂直居中。
+- 颜色与变量：深色与浅色主题继续复用现有 `--text`、`--muted`、`--line-strong`，没有新增孤立颜色。
+- 图片与素材：本次只调整文字布局，没有新增、替换或伪造任何图片与图标。
+- 文案与内容：中英文标题和副标题内容保持不变，只调整空间关系。
+
+### 响应式与浏览器检查
+
+- 512 × 820：标题和副标题同一横向层级，中间保留 1px 编辑式分隔线。
+- 390 × 844：使用等宽双栏，页面无横向溢出。
+- 320 × 844：最终两列均为 134.5px，标题与说明均完整显示，页面无横向溢出。
+- 512 × 820 顶部对齐复查：标题、副标题与分隔线边界均为 `top: 903px`、`bottom: 967px`、`height: 64px`。
+- 320 × 844 中英文复查：标题与副标题的 `top`、`bottom`、`height` 均完全一致；英文标题换行后仍无横向溢出。
+- 商品搜索、币种、分类和双列商品卡片位置与行为保持不变。
+- 控制台最终 `error` 与 `warn` 均为 0。
+
+### 比较与修正记录
+
+- 第一轮 512px 对照已经满足左右结构，无 P0/P1。
+- 第一轮 320px 使用 1.08fr / 0.92fr，右侧说明出现单字孤行，记为 P2 排版节奏问题。
+- 修正为等宽双栏、12px 间距，并将窄屏标题缩放为 `clamp(26px, 8vw, 34px)`、说明文字调整为 10.5px / 1.6。
+- 第二轮 320px 对照中说明收为三行、标题保持单行，P2 已消除。
+- 用户复查指出右侧说明垂直居中导致上下边界不统一；将三档视口的网格对齐改为 `stretch`，分隔线使用最小高度随整行拉伸，左右内容从顶部开始。
+
+### Findings
+
+- P0：0。
+- P1：0。
+- P2：0。
+- P3：0；当前布局已经准确表达用户要求，不再增加装饰或改动附近商品工具栏。
+
+final result: passed
+
 ## 2026-07-29 正式客户端语言与客服按钮顺序
 
 ### 视觉真值与实现范围

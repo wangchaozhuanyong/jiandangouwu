@@ -14,7 +14,7 @@ test("the header always exposes truthful customer support", () => {
   assert.match(shell, /className="support-trigger"/u);
   assert.match(
     shell,
-    /<div className="header-utilities">\s*<LanguagePicker[\s\S]*?\/>\s*<button[\s\S]*?className="support-trigger"/u,
+    /<div className="header-utilities">[\s\S]*?className="theme-toggle"[\s\S]*?<LanguagePicker[\s\S]*?\/>\s*<button[\s\S]*?className="support-trigger"/u,
   );
   assert.doesNotMatch(
     shell,
@@ -33,14 +33,49 @@ test("the header always exposes truthful customer support", () => {
   );
 });
 
-test("the language picker exposes only the current native-language label", () => {
+test("QQ support uses a best-effort app handoff with a visible copy fallback", () => {
+  const controls = read("components/storefront-controls.tsx");
+
+  assert.match(
+    controls,
+    /onClick=\{channel\.type === "QQ" \? handleQqLaunch : undefined\}/u,
+  );
+  assert.match(controls, /尝试打开 QQ/u);
+  assert.match(controls, /Try to open QQ/u);
+  assert.match(controls, /如果 QQ 没有打开/u);
+  assert.match(controls, /If QQ did not open/u);
+  assert.match(controls, /setQqFallbackVisible\(true\)/u);
+  assert.match(controls, /copyAccount\(channel\)/u);
+  assert.doesNotMatch(controls, /QQ (?:已打开|opened successfully)/u);
+});
+
+test("the footer keeps four stable entries and opens truthful contact support last", () => {
+  const shell = read("components/site-shell.tsx");
+  const footer = shell.slice(
+    shell.indexOf('className="footer-links"'),
+    shell.indexOf("</nav>", shell.indexOf('className="footer-links"')),
+  );
+
+  assert.match(
+    footer,
+    /t\.navServices[\s\S]*?policies\/terms[\s\S]*?t\.terms[\s\S]*?policies\/privacy[\s\S]*?t\.privacy[\s\S]*?<button[\s\S]*?t\.navSupport/u,
+  );
+  assert.doesNotMatch(footer, /\{supportEnabled &&/u);
+  assert.equal(copy.zh.navSupport, "联系我们");
+  assert.equal(copy.en.navSupport, "Contact us");
+});
+
+test("the language control is one compact direct toggle", () => {
   const controls = read("components/storefront-controls.tsx");
   const shell = read("components/site-shell.tsx");
   const styles = read("app/globals.css");
 
-  assert.match(controls, /value:\s*"zh",\s*label:\s*"中文"/u);
-  assert.match(controls, /value:\s*"en",\s*label:\s*"English"/u);
   assert.match(controls, /export function LanguagePicker/u);
+  assert.match(controls, /visibleLabel = value === "zh" \? "中" : "EN"/u);
+  assert.match(controls, /nextLocale: Locale = value === "zh" \? "en" : "zh"/u);
+  assert.match(controls, /className="language-picker"/u);
+  assert.doesNotMatch(controls, /languageOptions/u);
+  assert.doesNotMatch(controls, /language-picker__menu/u);
   assert.match(shell, /<LanguagePicker/u);
   assert.match(shell, /window\.location\.assign\(target\)/u);
   assert.match(shell, /searchParams\.toString\(\)/u);
@@ -48,16 +83,32 @@ test("the language picker exposes only the current native-language label", () =>
   assert.doesNotMatch(shell, /className="language-switch"/u);
   assert.match(
     styles,
-    /@media \(max-width: 760px\)[\s\S]*?\.language-picker \{ width: 128px; height: 44px; \}/u,
+    /\.theme-toggle, \.language-picker \{ width: 48px; height: 48px;[\s\S]*?@media \(max-width: 760px\)[\s\S]*?\.theme-toggle, \.language-picker \{ width: 44px; height: 44px;/u,
   );
-  assert.match(
-    styles,
-    /@media \(max-width: 390px\)[\s\S]*?\.language-picker \{ width: 94px; \}[\s\S]*?\.language-picker__trigger > svg:first-child \{ display: none; \}/u,
-  );
-  assert.doesNotMatch(
-    styles,
-    /\.language-picker__trigger strong \{[^}]*text-overflow:\s*ellipsis;/u,
-  );
+  assert.doesNotMatch(styles, /\.language-picker__trigger/u);
+});
+
+test("the storefront theme is persistent, prepaint-safe, and fully localized", () => {
+  const layout = read("app/layout.tsx");
+  const shell = read("components/site-shell.tsx");
+  const styles = read("app/globals.css");
+  const theme = read("lib/theme.ts");
+
+  assert.match(theme, /cloudbridge-storefront-theme/u);
+  assert.match(theme, /DEFAULT_STOREFRONT_THEME: StorefrontTheme = "dark"/u);
+  assert.match(layout, /data-theme=\{DEFAULT_STOREFRONT_THEME\}/u);
+  assert.match(layout, /suppressHydrationWarning/u);
+  assert.match(layout, /window\.localStorage\.getItem/u);
+  assert.match(layout, /document\.documentElement\.dataset\.theme=theme/u);
+  assert.match(shell, /className="theme-toggle"/u);
+  assert.match(shell, /window\.localStorage\.setItem\(STOREFRONT_THEME_STORAGE_KEY, nextTheme\)/u);
+  assert.match(shell, /document\.documentElement\.style\.colorScheme = nextTheme/u);
+  assert.match(styles, /:root\[data-theme="light"\]/u);
+  assert.match(styles, /html\[data-theme="light"\] \.product-card/u);
+  assert.match(styles, /html\[data-theme="light"\] \.order-action-dock/u);
+  assert.match(styles, /html\[data-theme="light"\] \.support-drawer/u);
+  assert.equal(copy.zh.switchToLightTheme, "切换到浅色模式");
+  assert.equal(copy.en.switchToDarkTheme, "Switch to dark theme");
 });
 
 test("currency controls render only the locale-specific currency name", () => {

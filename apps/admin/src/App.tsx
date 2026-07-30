@@ -51,12 +51,22 @@ import {
   pageFromPath,
   pagePath,
   ADMIN_NAVIGATION,
+  canAccessAdminPage,
   findAdminNavigationGroup,
   toggleAdminNavigationGroup,
   type AdminNavigationGroupId,
   type Page,
 } from "./admin-model";
-import { AdminShellSkeleton, Dialog, PanelState } from "./admin-ui";
+import {
+  AdminShellSkeleton,
+  Dialog,
+  HelpTip,
+  PanelState,
+} from "./admin-ui";
+import {
+  adminPageHelp,
+  helpTriggerLabel,
+} from "./help-content";
 import { adminCopy } from "./i18n";
 
 const DashboardPage = lazy(() => import("./pages/dashboard-page"));
@@ -221,19 +231,30 @@ function AuthenticatedAdmin({
   const [announcement, setAnnouncement] = useState("");
   const headingRef = useRef<HTMLHeadingElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const workspaceRef = useRef<HTMLElement>(null);
 
   const go = useCallback((next: Page, historyMode: "push" | "replace" = "push") => {
+    if (!canAccessAdminPage(next, user.permissions)) {
+      notify(locale === "zh" ? "当前账号没有访问这个页面的权限。" : "This account cannot access that page.", "error");
+      return;
+    }
     if (next !== page && !confirmNavigation(locale)) return;
     if (next !== page) {
       window.history[historyMode === "push" ? "pushState" : "replaceState"]({ page: next }, "", pagePath(next));
       setPage(next);
     }
     setMenuOpen(false);
-  }, [confirmNavigation, locale, page, setPage]);
+  }, [confirmNavigation, locale, notify, page, setPage, user.permissions]);
 
   useEffect(() => {
     const onPopState = () => {
       const next = pageFromPath(window.location.pathname);
+      if (!canAccessAdminPage(next, user.permissions)) {
+        window.history.replaceState({ page: "dashboard" }, "", pagePath("dashboard"));
+        setPage("dashboard");
+        notify(locale === "zh" ? "该页面需要其他权限，已返回工作台。" : "That page needs another permission. Returned to the workspace.", "error");
+        return;
+      }
       if (next !== page && !confirmNavigation(locale)) {
         window.history.pushState({ page }, "", pagePath(page));
         return;
@@ -242,7 +263,13 @@ function AuthenticatedAdmin({
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [confirmNavigation, locale, page, setPage]);
+  }, [confirmNavigation, locale, notify, page, setPage, user.permissions]);
+
+  useEffect(() => {
+    if (canAccessAdminPage(page, user.permissions)) return;
+    window.history.replaceState({ page: "dashboard" }, "", pagePath("dashboard"));
+    setPage("dashboard");
+  }, [page, setPage, user.permissions]);
 
   useEffect(() => {
     setExpandedGroup(findAdminNavigationGroup(page)?.id ?? null);
@@ -253,8 +280,11 @@ function AuthenticatedAdmin({
     document.title = `${title} · CloudBridge`;
     setAnnouncement(locale === "zh" ? `已进入${title}` : `${title} page opened`);
     headingRef.current?.focus({ preventScroll: true });
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [locale, page, t]);
+
+  useLayoutEffect(() => {
+    workspaceRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [page]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -311,9 +341,11 @@ function AuthenticatedAdmin({
               );
             }
 
+            const visibleItems = entry.items.filter((item) => canAccessAdminPage(item, user.permissions));
+            if (visibleItems.length === 0) return null;
             const Icon = groupNavigationIcons[entry.id];
             const isExpanded = expandedGroup === entry.id;
-            const containsCurrentPage = entry.items.some((item) => item === page);
+            const containsCurrentPage = visibleItems.some((item) => item === page);
             const regionId = `admin-navigation-${entry.id}`;
 
             return (
@@ -330,7 +362,7 @@ function AuthenticatedAdmin({
                 </button>
                 {isExpanded && (
                   <div className="admin-nav-children" id={regionId}>
-                    {entry.items.map((item) => {
+                    {visibleItems.map((item) => {
                       const ItemIcon = pageNavigationIcons[item];
                       return (
                         <button
@@ -363,11 +395,14 @@ function AuthenticatedAdmin({
         </div>
       </aside>
       {menuOpen && <button className="nav-backdrop" onClick={() => { setMenuOpen(false); menuButtonRef.current?.focus(); }} aria-label={locale === "zh" ? "关闭导航" : "Close navigation"} />}
-      <section className="admin-main">
+      <section className="admin-main" ref={workspaceRef}>
         <header className="admin-topbar">
           <button ref={menuButtonRef} className="mobile-menu" onClick={() => setMenuOpen(true)} aria-expanded={menuOpen} aria-label={locale === "zh" ? "打开导航" : "Open navigation"}><List /></button>
-          <div>
+          <div className="admin-page-title">
             <h1 ref={headingRef} tabIndex={-1}>{t[page] as string}</h1>
+            <HelpTip label={helpTriggerLabel(locale, t[page] as string)}>
+              {adminPageHelp[page][locale]}
+            </HelpTip>
           </div>
           <div className="admin-language" aria-label={t.languageLabel as string}>
             <button className={locale === "zh" ? "is-active" : ""} onClick={() => setLocale("zh")}>{t.languageZh as string}</button>
@@ -501,7 +536,7 @@ function PageOutlet({
   if (page === "contacts") return <ContactsPage canWrite={user.permissions.includes("support.write")} locale={locale} />;
   if (page === "settings") return <SettingsPage canWrite={user.permissions.includes("settings.write")} locale={locale} />;
   if (page === "team") {
-    return <TeamPage locale={locale} />;
+    return <TeamPage currentUserEmail={user.email} locale={locale} />;
   }
   if (page === "roles") {
     return <RolesPage locale={locale} />;
@@ -510,7 +545,12 @@ function PageOutlet({
     return <TranslationsPage locale={locale} permissions={user.permissions} />;
   }
   if (page === "security-events") {
-    return <SecurityEventsPage locale={locale} />;
+    return (
+      <SecurityEventsPage
+        canWrite={user.permissions.includes("settings.write")}
+        locale={locale}
+      />
+    );
   }
   if (page === "data-security") {
     return (

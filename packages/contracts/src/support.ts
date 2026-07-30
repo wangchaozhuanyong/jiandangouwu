@@ -12,6 +12,7 @@ export type StorefrontChannel = {
   label: string;
   account: string;
   directTarget: string | null;
+  qrImageUrl: string | null;
   serviceHours: string;
 };
 
@@ -22,6 +23,7 @@ export type AdminContactChannel = {
   label: LocalizedText;
   publicAccount: string;
   directTarget: string | null;
+  qrImageUrl: string | null;
   serviceHours: LocalizedText;
   active: boolean;
   sortOrder: number;
@@ -82,7 +84,11 @@ export function isApprovedContactChannelTarget(
       && Boolean(target && /^https:\/\/t\.me\/[A-Za-z0-9_]{5,}$/u.test(target));
   }
   if (type === "WECHAT") {
-    return mode === "QR_COPY" && target === null;
+    return mode === "QR_COPY"
+      && (
+        target === null
+        || Boolean(target && /^\/media\/uploads\/\d{4}\/\d{2}\/[0-9a-f-]+-[a-z0-9][a-z0-9-]{0,79}\.(?:jpe?g|png|webp)$/u.test(target))
+      );
   }
   return mode === "DIRECT_WITH_FALLBACK"
     && Boolean(target && /^mqqwpa:\/\/im\/chat\?chat_type=wpa&uin=\d{5,15}$/u.test(target));
@@ -92,7 +98,16 @@ export function isConfiguredContactChannel(
   channel: ContactChannelConfiguration,
 ): boolean {
   const account = channel.publicAccount.normalize("NFKC").trim().toLocaleLowerCase();
-  return account.length > 0
-    && !unconfiguredContactValues.has(account)
-    && isApprovedContactChannelTarget(channel.type, channel.mode, channel.directTarget);
+  if (
+    account.length === 0
+    || unconfiguredContactValues.has(account)
+    || !isApprovedContactChannelTarget(channel.type, channel.mode, channel.directTarget)
+  ) {
+    return false;
+  }
+  if (channel.type !== "QQ") return true;
+  const qqTarget = channel.directTarget?.trim().match(
+    /^mqqwpa:\/\/im\/chat\?chat_type=wpa&uin=(\d{5,15})$/u,
+  );
+  return /^\d{5,15}$/u.test(account) && qqTarget?.[1] === account;
 }

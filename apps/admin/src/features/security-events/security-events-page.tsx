@@ -44,6 +44,7 @@ import {
   type SecurityEventFilter,
   type SecurityEventSeverity,
 } from "./model";
+import { SystemAlertsPanel } from "../system-alerts/system-alerts-panel";
 
 const copy = (locale: Locale, zh: string, en: string): string =>
   locale === "zh" ? zh : en;
@@ -75,7 +76,13 @@ function SeverityTag({
   );
 }
 
-export default function SecurityEventsPage({ locale }: { locale: Locale }) {
+export default function SecurityEventsPage({
+  canWrite,
+  locale,
+}: {
+  canWrite: boolean;
+  locale: Locale;
+}) {
   const [query, setQuery] = useState(() => (
     readSecurityEventQuery(window.location.search)
   ));
@@ -174,11 +181,13 @@ export default function SecurityEventsPage({ locale }: { locale: Locale }) {
           <strong>{copy(locale, "真实审计安全信号", "Live audit security signals")}</strong>
           {copy(
             locale,
-            `服务器已在完整审计历史中筛选安全信号，当前条件匹配 ${data.meta.total} 条，第 ${data.meta.page} 页显示 ${events.length} 条。摘要统计完整安全范围；固定复核规则不代表已经接入威胁检测、SIEM、自动告警或自动账号处置。`,
-            `The server filters security signals across the full audit history. The current filter matches ${data.meta.total} records and page ${data.meta.page} shows ${events.length}. Summary cards cover the full security scope; fixed review rules do not mean threat detection, SIEM, automated alerts, or automatic account response is connected.`,
+            `服务器已在完整审计历史中筛选安全信号，当前条件匹配 ${data.meta.total} 条，第 ${data.meta.page} 页显示 ${events.length} 条。高优先级信号会进入可重试 Telegram 告警队列；固定复核规则仍不代表威胁检测、SIEM 或自动账号处置。`,
+            `The server filters security signals across the full audit history. The current filter matches ${data.meta.total} records and page ${data.meta.page} shows ${events.length}. High-priority signals enter the retryable Telegram alert queue; fixed review rules still do not represent threat detection, SIEM, or automatic account response.`,
           )}
         </span>
       </div>
+
+      <SystemAlertsPanel canWrite={canWrite} locale={locale} source="SECURITY" />
 
       <section className="security-event-summary">
         <article className="admin-panel">

@@ -38,6 +38,7 @@ export type MediaAssetSummary = {
   totalReferences: number;
   heroReferences: number;
   productReferences: number;
+  supportReferences: number;
   invalidPaths: number;
   managedObjects: number;
   unreferencedManagedObjects: number;
@@ -176,7 +177,11 @@ export function filterReferencedMediaAssets(
     if (filter.kind === "managed" && !asset.managed) return false;
     if (
       filter.kind === "unreferenced"
-      && (!asset.managed || asset.references.length > 0)
+      && (
+        !asset.managed
+        || asset.references.length > 0
+        || asset.managed.supportReferences > 0
+      )
     ) return false;
     if (
       (filter.kind === "hero" || filter.kind === "product")
@@ -204,15 +209,22 @@ export function summarizeReferencedMediaAssets(
   assets: ReferencedMediaAsset[],
 ): MediaAssetSummary {
   const references = assets.flatMap((asset) => asset.references);
+  const supportReferences = assets.reduce(
+    (total, asset) => total + (asset.managed?.supportReferences ?? 0),
+    0,
+  );
   return {
     uniqueAssets: assets.length,
-    totalReferences: references.length,
+    totalReferences: references.length + supportReferences,
     heroReferences: references.filter((reference) => reference.kind === "hero").length,
     productReferences: references.filter((reference) => reference.kind === "product").length,
+    supportReferences,
     invalidPaths: assets.filter((asset) => !asset.safeLocalPath).length,
     managedObjects: assets.filter((asset) => Boolean(asset.managed)).length,
     unreferencedManagedObjects: assets.filter(
-      (asset) => asset.managed && asset.references.length === 0,
+      (asset) => asset.managed
+        && asset.references.length === 0
+        && asset.managed.supportReferences === 0,
     ).length,
     missingManagedObjects: assets.filter(
       (asset) => asset.managed?.storageStatus === "MISSING",

@@ -26,6 +26,7 @@ import {
 } from "react";
 import { getCategories, getConfig, getProducts, type StorefrontConfig } from "../lib/api";
 import { copy } from "../lib/copy";
+import { storefrontResponsiveImage } from "../lib/responsive-images";
 import {
   createListingKey,
   isPendingView,
@@ -286,6 +287,7 @@ export function StorefrontHome({
               loading="eager"
               fetchPriority="high"
               fallbackLabel={t.imageUnavailable}
+              {...storefrontResponsiveImage(hero.imageUrl, "hero")}
             />
             <div className="hero-scrim" />
             <div className="hero-copy">
@@ -403,7 +405,14 @@ export function StorefrontHome({
                   key={product.id}
                 >
                   <div className="product-image">
-                    <ResilientImage src={product.imageUrl} alt="" width={720} height={610} fallbackLabel={t.imageUnavailable} />
+                    <ResilientImage
+                      src={product.imageUrl}
+                      alt=""
+                      width={720}
+                      height={610}
+                      fallbackLabel={t.imageUnavailable}
+                      {...storefrontResponsiveImage(product.imageUrl, "product")}
+                    />
                   </div>
                   <div className="product-copy">
                     <div className="product-identity">

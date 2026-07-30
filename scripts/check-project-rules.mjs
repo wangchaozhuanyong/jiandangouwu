@@ -42,15 +42,21 @@ if (errors.length === 0) {
   const architecture = read("docs/ARCHITECTURE.md");
   const product = read("docs/PRODUCT.md");
   const testing = read("docs/TESTING_AND_RELEASE.md");
+  const interaction = read("docs/UX_INTERACTION_SYSTEM.md");
+  const rootViteVersion = String(dependencies.vite ?? "").replace(/^[^\d]*/u, "");
+  const sitesViteVersion = String(
+    sitesPackage.devDependencies?.vite ?? "",
+  ).replace(/^[^\d]*/u, "");
 
   assertRule(packageJson.name === "cloudbridge-platform", "package.json 项目标识必须保持为 CloudBridge 平台");
   assertRule(packageJson.packageManager === undefined || packageJson.packageManager.startsWith("npm@"), "当前项目必须继续使用 npm");
   assertRule(/^19\./u.test(String(dependencies.react ?? "").replace(/^[^\d]*/u, "")), "React 主版本必须保持为 19");
-  assertRule(/^6\./u.test(String(dependencies.vite ?? "").replace(/^[^\d]*/u, "")), "Vite 主版本必须保持为 6");
+  assertRule(/^8\./u.test(rootViteVersion), "根项目 Vite 主版本必须保持为 8");
   assertRule(/^16\./u.test(String(storefrontPackage.dependencies?.next ?? "").replace(/^[^\d]*/u, "")), "客户端 Next.js 主版本必须保持为 16");
   assertRule(/^8\./u.test(String(adminPackage.devDependencies?.vite ?? "").replace(/^[^\d]*/u, "")), "管理后台 Vite 主版本必须保持为 8");
   assertRule(/^16\./u.test(String(sitesPackage.dependencies?.next ?? "").replace(/^[^\d]*/u, "")), "Sites Next.js 主版本必须保持为 16");
-  assertRule(/^8\./u.test(String(sitesPackage.devDependencies?.vite ?? "").replace(/^[^\d]*/u, "")), "Sites Vite 主版本必须保持为 8");
+  assertRule(/^8\./u.test(sitesViteVersion), "Sites Vite 主版本必须保持为 8");
+  assertRule(rootViteVersion === sitesViteVersion, "根项目与 Sites 必须使用同一 Vite 版本");
   assertRule(sitesPackage.dependencies?.["drizzle-orm"] !== undefined, "Sites 必须保留 D1 Drizzle 数据层");
   assertRule(!existsSync(path.join(root, "apps", "api")), "Sites-only 项目不应保留 apps/api");
   assertRule(!existsSync(path.join(root, "infra")), "Sites-only 项目不应保留 infra");
@@ -76,6 +82,16 @@ if (errors.length === 0) {
   for (const command of ["npm ci", "npm run check", "npm run build:sites"]) {
     assertRule(testing.includes(command), `测试文档缺少命令：${command}`);
   }
+  assertRule(
+    agents.includes("viewport-owned application shell")
+      && agents.includes("No route may create page-level horizontal overflow"),
+    "AGENTS.md 缺少后台视口壳层与页面级溢出禁令",
+  );
+  assertRule(
+    interaction.includes("唯一纵向工作区滚动容器")
+      && interaction.includes("不得产生页面级横向溢出"),
+    "UX 规则缺少后台唯一滚动容器与内容边界约束",
+  );
 
   const ruleDocuments = requiredRuleFiles
     .filter((file) => file.endsWith(".md"))

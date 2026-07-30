@@ -1,5 +1,10 @@
 import type { Locale, LocalizedText } from "./common.js";
 
+export const DEFAULT_SHARE_TEMPLATE: LocalizedText = {
+  zh: "推荐你看看 {productName}，当前价格 {price}。",
+  en: "Take a look at {productName}, currently {price}.",
+};
+
 export type StorefrontSettings = {
   siteName: LocalizedText;
   defaultLocale: Locale;
@@ -10,6 +15,7 @@ export type StorefrontSettings = {
   inventoryRiskThreshold: number;
   transitServiceEnabled: boolean;
   transitServiceUrl: string | null;
+  shareTemplate: LocalizedText;
 };
 
 export type AdminStorefrontSettings = StorefrontSettings & {

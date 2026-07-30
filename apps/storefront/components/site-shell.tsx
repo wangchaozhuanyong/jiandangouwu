@@ -3,16 +3,24 @@
 import {
   ArrowRight,
   Headset,
+  Moon,
   Network,
+  Sun,
 } from "@phosphor-icons/react";
 import type { Locale } from "@cloudbridge/contracts";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getConfig, type StorefrontConfig } from "../lib/api";
 import { copy } from "../lib/copy";
 import { UX_TIMINGS } from "../lib/experience";
+import {
+  getNextStorefrontTheme,
+  normalizeStorefrontTheme,
+  STOREFRONT_THEME_STORAGE_KEY,
+  type StorefrontTheme,
+} from "../lib/theme";
 import { LanguagePicker, SupportDrawer } from "./storefront-controls";
 
 export function SiteShell({
@@ -30,12 +38,14 @@ export function SiteShell({
   const [navigating, setNavigating] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
+  const [theme, setTheme] = useState<StorefrontTheme>("dark");
   const [transitNotice, setTransitNotice] = useState("");
   const [config, setConfig] = useState<StorefrontConfig | null>(initialConfig);
+  const hasConsumedInitialConfig = useRef(false);
   const closeSupport = useCallback(() => setSupportOpen(false), []);
+  const isHome = pathname === `/${locale}` || pathname === `/${locale}/`;
   const isProductDetail = pathname.startsWith(`/${locale}/products/`);
   const settings = config?.settings;
-  const supportEnabled = settings?.supportEnabled === true;
   const transitEnabled = settings?.transitServiceEnabled === true;
   const transitUrl = settings?.transitServiceUrl ?? null;
   const siteName = settings?.siteName[locale] ?? t.brandPrimary;
@@ -47,6 +57,16 @@ export function SiteShell({
   }, [locale, pathname, searchParams]);
 
   useEffect(() => {
+    setTheme(normalizeStorefrontTheme(document.documentElement.dataset.theme));
+  }, []);
+
+  useEffect(() => {
+    if (!hasConsumedInitialConfig.current && initialConfig) {
+      hasConsumedInitialConfig.current = true;
+      setConfig(initialConfig);
+      return undefined;
+    }
+    hasConsumedInitialConfig.current = true;
     const controller = new AbortController();
     void getConfig(locale, controller.signal)
       .then((nextConfig) => setConfig(nextConfig))
@@ -55,7 +75,7 @@ export function SiteShell({
         setConfig(null);
       });
     return () => controller.abort();
-  }, [locale, pathname]);
+  }, [initialConfig, locale, pathname]);
 
   useEffect(() => {
     if (!transitNotice) return undefined;
@@ -64,8 +84,8 @@ export function SiteShell({
   }, [transitNotice]);
 
   useEffect(() => {
-    if (!transitEnabled) setTransitNotice("");
-  }, [transitEnabled]);
+    if (!transitEnabled || !isHome) setTransitNotice("");
+  }, [isHome, transitEnabled]);
 
   useEffect(() => {
     if (!navigating) return undefined;
@@ -83,10 +103,26 @@ export function SiteShell({
     window.location.assign(target);
   };
 
+  const toggleTheme = () => {
+    const nextTheme = getNextStorefrontTheme(theme);
+    setTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    document.documentElement.style.colorScheme = nextTheme;
+    try {
+      window.localStorage.setItem(STOREFRONT_THEME_STORAGE_KEY, nextTheme);
+    } catch {
+      // Theme still changes for the current page when storage is unavailable.
+    }
+  };
+
+  const themeActionLabel = theme === "dark"
+    ? t.switchToLightTheme
+    : t.switchToDarkTheme;
+
   return (
     <div className="site-shell">
       <div className={`route-progress ${showProgress ? "is-visible" : ""}`} aria-hidden="true" />
-      <header className="site-header">
+      {!isProductDetail && <header className="site-header">
         <Link className="brand" href={`/${locale}`} onClick={() => setNavigating(true)} aria-label={locale === "zh" ? "云桥首页" : "CloudBridge home"}>
           <span className="brand-mark">
             <Image
@@ -107,6 +143,18 @@ export function SiteShell({
           <Link href={`/${locale}#catalog`} onClick={() => pathname !== `/${locale}` && setNavigating(true)}>{t.navServices}</Link>
         </nav>
         <div className="header-utilities">
+          <button
+            aria-label={themeActionLabel}
+            aria-pressed={theme === "light"}
+            className="theme-toggle"
+            onClick={toggleTheme}
+            title={themeActionLabel}
+            type="button"
+          >
+            {theme === "dark"
+              ? <Sun aria-hidden="true" size={19} />
+              : <Moon aria-hidden="true" size={19} />}
+          </button>
           <LanguagePicker
             ariaLabel={t.languageLabel}
             onChange={changeLocale}
@@ -122,39 +170,41 @@ export function SiteShell({
             <span>{t.customerSupport}</span>
           </button>
         </div>
-      </header>
+      </header>}
       {children}
-      {transitEnabled && (
-        transitUrl ? (
-          <a
-            className={`transit-service-entry${isProductDetail ? " is-detail" : ""}`}
-            href={transitUrl}
-            rel="noreferrer"
-            target="_blank"
+      {isHome && transitEnabled && (
+        <>
+          {transitUrl ? (
+            <a
+              className="transit-service-entry"
+              href={transitUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <span><Network size={19} aria-hidden="true" /><i /></span>
+              <strong>{t.transitService}</strong>
+              <ArrowRight size={17} aria-hidden="true" />
+            </a>
+          ) : (
+            <button
+              className="transit-service-entry"
+              onClick={() => setTransitNotice(t.transitUnavailable)}
+              type="button"
+            >
+              <span><Network size={19} aria-hidden="true" /><i /></span>
+              <strong>{t.transitService}</strong>
+              <ArrowRight size={17} aria-hidden="true" />
+            </button>
+          )}
+          <div
+            className={`transit-service-notice${transitNotice ? " is-visible" : ""}`}
+            role="status"
+            aria-live="polite"
           >
-            <span><Network size={19} aria-hidden="true" /><i /></span>
-            <strong>{t.transitService}</strong>
-            <ArrowRight size={17} aria-hidden="true" />
-          </a>
-        ) : (
-          <button
-            className={`transit-service-entry${isProductDetail ? " is-detail" : ""}`}
-            onClick={() => setTransitNotice(t.transitUnavailable)}
-            type="button"
-          >
-            <span><Network size={19} aria-hidden="true" /><i /></span>
-            <strong>{t.transitService}</strong>
-            <ArrowRight size={17} aria-hidden="true" />
-          </button>
-        )
+            {transitNotice}
+          </div>
+        </>
       )}
-      <div
-        className={`transit-service-notice${isProductDetail ? " is-detail" : ""}${transitNotice ? " is-visible" : ""}`}
-        role="status"
-        aria-live="polite"
-      >
-        {transitNotice}
-      </div>
       {!isProductDetail && (
         <footer id="support" className="site-footer">
           <div className="footer-brand">
@@ -174,12 +224,6 @@ export function SiteShell({
               <span>{t.navServices}</span>
               <ArrowRight size={16} aria-hidden="true" />
             </Link>
-            {supportEnabled && (
-              <button onClick={() => setSupportOpen(true)} type="button">
-                <span>{t.navSupport}</span>
-                <ArrowRight size={16} aria-hidden="true" />
-              </button>
-            )}
             <Link href={`/${locale}/policies/terms`} onClick={() => setNavigating(true)}>
               <span>{t.terms}</span>
               <ArrowRight size={16} aria-hidden="true" />
@@ -188,6 +232,10 @@ export function SiteShell({
               <span>{t.privacy}</span>
               <ArrowRight size={16} aria-hidden="true" />
             </Link>
+            <button onClick={() => setSupportOpen(true)} type="button">
+              <span>{t.navSupport}</span>
+              <ArrowRight size={16} aria-hidden="true" />
+            </button>
           </nav>
           <p className="footer-legal">{t.footerNote}</p>
         </footer>

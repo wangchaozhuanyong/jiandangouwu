@@ -45,7 +45,7 @@ const fieldLabels: Record<TelegramNewOrderFieldCode, Record<Locale, string>> = {
   STATUS: { zh: "订单状态", en: "Order status" },
   CREATED_AT: { zh: "创建时间", en: "Created at" },
   CONTACT_CHANNEL: { zh: "联系渠道", en: "Contact channel" },
-  MASKED_CONTACT: { zh: "脱敏联系方式", en: "Masked contact" },
+  MASKED_CONTACT: { zh: "联系方式", en: "Contact" },
 };
 
 const gateCopy: Record<

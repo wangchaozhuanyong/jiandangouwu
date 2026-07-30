@@ -4,11 +4,14 @@ import type {
   AdminInventoryRiskSummary,
   AdminOrderListItem,
   AdminRolesOverview,
+  AdminTeamMember,
   AdminTeamOverview,
+  CreateAdminMemberInput,
   SecurityAuditSummary,
   SecurityEventCategory,
   SecurityEventSeverity,
   SystemHealthStatus,
+  UpdateAdminMemberInput,
 } from "@cloudbridge/contracts";
 import {
   AUDIT_CSV_EXPORT_CONFIRMATION,
@@ -20,6 +23,10 @@ export type {
   AdminPermissionSummary,
   AdminRolesOverview,
   AdminTeamOverview,
+  AdminTeamMember,
+  AssignableAdminRoleKey,
+  CreateAdminMemberInput,
+  UpdateAdminMemberInput,
 } from "@cloudbridge/contracts";
 
 type ApiSuccess<T> = { data: T; requestId: string; meta?: PageMeta };
@@ -428,6 +435,21 @@ export const getTeamOverview = async (signal?: AbortSignal) => (
 ).data;
 export const getRolesOverview = async (signal?: AbortSignal) => (
   await request<AdminRolesOverview>("/admin/access/roles", { signal })
+).data;
+export const createTeamMember = async (body: CreateAdminMemberInput) => (
+  await request<AdminTeamMember>("/admin/access/members", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+).data;
+export const updateTeamMember = async (
+  id: string,
+  body: UpdateAdminMemberInput,
+) => (
+  await request<AdminTeamMember>(`/admin/access/members/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  })
 ).data;
 
 export const getManagedMedia = async (

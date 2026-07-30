@@ -9,6 +9,7 @@ export type AdminManagedMediaObject = {
   storageStatus: "AVAILABLE" | "MISSING";
   productReferences: number;
   heroReferences: number;
+  supportReferences: number;
 };
 
 export type AdminMediaReplacement = {

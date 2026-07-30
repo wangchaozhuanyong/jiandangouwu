@@ -15,6 +15,7 @@ const channel = (type: StorefrontChannel["type"]): StorefrontChannel => ({
   label: type,
   account: "account",
   directTarget: null,
+  qrImageUrl: null,
   serviceHours: "09:00 - 18:00",
 });
 
@@ -35,6 +36,10 @@ const config = (
     inventoryRiskThreshold: 3,
     transitServiceEnabled: true,
     transitServiceUrl: null,
+    shareTemplate: {
+      zh: "推荐 {productName}，价格 {price}",
+      en: "Recommend {productName} at {price}",
+    },
   },
 });
 

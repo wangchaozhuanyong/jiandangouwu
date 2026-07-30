@@ -9,7 +9,8 @@
                  /        \
                D1          R2
               /  \
-      Telegram queue  Exchange sync runs
+   Telegram queues    Exchange sync runs
+   (orders + alerts)
 ```
 
 ## 代码边界
@@ -27,5 +28,6 @@
 - 业务金额和汇率使用十进制字符串与 BigInt 整数运算。
 - D1 迁移只从 `apps/sites/drizzle/` 执行。
 - 外部通知失败不回滚订单；订单与待投递事件在一个 D1 批次中写入。
+- 高优先级审计信号与备份异常写入独立告警队列；投递失败不删除审计或备份记录，六档重试耗尽后等待有原因的人工重试。
 - 外部汇率失败保留旧值；达到陈旧阈值后只关闭相关订单，不关闭公开浏览。
 - 发布只使用 `.openai/hosting.json` 中的既有 Sites 项目 ID。

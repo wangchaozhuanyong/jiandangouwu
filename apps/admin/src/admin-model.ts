@@ -124,6 +124,41 @@ export const ADMIN_PAGES: readonly Page[] = [
   "settings",
 ];
 
+const ADMIN_PAGE_ACCESS: Readonly<Record<Page, readonly string[] | null>> = {
+  dashboard: null,
+  orders: ["orders.read"],
+  disputes: ["orders.read"],
+  products: ["catalog.read"],
+  categories: ["catalog.read"],
+  banners: ["content.read"],
+  media: ["catalog.read", "content.read"],
+  translations: ["catalog.read", "content.read", "support.read", "settings.read"],
+  contacts: ["support.read"],
+  notifications: ["settings.read"],
+  "telegram-bot": ["settings.read"],
+  currencies: ["catalog.read"],
+  payments: ["orders.read"],
+  reconciliation: ["orders.read"],
+  team: ["team.manage"],
+  roles: ["roles.manage"],
+  security: null,
+  "security-events": ["audit.read"],
+  "data-security": ["audit.read", "settings.read"],
+  secrets: ["settings.read"],
+  logs: ["audit.read"],
+  backups: ["settings.read"],
+  integrations: ["settings.read"],
+  settings: ["settings.read"],
+};
+
+export function canAccessAdminPage(
+  page: Page,
+  permissions: readonly string[],
+): boolean {
+  const required = ADMIN_PAGE_ACCESS[page];
+  return required === null || required.some((permission) => permissions.includes(permission));
+}
+
 export const UX_TIMINGS = {
   feedbackDelayMs: 120,
   skeletonDelayMs: 400,
