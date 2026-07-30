@@ -161,11 +161,102 @@ test("Sites audit history rejects invalid pagination and filter values", async (
   }
 });
 
+test("Sites audit CSV export requires CSRF and confirmation, neutralizes formulas, and audits success", async () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(migration);
+  seedAdministrator(sqlite);
+  seedAudit(sqlite, {
+    id: "audit-export-source",
+    traceId: "trace-export-source",
+    action: "=HYPERLINK(\"https://invalid.example\")",
+    result: "DENIED",
+    actorEmail: "operator@example.test",
+    actorName: "+Operator",
+    targetType: "ORDER",
+    targetId: "-1",
+    reason: "@unsafe",
+    createdAt: new Date().toISOString(),
+  });
+
+  try {
+    await assert.rejects(
+      handleAdminApi(
+        auditExportRequest(
+          { reason: "Approved security review", confirmation: "EXPORT_AUDIT_CSV" },
+          { csrf: false },
+        ),
+        { DB: d1Adapter(sqlite), MEDIA: {} },
+        "/v1/admin/audit/export",
+      ),
+      (error) => error instanceof ApiInputError
+        && error.code === "CSRF_VALIDATION_FAILED",
+    );
+    await assert.rejects(
+      handleAdminApi(
+        auditExportRequest({ reason: "Approved security review", confirmation: "WRONG" }),
+        { DB: d1Adapter(sqlite), MEDIA: {} },
+        "/v1/admin/audit/export",
+      ),
+      (error) => error instanceof ApiInputError
+        && error.code === "VALIDATION_FAILED",
+    );
+    const response = await handleAdminApi(
+      auditExportRequest({
+        result: "DENIED",
+        timeRange: "all",
+        reason: "Approved security review",
+        confirmation: "EXPORT_AUDIT_CSV",
+      }),
+      { DB: d1Adapter(sqlite), MEDIA: {} },
+      "/v1/admin/audit/export",
+    );
+    assert.ok(response);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+    assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
+    assert.equal(response.headers.get("x-export-record-count"), "1");
+    assert.match(
+      response.headers.get("content-disposition") ?? "",
+      /^attachment; filename="cloudbridge-audit-/u,
+    );
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    assert.deepEqual([...bytes.slice(0, 3)], [0xEF, 0xBB, 0xBF]);
+    const csv = new TextDecoder().decode(bytes);
+    assert.equal(csv.startsWith("\"event_id\""), true);
+    assert.equal(csv.includes("\"'=HYPERLINK(\"\"https://invalid.example\"\")\""), true);
+    assert.equal(csv.includes("\"'+Operator\""), true);
+    assert.equal(csv.includes("\"'-1\""), true);
+    assert.equal(csv.includes("\"'@unsafe\""), true);
+    const exportAudit = sqlite.prepare(
+      "SELECT result, actor_email AS actorEmail, reason FROM audit_events WHERE action = 'audit.export.csv'",
+    ).get();
+    assert.deepEqual({ ...exportAudit }, {
+      result: "SUCCEEDED",
+      actorEmail: "owner@example.test",
+      reason: "Approved security review",
+    });
+  } finally {
+    sqlite.close();
+  }
+});
+
 function auditRequest(path) {
   return new Request(`https://example.test${path}`, {
     headers: {
       "oai-authenticated-user-email": "owner@example.test",
     },
+  });
+}
+
+function auditExportRequest(body, { csrf = true } = {}) {
+  return new Request("https://example.test/v1/admin/audit/export", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "oai-authenticated-user-email": "owner@example.test",
+      ...(csrf ? { "x-csrf-token": "sites-siwc" } : {}),
+    },
+    body: JSON.stringify(body),
   });
 }
 

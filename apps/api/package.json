@@ -16,6 +16,7 @@
     "verify:admin-sessions": "node --env-file-if-exists=../../.env --import tsx scripts/verify-admin-sessions.ts",
     "verify:role-lifecycle": "node --env-file-if-exists=../../.env --import tsx scripts/verify-role-lifecycle.ts",
     "verify:inventory-risk": "node --env-file-if-exists=../../.env --import tsx scripts/verify-inventory-risk.ts",
+    "verify:audit-export": "node --env-file-if-exists=../../.env --import tsx scripts/verify-audit-export.ts",
     "verify:order-reservations": "node --env-file-if-exists=../../.env --import tsx scripts/verify-order-reservations.ts",
     "test": "npm run build && node --import tsx --test \"test/**/*.test.ts\""
   },

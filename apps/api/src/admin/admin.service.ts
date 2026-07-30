@@ -1,12 +1,20 @@
 import {
+  AUDIT_CSV_EXPORT_LIMIT,
   STOREFRONT_LOW_STOCK_MAX,
+  auditCsvFilename,
+  serializeAuditCsv,
   type AdminInventoryRiskItem,
   type AdminInventoryRiskLevel,
   type AdminInventoryRiskSummary,
   type AdminOrderListItem,
   type OrderStatus,
 } from "@cloudbridge/contracts";
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { AuditService } from "../audit/audit.service.js";
 import type { AdminActor } from "../common/admin-actor.js";
 import type { Prisma } from "../generated/prisma/client.js";
@@ -15,6 +23,7 @@ import { OrderReservationService } from "../orders/order-reservation.service.js"
 import { PrismaService } from "../prisma/prisma.service.js";
 import type {
   AdminAuditQueryDto,
+  AdminAuditExportDto,
   AdminListQueryDto,
   CreateCategoryDto,
   CreateProductDto,
@@ -30,6 +39,7 @@ const auditTimeRangeMs = {
   "30d": 30 * 24 * 60 * 60 * 1000,
 } as const;
 const inventoryRiskSampleLimit = 6;
+const recentAuthenticationWindowMs = 5 * 60_000;
 const inventoryRiskProductSelect = {
   id: true,
   slug: true,
@@ -490,42 +500,7 @@ export class AdminService {
   }
 
   async auditEvents(query: AdminAuditQueryDto) {
-    const search = query.search?.normalize("NFKC").trim();
-    const timeRange = query.timeRange ?? "all";
-    const where: Prisma.AuditEventWhereInput = {
-      ...(query.result ? { result: query.result } : {}),
-      ...(query.actor === "administrator"
-        ? { actorId: { not: null } }
-        : query.actor === "system"
-          ? { actorId: null }
-          : {}),
-      ...(query.targetType ? { targetType: query.targetType.trim() } : {}),
-      ...(timeRange === "all"
-        ? {}
-        : { createdAt: { gte: new Date(Date.now() - auditTimeRangeMs[timeRange]) } }),
-      ...(search
-        ? {
-            OR: [
-              { id: { contains: search } },
-              { requestId: { contains: search } },
-              { action: { contains: search } },
-              { targetType: { contains: search } },
-              { targetId: { contains: search } },
-              { reason: { contains: search } },
-              {
-                actor: {
-                  is: {
-                    OR: [
-                      { displayName: { contains: search } },
-                      { email: { contains: search } },
-                    ],
-                  },
-                },
-              },
-            ],
-          }
-        : {}),
-    };
+    const where = auditWhere(query);
     const [total, events, targetTypes] = await this.prisma.$transaction([
       this.prisma.auditEvent.count({ where }),
       this.prisma.auditEvent.findMany({
@@ -564,6 +539,133 @@ export class AdminService {
       },
       meta: { page: query.page, pageSize: query.pageSize, total, pageCount: Math.ceil(total / query.pageSize) },
     };
+  }
+
+  async exportAuditEvents(input: AdminAuditExportDto, actor: AdminActor) {
+    await this.requireRecentAuthentication(input.reason, actor);
+    const where = auditWhere(input);
+    const total = await this.prisma.auditEvent.count({ where });
+    if (total > AUDIT_CSV_EXPORT_LIMIT) {
+      await this.audit.record({
+        actorId: actor.userId,
+        action: "audit.export.csv",
+        targetType: "AuditExport",
+        targetId: actor.requestId,
+        result: "DENIED",
+        requestId: actor.requestId,
+        reason: input.reason,
+        afterData: {
+          matchedRecords: total,
+          exportLimit: AUDIT_CSV_EXPORT_LIMIT,
+          filters: safeAuditExportFilters(input),
+        },
+        ip: actor.ip,
+      });
+      throw new ConflictException({
+        code: "AUDIT_EXPORT_LIMIT_EXCEEDED",
+        message: `The current filter matches more than ${AUDIT_CSV_EXPORT_LIMIT} records. Narrow the filter before exporting.`,
+      });
+    }
+    const events = await this.prisma.auditEvent.findMany({
+      where,
+      take: AUDIT_CSV_EXPORT_LIMIT + 1,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        requestId: true,
+        action: true,
+        targetType: true,
+        targetId: true,
+        result: true,
+        reason: true,
+        createdAt: true,
+        actor: {
+          select: {
+            displayName: true,
+            email: true,
+          },
+        },
+      },
+    });
+    if (events.length > AUDIT_CSV_EXPORT_LIMIT) {
+      await this.audit.record({
+        actorId: actor.userId,
+        action: "audit.export.csv",
+        targetType: "AuditExport",
+        targetId: actor.requestId,
+        result: "DENIED",
+        requestId: actor.requestId,
+        reason: input.reason,
+        afterData: {
+          matchedRecords: `more_than_${AUDIT_CSV_EXPORT_LIMIT}`,
+          exportLimit: AUDIT_CSV_EXPORT_LIMIT,
+          filters: safeAuditExportFilters(input),
+        },
+        ip: actor.ip,
+      });
+      throw new ConflictException({
+        code: "AUDIT_EXPORT_LIMIT_EXCEEDED",
+        message: `The current filter matches more than ${AUDIT_CSV_EXPORT_LIMIT} records. Narrow the filter before exporting.`,
+      });
+    }
+    const csv = serializeAuditCsv(events.map((event) => ({
+      id: event.id,
+      requestId: event.requestId,
+      createdAt: event.createdAt.toISOString(),
+      action: event.action,
+      actorDisplayName: event.actor?.displayName ?? null,
+      actorEmail: event.actor?.email ?? null,
+      targetType: event.targetType,
+      targetId: event.targetId,
+      result: event.result,
+      reason: event.reason,
+    })));
+    await this.audit.record({
+      actorId: actor.userId,
+      action: "audit.export.csv",
+      targetType: "AuditExport",
+      targetId: actor.requestId,
+      result: "SUCCEEDED",
+      requestId: actor.requestId,
+      reason: input.reason,
+      afterData: {
+        recordCount: events.length,
+        filters: safeAuditExportFilters(input),
+      },
+      ip: actor.ip,
+    });
+    return {
+      csv,
+      filename: auditCsvFilename(),
+      recordCount: events.length,
+    };
+  }
+
+  private async requireRecentAuthentication(
+    reason: string,
+    actor: AdminActor,
+  ): Promise<void> {
+    const now = Date.now();
+    if (
+      Number.isFinite(actor.reauthenticatedAt)
+      && actor.reauthenticatedAt
+      && actor.reauthenticatedAt <= now
+      && now - actor.reauthenticatedAt <= recentAuthenticationWindowMs
+    ) return;
+    await this.audit.record({
+      actorId: actor.userId,
+      action: "audit.export.csv",
+      targetType: "AuditExport",
+      targetId: actor.requestId,
+      result: "DENIED",
+      requestId: actor.requestId,
+      reason,
+      ip: actor.ip,
+    });
+    throw new ForbiddenException({
+      code: "RECENT_AUTHENTICATION_REQUIRED",
+      message: "Recent reauthentication is required.",
+    });
   }
 
   private async saveNewProduct(input: CreateProductDto, actor: AdminActor) {
@@ -612,3 +714,55 @@ export class AdminService {
     return product;
   }
 }
+
+type AuditFilterInput = Pick<
+  AdminAuditQueryDto,
+  "search" | "result" | "actor" | "targetType" | "timeRange"
+>;
+
+const auditWhere = (query: AuditFilterInput): Prisma.AuditEventWhereInput => {
+  const search = query.search?.normalize("NFKC").trim();
+  const timeRange = query.timeRange ?? "all";
+  return {
+    ...(query.result ? { result: query.result } : {}),
+    ...(query.actor === "administrator"
+      ? { actorId: { not: null } }
+      : query.actor === "system"
+        ? { actorId: null }
+        : {}),
+    ...(query.targetType ? { targetType: query.targetType.trim() } : {}),
+    ...(timeRange === "all"
+      ? {}
+      : { createdAt: { gte: new Date(Date.now() - auditTimeRangeMs[timeRange]) } }),
+    ...(search
+      ? {
+          OR: [
+            { id: { contains: search } },
+            { requestId: { contains: search } },
+            { action: { contains: search } },
+            { targetType: { contains: search } },
+            { targetId: { contains: search } },
+            { reason: { contains: search } },
+            {
+              actor: {
+                is: {
+                  OR: [
+                    { displayName: { contains: search } },
+                    { email: { contains: search } },
+                  ],
+                },
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+};
+
+const safeAuditExportFilters = (input: AuditFilterInput) => ({
+  ...(input.search ? { search: input.search } : {}),
+  ...(input.result ? { result: input.result } : {}),
+  ...(input.actor ? { actor: input.actor } : {}),
+  ...(input.targetType ? { targetType: input.targetType } : {}),
+  timeRange: input.timeRange ?? "all",
+});

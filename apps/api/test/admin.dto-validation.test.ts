@@ -9,6 +9,7 @@ import {
 
 const dtoPath = "../dist/src/admin/admin.dto.js";
 const {
+  AdminAuditExportDto,
   AdminAuditQueryDto,
   AdminListQueryDto,
 } = await import(dtoPath) as typeof import("../src/admin/admin.dto.js");
@@ -86,5 +87,46 @@ test("audit query rejects blank strings, invalid enums, and unsafe pagination", 
 
   for (const input of invalidInputs) {
     await assert.rejects(validateQuery(AdminAuditQueryDto, input), BadRequestException);
+  }
+});
+
+test("audit export requires safe filters, a business reason, and exact confirmation", async () => {
+  const input = await validationPipe.transform({
+    search: "  operator@example.com  ",
+    result: "DENIED",
+    actor: "administrator",
+    targetType: "  Order  ",
+    timeRange: "30d",
+    reason: "  Approved security review  ",
+    confirmation: "EXPORT_AUDIT_CSV",
+  }, {
+    type: "body",
+    metatype: AdminAuditExportDto,
+  });
+
+  assert.deepEqual({ ...input }, {
+    search: "operator@example.com",
+    result: "DENIED",
+    actor: "administrator",
+    targetType: "Order",
+    timeRange: "30d",
+    reason: "Approved security review",
+    confirmation: "EXPORT_AUDIT_CSV",
+  });
+});
+
+test("audit export rejects short reasons, unknown confirmation, and extra fields", async () => {
+  for (const input of [
+    { reason: "short", confirmation: "EXPORT_AUDIT_CSV" },
+    { reason: "Approved review", confirmation: "YES" },
+    { reason: "Approved review", confirmation: "EXPORT_AUDIT_CSV", page: 1 },
+  ]) {
+    await assert.rejects(
+      validationPipe.transform(input, {
+        type: "body",
+        metatype: AdminAuditExportDto,
+      }),
+      BadRequestException,
+    );
   }
 });

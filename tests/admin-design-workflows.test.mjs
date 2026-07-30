@@ -94,8 +94,8 @@ test("审计日志页面使用服务端筛选与完整历史分页并只展示�
 
   assert.match(page, /useCachedAdminResource<AuditEventPage>\([\s\S]*?`audit-page:/u);
   assert.match(page, /当前筛选共/u);
-  assert.match(page, /筛选与分页由服务器执行/u);
-  assert.match(page, /前后差异、IP 哈希、导出和正式保留策略尚未开放/u);
+  assert.match(page, /筛选、分页和安全 CSV 导出由服务器执行/u);
+  assert.match(page, /前后差异、IP 哈希和正式保留策略不向前端开放/u);
   assert.match(page, /<table className="audit-log-table">/u);
   assert.match(page, /事件 ID[\s\S]*?追踪 ID[\s\S]*?发生时间[\s\S]*?动作/u);
   assert.match(page, /auditQuerySearch/u);
@@ -103,14 +103,21 @@ test("审计日志页面使用服务端筛选与完整历史分页并只展示�
   assert.match(page, /应用筛选/u);
   assert.doesNotMatch(page, /filterAuditEvents/u);
   assert.match(page, /<Dialog/u);
-  assert.doesNotMatch(page, /DesignWorkflowDialog|design-preview-note|下载|exportAudit/u);
+  assert.match(page, /exportAuditCsv/u);
+  assert.match(page, /安全导出 CSV/u);
+  assert.match(page, /文件下载后将离开系统控制范围/u);
+  assert.doesNotMatch(page, /DesignWorkflowDialog|design-preview-note/u);
   assert.match(model, /auditActionLabel/u);
   assert.match(model, /auditTargetTypes/u);
   assert.match(model, /readAuditQuery/u);
   assert.match(model, /auditQueryFromFilter/u);
   assert.match(api, /export const getAuditPage/u);
+  assert.match(api, /export const exportAuditCsv/u);
   assert.match(api, /Audit pagination metadata failed the runtime contract/u);
-  assert.match(service, /const where:\s*Prisma\.AuditEventWhereInput/u);
+  assert.match(service, /const where = auditWhere\(query\)/u);
+  assert.match(service, /async exportAuditEvents/u);
+  assert.match(service, /AUDIT_CSV_EXPORT_LIMIT/u);
+  assert.match(service, /RECENT_AUTHENTICATION_REQUIRED/u);
   assert.match(service, /auditEvent\.groupBy/u);
   assert.match(service, /auditEvent\.findMany\(\{[\s\S]*?select:\s*\{[\s\S]*?requestId:\s*true/u);
   assert.doesNotMatch(service.match(/async auditEvents[\s\S]*?private async saveNewProduct/u)?.[0] ?? "", /include:\s*\{\s*actor/u);

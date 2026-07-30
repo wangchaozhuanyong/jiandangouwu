@@ -3,12 +3,14 @@ import {
   CaretLeft,
   CaretRight,
   Clock,
+  DownloadSimple,
   Eye,
   ListChecks,
   MagnifyingGlass,
   ShieldCheck,
   WarningCircle,
 } from "@phosphor-icons/react";
+import { AUDIT_CSV_EXPORT_LIMIT } from "@cloudbridge/contracts";
 import {
   useCallback,
   useEffect,
@@ -16,12 +18,15 @@ import {
   useState,
 } from "react";
 import {
+  ApiError,
+  exportAuditCsv,
   getAuditPage,
   type AuditEventPage,
   type Locale,
 } from "../api";
 import {
   useCachedAdminResource,
+  useAdminStatus,
   useSlowAdminRequest,
 } from "../admin-experience";
 import {
@@ -46,7 +51,14 @@ import {
 const copy = (locale: Locale, zh: string, en: string): string =>
   locale === "zh" ? zh : en;
 
-export default function AuditPage({ locale }: { locale: Locale }) {
+export default function AuditPage({
+  locale,
+  sitesRuntime,
+}: {
+  locale: Locale;
+  sitesRuntime: boolean;
+}) {
+  const { notify } = useAdminStatus();
   const [query, setQuery] = useState(() => readAuditQuery(window.location.search));
   const [filter, setFilter] = useState<AuditEventFilter>(() => auditFilterFromQuery(query));
   const querySearch = useMemo(() => auditQuerySearch(query), [query]);
@@ -64,6 +76,10 @@ export default function AuditPage({ locale }: { locale: Locale }) {
   );
   const slow = useSlowAdminRequest(state);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportReason, setExportReason] = useState("");
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   const events = useMemo(
     () => sortAuditEvents(data?.data ?? []),
@@ -83,6 +99,8 @@ export default function AuditPage({ locale }: { locale: Locale }) {
   const selected = events.find((event) => event.id === selectedId) ?? null;
   const listBusy = state === "initial-loading" || state === "refreshing";
   const pageCount = data?.meta.pageCount ?? 0;
+  const normalizedExportReason = exportReason.normalize("NFKC").trim();
+  const exportLimit = AUDIT_CSV_EXPORT_LIMIT;
 
   useEffect(() => {
     const onPopState = () => {
@@ -132,6 +150,89 @@ export default function AuditPage({ locale }: { locale: Locale }) {
     updateQuery(next);
   };
 
+  const closeExport = () => {
+    if (exportBusy) return;
+    setExportOpen(false);
+    setExportReason("");
+    setExportError("");
+  };
+
+  const submitExport = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (normalizedExportReason.length < 8 || normalizedExportReason.length > 500) {
+      setExportError(copy(
+        locale,
+        "业务原因必须为 8–500 个字符。",
+        "The business reason must contain 8–500 characters.",
+      ));
+      return;
+    }
+    if (summary.totalAvailable > exportLimit) {
+      setExportError(copy(
+        locale,
+        `当前筛选超过 ${exportLimit} 条，请先缩小筛选范围。`,
+        `The current filter exceeds ${exportLimit} records. Narrow the filter first.`,
+      ));
+      return;
+    }
+    const confirmed = window.confirm(copy(
+      locale,
+      `确认导出当前筛选匹配的 ${summary.totalAvailable} 条审计记录？文件下载后将离开系统控制范围；本操作不可撤销并会写入审计。`,
+      `Export the ${summary.totalAvailable} audit records matching the current filter? The downloaded file leaves system control. This cannot be undone and will be audited.`,
+    ));
+    if (!confirmed) return;
+    setExportBusy(true);
+    setExportError("");
+    try {
+      const exported = await exportAuditCsv({
+        ...(query.search ? { search: query.search } : {}),
+        ...(query.result ? { result: query.result } : {}),
+        ...(query.actor ? { actor: query.actor } : {}),
+        ...(query.targetType ? { targetType: query.targetType } : {}),
+        ...(query.timeRange ? { timeRange: query.timeRange } : {}),
+        reason: normalizedExportReason,
+      });
+      const url = URL.createObjectURL(exported.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = exported.filename;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      notify(exported.recordCount === null
+        ? copy(
+            locale,
+            "审计 CSV 已由服务器生成并开始下载，导出事件已写入审计。",
+            "The server generated the audit CSV and the download started. The export event was audited.",
+          )
+        : copy(
+            locale,
+            `已下载 ${exported.recordCount} 条安全白名单审计记录，导出事件已写入审计。`,
+            `${exported.recordCount} allowlisted audit records were downloaded. The export event was audited.`,
+          ));
+      setExportOpen(false);
+      setExportReason("");
+      void reload();
+    } catch (requestError) {
+      const recentAuthRequired = requestError instanceof ApiError
+        && requestError.code === "RECENT_AUTHENTICATION_REQUIRED";
+      const message = recentAuthRequired
+        ? copy(
+            locale,
+            "最近认证已过期。请退出后台并重新登录，在五分钟内再次导出。",
+            "Recent authentication expired. Sign out and sign in again, then export within five minutes.",
+          )
+        : requestError instanceof Error
+          ? requestError.message
+          : copy(locale, "审计导出失败。", "Audit export failed.");
+      setExportError(message);
+      notify(message, "error");
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   if (!data) {
     return (
       <section className="admin-panel">
@@ -148,8 +249,8 @@ export default function AuditPage({ locale }: { locale: Locale }) {
           <strong>{copy(locale, "受保护的真实审计记录", "Protected live audit records")}</strong>
           {copy(
             locale,
-            `当前筛选共 ${summary.totalAvailable} 条，正在查看第 ${data.meta.page} 页的 ${summary.loaded} 条记录。筛选与分页由服务器执行；API 只返回白名单字段，前后差异、IP 哈希、导出和正式保留策略尚未开放。`,
-            `The current server-side filter matches ${summary.totalAvailable} records; page ${data.meta.page} contains ${summary.loaded}. The API returns allowlisted fields only; before/after diffs, IP hashes, export, and a formal retention policy are not exposed.`,
+            `当前筛选共 ${summary.totalAvailable} 条，正在查看第 ${data.meta.page} 页的 ${summary.loaded} 条记录。筛选、分页和安全 CSV 导出由服务器执行；前后差异、IP 哈希和正式保留策略不向前端开放。`,
+            `The current server-side filter matches ${summary.totalAvailable} records; page ${data.meta.page} contains ${summary.loaded}. Filtering, pagination, and safe CSV export run on the server; before/after diffs, IP hashes, and a formal retention policy are not exposed.`,
           )}
         </span>
       </div>
@@ -285,11 +386,24 @@ export default function AuditPage({ locale }: { locale: Locale }) {
             <small>{copy(locale, "当前筛选", "Current filter")}</small>
             <h2>{copy(locale, "审计事件记录", "Audit event records")}</h2>
           </div>
-          <span>{copy(
-            locale,
-            `第 ${data.meta.page} / ${Math.max(1, data.meta.pageCount)} 页 · 本页 ${events.length} 条`,
-            `Page ${data.meta.page} of ${Math.max(1, data.meta.pageCount)} · ${events.length} on this page`,
-          )}</span>
+          <div className="audit-log-table-tools">
+            <span>{copy(
+              locale,
+              `第 ${data.meta.page} / ${Math.max(1, data.meta.pageCount)} 页 · 本页 ${events.length} 条`,
+              `Page ${data.meta.page} of ${Math.max(1, data.meta.pageCount)} · ${events.length} on this page`,
+            )}</span>
+            <button
+              type="button"
+              className="admin-secondary"
+              onClick={() => {
+                setExportError("");
+                setExportOpen(true);
+              }}
+            >
+              <DownloadSimple size={17} />
+              {copy(locale, "安全导出 CSV", "Secure CSV export")}
+            </button>
+          </div>
         </div>
         <div
           className="audit-log-table-wrap"
@@ -394,6 +508,96 @@ export default function AuditPage({ locale }: { locale: Locale }) {
               <div><dt>{copy(locale, "记录原因", "Recorded reason")}</dt><dd>{selected.reason ?? "—"}</dd></div>
             </dl>
           </div>
+        </Dialog>
+      )}
+
+      {exportOpen && (
+        <Dialog
+          title={copy(locale, "安全导出审计记录", "Secure audit export")}
+          closeLabel={copy(locale, "关闭审计导出", "Close audit export")}
+          onClose={closeExport}
+        >
+          <form className="audit-export-form" onSubmit={submitExport}>
+            <div className="audit-export-impact" role="note">
+              <ShieldCheck size={20} aria-hidden="true" />
+              <span>
+                <strong>{copy(
+                  locale,
+                  `当前筛选匹配 ${summary.totalAvailable} 条，单次上限 ${exportLimit} 条`,
+                  `${summary.totalAvailable} records match; the per-export limit is ${exportLimit}`,
+                )}</strong>
+                {copy(
+                  locale,
+                  "仅导出界面可见的安全字段白名单。文件下载后将离开系统控制范围，操作不可撤销，并会写入一条新的审计事件。",
+                  "Only the UI-safe field allowlist is exported. The downloaded file leaves system control, cannot be recalled, and creates a new audit event.",
+                )}
+              </span>
+            </div>
+            <p className="audit-export-auth-note">
+              {sitesRuntime
+                ? copy(
+                    locale,
+                    "Sites 身份由 ChatGPT 平台在每次请求中验证；CloudBridge 不保存密码，也无法读取平台的密码或 TOTP 重新认证时间。",
+                    "ChatGPT verifies the Sites identity on each request. CloudBridge stores no password and cannot read the platform's password or TOTP reauthentication time.",
+                  )
+                : copy(
+                    locale,
+                    "MySQL 后台要求五分钟内最近认证；如果已超时，请退出后重新登录再执行导出。",
+                    "The MySQL administration runtime requires authentication within the last five minutes. If it expired, sign out and sign in again.",
+                  )}
+            </p>
+            <label>
+              <span>{copy(locale, "业务原因", "Business reason")}</span>
+              <textarea
+                value={exportReason}
+                minLength={8}
+                maxLength={500}
+                required
+                disabled={exportBusy}
+                aria-invalid={Boolean(exportError)}
+                onChange={(event) => {
+                  setExportReason(event.target.value);
+                  setExportError("");
+                }}
+                placeholder={copy(
+                  locale,
+                  "说明谁需要这份记录、用途和处理范围（至少 8 个字符）",
+                  "State who needs the file, its purpose, and handling scope (at least 8 characters)",
+                )}
+              />
+            </label>
+            {summary.totalAvailable > exportLimit && (
+              <p className="form-error" role="alert">
+                <WarningCircle size={16} />
+                {copy(
+                  locale,
+                  `当前筛选超过 ${exportLimit} 条，请先缩小筛选范围。`,
+                  `The current filter exceeds ${exportLimit} records. Narrow the filter first.`,
+                )}
+              </p>
+            )}
+            {exportError && <p className="form-error" role="alert"><WarningCircle size={16} />{exportError}</p>}
+            <div className="dialog-actions">
+              <button type="button" onClick={closeExport} disabled={exportBusy}>
+                {copy(locale, "取消", "Cancel")}
+              </button>
+              <button
+                type="submit"
+                className="admin-danger"
+                disabled={
+                  exportBusy
+                  || normalizedExportReason.length < 8
+                  || normalizedExportReason.length > 500
+                  || summary.totalAvailable > exportLimit
+                }
+              >
+                <DownloadSimple size={17} />
+                {exportBusy
+                  ? copy(locale, "服务器生成中…", "Generating…")
+                  : copy(locale, "确认并下载", "Confirm and download")}
+              </button>
+            </div>
+          </form>
         </Dialog>
       )}
     </>
