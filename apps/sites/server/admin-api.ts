@@ -1,6 +1,10 @@
 import {
+  AUDIT_CSV_EXPORT_CONFIRMATION,
+  AUDIT_CSV_EXPORT_LIMIT,
   isConfiguredContactChannel,
   STOREFRONT_LOW_STOCK_MAX,
+  auditCsvFilename,
+  serializeAuditCsv,
   type AdminInventoryRiskLevel,
   type AdminInventoryRiskSummary,
   type ContactChannelMode,
@@ -327,6 +331,101 @@ export async function handleAdminApi(
       },
     }, {
       meta: pageMeta(auditQuery.page, auditQuery.pageSize, total),
+    });
+  }
+
+  if (pathname === "/v1/admin/audit/export" && request.method === "POST") {
+    const actor = await writeIdentity(env.DB, request, "audit.read");
+    const exportInput = await readAuditExportInput(request);
+    const whereSql = exportInput.query.conditions.length > 0
+      ? ` WHERE ${exportInput.query.conditions.join(" AND ")}`
+      : "";
+    const total = Number((await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM audit_events${whereSql}`,
+    ).bind(...exportInput.query.bindings).first<{ count: number }>())?.count ?? 0);
+    if (total > AUDIT_CSV_EXPORT_LIMIT) {
+      await writeAudit(env.DB, {
+        action: "audit.export.csv",
+        result: "DENIED",
+        actor,
+        targetType: "AUDIT_EXPORT",
+        targetId: crypto.randomUUID(),
+        reason: exportInput.reason,
+      });
+      throw new ApiInputError(
+        "AUDIT_EXPORT_LIMIT_EXCEEDED",
+        `The current filter matches more than ${AUDIT_CSV_EXPORT_LIMIT} records. Narrow the filter before exporting.`,
+        409,
+      );
+    }
+    const rows = (await env.DB.prepare(
+      `SELECT id, trace_id AS requestId, action,
+        COALESCE(target_type, 'SYSTEM') AS targetType, target_id AS targetId,
+        result, reason, actor_display_name AS actorDisplayName,
+        actor_email AS actorEmail, created_at AS createdAt
+       FROM audit_events${whereSql}
+       ORDER BY created_at DESC, id DESC LIMIT ?`,
+    ).bind(
+      ...exportInput.query.bindings,
+      AUDIT_CSV_EXPORT_LIMIT + 1,
+    ).all<{
+      id: string;
+      requestId: string;
+      action: string;
+      targetType: string;
+      targetId: string | null;
+      result: "SUCCEEDED" | "FAILED" | "DENIED";
+      reason: string | null;
+      actorDisplayName: string | null;
+      actorEmail: string | null;
+      createdAt: string;
+    }>()).results ?? [];
+    if (rows.length > AUDIT_CSV_EXPORT_LIMIT) {
+      await writeAudit(env.DB, {
+        action: "audit.export.csv",
+        result: "DENIED",
+        actor,
+        targetType: "AUDIT_EXPORT",
+        targetId: crypto.randomUUID(),
+        reason: exportInput.reason,
+      });
+      throw new ApiInputError(
+        "AUDIT_EXPORT_LIMIT_EXCEEDED",
+        `The current filter matches more than ${AUDIT_CSV_EXPORT_LIMIT} records. Narrow the filter before exporting.`,
+        409,
+      );
+    }
+    const exportId = crypto.randomUUID();
+    const csv = serializeAuditCsv(rows.map((row) => ({
+      id: row.id,
+      requestId: row.requestId,
+      createdAt: row.createdAt,
+      action: row.action,
+      actorDisplayName: row.actorDisplayName,
+      actorEmail: row.actorEmail,
+      targetType: row.targetType,
+      targetId: row.targetId,
+      result: row.result,
+      reason: row.reason,
+    })));
+    await writeAudit(env.DB, {
+      action: "audit.export.csv",
+      result: "SUCCEEDED",
+      actor,
+      targetType: "AUDIT_EXPORT",
+      targetId: exportId,
+      reason: exportInput.reason,
+    });
+    const filename = auditCsvFilename();
+    return new Response(csv, {
+      status: 200,
+      headers: {
+        "Cache-Control": "private, no-store",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Type": "text/csv; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "X-Export-Record-Count": String(rows.length),
+      },
     });
   }
 
@@ -2108,6 +2207,43 @@ function readAuditQuery(url: URL): {
     offset: (page - 1) * pageSize,
     conditions,
     bindings,
+  };
+}
+
+async function readAuditExportInput(request: Request): Promise<{
+  query: ReturnType<typeof readAuditQuery>;
+  reason: string;
+}> {
+  const raw = await readJson<unknown>(request);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw fieldError("body");
+  const body = raw as Record<string, unknown>;
+  const allowed = new Set([
+    "search",
+    "result",
+    "actor",
+    "targetType",
+    "timeRange",
+    "reason",
+    "confirmation",
+  ]);
+  const unknownField = Object.keys(body).find((field) => !allowed.has(field));
+  if (unknownField) throw fieldError(unknownField);
+  if (typeof body.reason !== "string") throw fieldError("reason");
+  const reason = body.reason.normalize("NFKC").trim();
+  if (reason.length < 8 || reason.length > 500) throw fieldError("reason");
+  if (body.confirmation !== AUDIT_CSV_EXPORT_CONFIRMATION) {
+    throw fieldError("confirmation");
+  }
+  const url = new URL(request.url);
+  for (const field of ["search", "result", "actor", "targetType", "timeRange"] as const) {
+    const value = body[field];
+    if (value === undefined) continue;
+    if (typeof value !== "string") throw fieldError(field);
+    url.searchParams.set(field, value);
+  }
+  return {
+    query: readAuditQuery(url),
+    reason,
   };
 }
 

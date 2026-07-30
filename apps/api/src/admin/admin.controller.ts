@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Header, Param, Patch, Post, Query, Req } from "@nestjs/common";
-import type { Request } from "express";
+import { Body, Controller, Get, Header, Param, Patch, Post, Query, Req, Res } from "@nestjs/common";
+import type { Request, Response } from "express";
 import { RequirePermissions } from "../auth/auth.decorators.js";
 import { adminActorFromRequest } from "../common/admin-actor.js";
 import {
   AdminAuditQueryDto,
+  AdminAuditExportDto,
   AdminListQueryDto,
   CreateCategoryDto,
   CreateProductDto,
@@ -76,5 +77,28 @@ export class AdminController {
   @Header("Cache-Control", "private, no-store")
   audit(@Query() query: AdminAuditQueryDto) {
     return this.admin.auditEvents(query);
+  }
+
+  @Post("audit/export")
+  @RequirePermissions("audit.read")
+  async exportAudit(
+    @Body() input: AdminAuditExportDto,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const exported = await this.admin.exportAuditEvents(
+      input,
+      adminActorFromRequest(request),
+    );
+    response
+      .status(200)
+      .set({
+        "Cache-Control": "private, no-store",
+        "Content-Disposition": `attachment; filename="${exported.filename}"`,
+        "Content-Type": "text/csv; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "X-Export-Record-Count": String(exported.recordCount),
+      })
+      .send(exported.csv);
   }
 }

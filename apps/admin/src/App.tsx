@@ -505,7 +505,14 @@ function PageOutlet({
       />
     );
   }
-  if (page === "logs") return <AuditPage locale={locale} />;
+  if (page === "logs") {
+    return (
+      <AuditPage
+        locale={locale}
+        sitesRuntime={user.authProvider === "SITES"}
+      />
+    );
+  }
   if (page === "security") return <SecurityPage locale={locale} user={user} onChanged={refreshSession} />;
   if (page === "banners") return <BannersPage canWrite={user.permissions.includes("content.write")} locale={locale} />;
   if (page === "contacts") return <ContactsPage canWrite={user.permissions.includes("support.write")} locale={locale} />;

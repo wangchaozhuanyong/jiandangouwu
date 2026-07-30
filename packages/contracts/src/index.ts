@@ -1,4 +1,5 @@
 export * from "./access.js";
+export * from "./audit.js";
 export * from "./catalog.js";
 export * from "./common.js";
 export * from "./content.js";

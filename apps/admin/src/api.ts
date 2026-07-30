@@ -13,6 +13,10 @@ import type {
   AdminTeamOverview,
   SystemHealthStatus,
 } from "@cloudbridge/contracts";
+import {
+  AUDIT_CSV_EXPORT_CONFIRMATION,
+  auditCsvFilename,
+} from "@cloudbridge/contracts";
 
 export type {
   AdminAccessRoleSummary,
@@ -155,6 +159,15 @@ export type AuditEventPage = {
   facets: {
     targetTypes: string[];
   };
+};
+export type AuditEventExportInput = Omit<AuditEventQuery, "page" | "pageSize"> & {
+  reason: string;
+  confirmation: typeof AUDIT_CSV_EXPORT_CONFIRMATION;
+};
+export type AuditEventExport = {
+  blob: Blob;
+  filename: string;
+  recordCount: number | null;
 };
 
 const baseUrl = import.meta.env?.VITE_ADMIN_API_BASE_URL ?? "http://localhost:3001/v1";
@@ -398,6 +411,64 @@ export const getAuditPage = async (
 export const getAudit = async (signal?: AbortSignal) => (
   await getAuditPage({ page: 1, pageSize: 100 }, signal)
 ).data;
+export const exportAuditCsv = async (
+  input: Omit<AuditEventExportInput, "confirmation">,
+): Promise<AuditEventExport> => {
+  const response = await fetch(`${baseUrl}/admin/audit/export`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "content-type": "application/json",
+      ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+    },
+    body: JSON.stringify({
+      ...input,
+      confirmation: AUDIT_CSV_EXPORT_CONFIRMATION,
+    }),
+  });
+  if (!response.ok) {
+    let payload: ApiFailure | null = null;
+    try {
+      payload = await response.json() as ApiFailure;
+    } catch {
+      payload = null;
+    }
+    if (response.status === 401) {
+      setCsrfToken("");
+      unauthorizedHandler?.();
+    }
+    const error = payload?.error ?? {
+      code: "AUDIT_EXPORT_FAILED",
+      message: "The audit export could not be completed.",
+    };
+    throw new ApiError(
+      error.message,
+      response.status,
+      error.code,
+      payload?.requestId,
+      error.details,
+    );
+  }
+  if (!response.headers.get("content-type")?.toLocaleLowerCase().includes("text/csv")) {
+    throw new ApiError(
+      "The server returned an invalid audit export.",
+      502,
+      "INVALID_AUDIT_EXPORT_RESPONSE",
+    );
+  }
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const serverFilename = disposition.match(/filename="([A-Za-z0-9._-]+)"/u)?.[1];
+  const countHeader = response.headers.get("x-export-record-count");
+  const count = countHeader === null ? null : Number(countHeader);
+  return {
+    blob: await response.blob(),
+    filename: serverFilename?.startsWith("cloudbridge-audit-")
+      && serverFilename.endsWith(".csv")
+      ? serverFilename
+      : auditCsvFilename(),
+    recordCount: Number.isSafeInteger(count) && Number(count) >= 0 ? count : null,
+  };
+};
 export const getTeamOverview = async (signal?: AbortSignal) => (
   await request<AdminTeamOverview>("/admin/access/members", { signal })
 ).data;

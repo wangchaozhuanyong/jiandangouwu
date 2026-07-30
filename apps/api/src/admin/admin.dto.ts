@@ -1,5 +1,6 @@
 import { Transform } from "class-transformer";
 import {
+  Equals,
   IsIn,
   IsInt,
   IsOptional,
@@ -83,6 +84,43 @@ export class AdminAuditQueryDto {
   @IsOptional()
   @IsIn(["24h", "7d", "30d", "all"])
   timeRange?: "24h" | "7d" | "30d" | "all";
+}
+
+export class AdminAuditExportDto {
+  @IsOptional()
+  @Transform(trimString)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
+  search?: string;
+
+  @IsOptional()
+  @IsIn(["SUCCEEDED", "FAILED", "DENIED"])
+  result?: "SUCCEEDED" | "FAILED" | "DENIED";
+
+  @IsOptional()
+  @IsIn(["administrator", "system"])
+  actor?: "administrator" | "system";
+
+  @IsOptional()
+  @Transform(trimString)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  targetType?: string;
+
+  @IsOptional()
+  @IsIn(["24h", "7d", "30d", "all"])
+  timeRange?: "24h" | "7d" | "30d" | "all";
+
+  @Transform(trimString)
+  @IsString()
+  @MinLength(8)
+  @MaxLength(500)
+  reason!: string;
+
+  @Equals("EXPORT_AUDIT_CSV")
+  confirmation!: "EXPORT_AUDIT_CSV";
 }
 
 export class CreateCategoryDto {

@@ -219,3 +219,120 @@ test("audit listing projects an explicit frontend-safe field allowlist", async (
     orderBy: { targetType: "asc" },
   });
 });
+
+test("audit CSV export uses the safe allowlist, neutralizes formulas, and audits success", async () => {
+  let findManyQuery: Record<string, unknown> | null = null;
+  const auditRecords: Array<Record<string, unknown>> = [];
+  const prisma = {
+    auditEvent: {
+      count: async () => 1,
+      findMany: async (query: Record<string, unknown>) => {
+        findManyQuery = query;
+        return [{
+          id: "audit-export-source",
+          requestId: "request-source",
+          action: "=HYPERLINK(\"https://invalid.example\")",
+          targetType: "Product",
+          targetId: "-1",
+          result: "DENIED" as const,
+          reason: "@unsafe",
+          createdAt: new Date("2026-07-29T10:00:00.000Z"),
+          actor: {
+            displayName: "+Operator",
+            email: "operator@example.test",
+          },
+        }];
+      },
+    },
+  };
+  const service = new AdminService(
+    prisma as never,
+    { record: async (input: Record<string, unknown>) => { auditRecords.push(input); } } as never,
+    reservations as never,
+  );
+
+  const result = await service.exportAuditEvents({
+    result: "DENIED",
+    timeRange: "all",
+    reason: "Approved security review",
+    confirmation: "EXPORT_AUDIT_CSV",
+  }, {
+    userId: "admin-1",
+    requestId: "request-export",
+    reauthenticatedAt: Date.now(),
+  });
+
+  assert.equal(result.recordCount, 1);
+  assert.match(result.filename, /^cloudbridge-audit-\d{4}-\d{2}-\d{2}-\d{6}Z\.csv$/u);
+  assert.equal(result.csv.startsWith("\uFEFF\"event_id\""), true);
+  assert.equal(result.csv.includes("\"'=HYPERLINK(\"\"https://invalid.example\"\")\""), true);
+  assert.equal(result.csv.includes("\"'+Operator\""), true);
+  assert.equal(result.csv.includes("\"'-1\""), true);
+  assert.equal(result.csv.includes("\"'@unsafe\""), true);
+  assert.ok(findManyQuery);
+  const query = findManyQuery as Record<string, unknown>;
+  assert.equal(query.take, 5_001);
+  assert.equal(Object.hasOwn(query.select as object, "beforeData"), false);
+  assert.equal(Object.hasOwn(query.select as object, "afterData"), false);
+  assert.equal(Object.hasOwn(query.select as object, "ipHash"), false);
+  assert.equal(auditRecords.length, 1);
+  assert.equal(auditRecords[0]?.action, "audit.export.csv");
+  assert.equal(auditRecords[0]?.result, "SUCCEEDED");
+});
+
+test("audit CSV export fails closed when recent authentication expired", async () => {
+  const auditRecords: Array<Record<string, unknown>> = [];
+  let countCalled = false;
+  const service = new AdminService(
+    {
+      auditEvent: {
+        count: async () => {
+          countCalled = true;
+          return 0;
+        },
+      },
+    } as never,
+    { record: async (input: Record<string, unknown>) => { auditRecords.push(input); } } as never,
+    reservations as never,
+  );
+
+  await assert.rejects(service.exportAuditEvents({
+    reason: "Approved security review",
+    confirmation: "EXPORT_AUDIT_CSV",
+  }, {
+    userId: "admin-1",
+    requestId: "request-expired",
+    reauthenticatedAt: Date.now() - 6 * 60_000,
+  }), /Recent reauthentication is required/u);
+  assert.equal(countCalled, false);
+  assert.equal(auditRecords[0]?.result, "DENIED");
+});
+
+test("audit CSV export refuses filters above the server record limit", async () => {
+  const auditRecords: Array<Record<string, unknown>> = [];
+  let findManyCalled = false;
+  const service = new AdminService(
+    {
+      auditEvent: {
+        count: async () => 5_001,
+        findMany: async () => {
+          findManyCalled = true;
+          return [];
+        },
+      },
+    } as never,
+    { record: async (input: Record<string, unknown>) => { auditRecords.push(input); } } as never,
+    reservations as never,
+  );
+
+  await assert.rejects(service.exportAuditEvents({
+    reason: "Approved security review",
+    confirmation: "EXPORT_AUDIT_CSV",
+  }, {
+    userId: "admin-1",
+    requestId: "request-too-large",
+    reauthenticatedAt: Date.now(),
+  }), /Narrow the filter before exporting/u);
+  assert.equal(findManyCalled, false);
+  assert.equal(auditRecords[0]?.result, "DENIED");
+});
