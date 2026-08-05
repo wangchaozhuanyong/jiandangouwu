@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { handleAdminApi } from "../server/admin-api.ts";
 import { ApiInputError } from "../server/http.ts";
 
-const migration = readFileSync(
-  new URL("../drizzle/0000_salty_fat_cobra.sql", import.meta.url),
-  "utf8",
-).replaceAll("--> statement-breakpoint", "");
+const migrationDirectory = new URL("../drizzle/", import.meta.url);
+const migration = readdirSync(migrationDirectory)
+  .filter((name) => /^\d{4}_.*\.sql$/u.test(name))
+  .sort()
+  .map((name) => readFileSync(new URL(name, migrationDirectory), "utf8"))
+  .join("\n")
+  .replaceAll("--> statement-breakpoint", "");
 
 test("Sites product catalog applies status, literal search, pagination, and matching totals", async () => {
   const sqlite = new DatabaseSync(":memory:");
@@ -182,7 +185,7 @@ test("Sites settings persist a bounded inventory risk threshold with CAS and aud
     assert.equal(initial.data.inventoryRiskThreshold, 3);
 
     const updateResponse = await handleAdminApi(
-      settingsRequest(7, 1),
+      settingsRequest(7, initial.data.version),
       { DB: d1Adapter(sqlite), MEDIA: {} },
       "/v1/admin/site-settings",
     );
@@ -190,7 +193,7 @@ test("Sites settings persist a bounded inventory risk threshold with CAS and aud
     assert.equal(updateResponse.status, 200);
     const updated = await updateResponse.json();
     assert.equal(updated.data.inventoryRiskThreshold, 7);
-    assert.equal(updated.data.version, 2);
+    assert.equal(updated.data.version, initial.data.version + 1);
 
     const stored = sqlite.prepare(
       "SELECT json_extract(value_json, '$.inventoryRiskThreshold') AS threshold FROM site_settings WHERE key = 'storefront.settings'",
@@ -205,7 +208,7 @@ test("Sites settings persist a bounded inventory risk threshold with CAS and aud
 
     await assert.rejects(
       handleAdminApi(
-        settingsRequest(100, 2),
+        settingsRequest(100, updated.data.version),
         { DB: d1Adapter(sqlite), MEDIA: {} },
         "/v1/admin/site-settings",
       ),

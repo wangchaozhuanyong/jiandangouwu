@@ -2,7 +2,6 @@ import type { D1Database, D1Result } from "./types";
 
 type ExpiredOrderCandidate = {
   id: string;
-  productId: string;
 };
 
 export type ExpiredOrderReconciliation = {
@@ -19,7 +18,7 @@ export async function reconcileExpiredOrders(
 ): Promise<ExpiredOrderReconciliation> {
   const reconciledAt = now.toISOString();
   const candidates = (await db.prepare(
-    `SELECT id, product_id AS productId
+    `SELECT id
      FROM orders
      WHERE status = 'MANUAL_PENDING'
        AND inventory_reserved = 1
@@ -80,7 +79,9 @@ export async function reconcileExpiredOrders(
          SET stock_quantity = stock_quantity + 1,
            version = version + 1,
            updated_at = ?
-         WHERE id = ?
+         WHERE id IN (
+             SELECT product_id FROM order_items WHERE order_id = ?
+           )
            AND stock_mode = 'FINITE'
            AND EXISTS (
              SELECT 1 FROM order_status_history
@@ -88,7 +89,7 @@ export async function reconcileExpiredOrders(
            )`,
       ).bind(
         reconciledAt,
-        candidate.productId,
+        candidate.id,
         historyId,
         candidate.id,
       ),

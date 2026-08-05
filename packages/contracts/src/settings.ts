@@ -1,4 +1,5 @@
 import type { Locale, LocalizedText } from "./common.js";
+import type { ProductSurface } from "./catalog.js";
 
 export const DEFAULT_SHARE_TEMPLATE: LocalizedText = {
   zh: "推荐你看看 {productName}，当前价格 {price}。",
@@ -15,6 +16,7 @@ export type StorefrontSettings = {
   inventoryRiskThreshold: number;
   transitServiceEnabled: boolean;
   transitServiceUrl: string | null;
+  bannerVisibility: Record<ProductSurface, boolean>;
   shareTemplate: LocalizedText;
 };
 

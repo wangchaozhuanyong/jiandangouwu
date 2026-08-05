@@ -19,6 +19,11 @@ const settings: AdminStorefrontSettings = {
   inventoryRiskThreshold: 7,
   transitServiceEnabled: false,
   transitServiceUrl: null,
+  bannerVisibility: {
+    HOME: true,
+    TRANSIT_SUBSCRIPTIONS: true,
+    AI_RECHARGE: true,
+  },
   shareTemplate: {
     zh: "推荐 {productName}，当前价格 {price}。",
     en: "See {productName}, currently {price}.",

@@ -1,18 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { reconcileExpiredOrders } from "../server/order-expiry.ts";
-
-const migration = readFileSync(
-  new URL("../drizzle/0000_salty_fat_cobra.sql", import.meta.url),
-  "utf8",
-).replaceAll("--> statement-breakpoint", "");
+import { createTestDatabase } from "./test-helpers.mjs";
 
 test("expired manual orders are cancelled and finite inventory is released exactly once", async () => {
-  const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(migration);
-  const db = d1Adapter(sqlite);
+  const { sqlite, db } = createTestDatabase();
   sqlite.prepare(
     `INSERT INTO orders (
       id, order_number, idempotency_key, product_id, product_name_snapshot,
@@ -45,6 +37,13 @@ test("expired manual orders are cancelled and finite inventory is released exact
   );
   sqlite.prepare(
     "UPDATE products SET stock_quantity = stock_quantity - 1 WHERE id = 'product-codex'",
+  ).run();
+  sqlite.prepare(
+    `INSERT INTO order_items (
+      id, order_id, product_id, product_name_snapshot, currency_code, amount,
+      exchange_rate_snapshot, product_version, sort_order, created_at
+    ) VALUES ('item-expired', 'order-expired', 'product-codex', 'Codex', 'CNY',
+      '89.00', '1.0000000000', 1, 0, '2026-07-29T00:00:00.000Z')`,
   ).run();
 
   const first = await reconcileExpiredOrders(db, new Date("2026-07-29T00:30:00.000Z"));
@@ -81,9 +80,7 @@ test("expired manual orders are cancelled and finite inventory is released exact
 });
 
 test("active reservations remain untouched before their expiry", async () => {
-  const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(migration);
-  const db = d1Adapter(sqlite);
+  const { sqlite, db } = createTestDatabase();
   sqlite.prepare(
     `INSERT INTO orders (
       id, order_number, idempotency_key, product_id, product_name_snapshot,
@@ -122,43 +119,3 @@ test("active reservations remain untouched before their expiry", async () => {
     "MANUAL_PENDING",
   );
 });
-
-function d1Adapter(sqlite) {
-  return {
-    prepare(query) {
-      return statementAdapter(sqlite.prepare(query));
-    },
-    async batch(statements) {
-      sqlite.exec("BEGIN IMMEDIATE");
-      try {
-        const results = [];
-        for (const statement of statements) results.push(await statement.run());
-        sqlite.exec("COMMIT");
-        return results;
-      } catch (error) {
-        sqlite.exec("ROLLBACK");
-        throw error;
-      }
-    },
-  };
-}
-
-function statementAdapter(statement) {
-  let values = [];
-  return {
-    bind(...nextValues) {
-      values = nextValues;
-      return this;
-    },
-    async first() {
-      return statement.get(...values) ?? null;
-    },
-    async all() {
-      return { success: true, results: statement.all(...values), meta: { changes: 0 } };
-    },
-    async run() {
-      const result = statement.run(...values);
-      return { success: true, results: [], meta: { changes: Number(result.changes) } };
-    },
-  };
-}

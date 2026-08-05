@@ -53,6 +53,7 @@ export const editableSettings = (
   inventoryRiskThreshold: settings.inventoryRiskThreshold,
   transitServiceEnabled: settings.transitServiceEnabled,
   transitServiceUrl: settings.transitServiceUrl,
+  bannerVisibility: settings.bannerVisibility,
   shareTemplate: settings.shareTemplate ?? DEFAULT_SHARE_TEMPLATE,
   reason: "",
 });
@@ -67,6 +68,7 @@ const comparableSettings = (settings: UpdateStorefrontSettingsInput) => ({
   inventoryRiskThreshold: settings.inventoryRiskThreshold,
   transitServiceEnabled: settings.transitServiceEnabled,
   transitServiceUrl: settings.transitServiceUrl,
+  bannerVisibility: settings.bannerVisibility,
   shareTemplate: settings.shareTemplate,
 });
 

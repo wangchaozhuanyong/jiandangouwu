@@ -3,6 +3,7 @@ import { ApiInputError } from "./http";
 export const sitesDataProtectionPurposes = [
   "ORDER_CONTACT",
   "CONTACT_LOOKUP",
+  "ORDER_LOOKUP",
   "BACKUP_SNAPSHOT",
   "RESTORE_TOKEN",
   "RESTORE_PROOF",
@@ -130,6 +131,24 @@ export async function hashOrderContact(
   const key = await deriveSitesHmacKey(
     activeKey,
     "CONTACT_LOOKUP",
+    "ORDER",
+    ["sign"],
+  );
+  const normalized = value.normalize("NFKC").trim().toLocaleLowerCase();
+  const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(normalized));
+  return `v2.${keyId}.${encodeBase64Url(new Uint8Array(digest))}`;
+}
+
+export async function hashOrderLookupSubject(
+  value: string,
+  encodedKey: string | undefined,
+  nextEncodedKey?: string,
+): Promise<string> {
+  const activeKey = nextEncodedKey ?? encodedKey;
+  const keyId = await sitesDataKeyId(activeKey, "ORDER");
+  const key = await deriveSitesHmacKey(
+    activeKey,
+    "ORDER_LOOKUP",
     "ORDER",
     ["sign"],
   );

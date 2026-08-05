@@ -106,6 +106,18 @@ test("Sites build declares D1 and R2 and ships the migration", () => {
     read("dist/.openai/drizzle/0006_nice_doctor_faustus.sql"),
     /CREATE TABLE `system_alert_deliveries`/u,
   );
+  assert.match(
+    read("dist/.openai/drizzle/0007_material_nightmare.sql"),
+    /CREATE TABLE `product_surfaces`/u,
+  );
+  assert.match(
+    read("dist/.openai/drizzle/0007_material_nightmare.sql"),
+    /CREATE TABLE `order_items`/u,
+  );
+  assert.match(
+    read("dist/.openai/drizzle/0007_material_nightmare.sql"),
+    /CREATE TABLE `skills`/u,
+  );
 });
 
 test("root Sites release stages the complete platform instead of the legacy prototype", () => {
@@ -122,6 +134,7 @@ test("root Sites release stages the complete platform instead of the legacy prot
   assert.match(releaseScript, /0004_sweet_adam_warlock\.sql/u);
   assert.match(releaseScript, /0005_concerned_war_machine\.sql/u);
   assert.match(releaseScript, /0006_nice_doctor_faustus\.sql/u);
+  assert.match(releaseScript, /drizzle/u);
   assert.match(releaseScript, /rmSync\(target,\s*\{\s*force:\s*true,\s*recursive:\s*true\s*\}\)/u);
   assert.match(releaseScript, /cpSync\(source,\s*target,\s*\{\s*recursive:\s*true\s*\}\)/u);
 });

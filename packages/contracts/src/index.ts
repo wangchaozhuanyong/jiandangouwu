@@ -11,5 +11,6 @@ export * from "./media.js";
 export * from "./notifications.js";
 export * from "./orders.js";
 export * from "./settings.js";
+export * from "./skills.js";
 export * from "./storefront.js";
 export * from "./support.js";
