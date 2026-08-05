@@ -60,6 +60,7 @@ export function StorefrontHome({
   const {
     currency,
     setCurrency,
+    openSupport,
     rememberListing,
     consumeListingScroll,
   } = useExperience();
@@ -279,45 +280,61 @@ export function StorefrontHome({
               heroSwipeStart.current = event.changedTouches[0]?.clientX ?? null;
             }}
           >
-            <ResilientImage
-              src={hero.imageUrl}
-              alt=""
-              width={1240}
-              height={570}
-              loading="eager"
-              fetchPriority="high"
-              fallbackLabel={t.imageUnavailable}
-              {...storefrontResponsiveImage(hero.imageUrl, "hero")}
-            />
-            <div className="hero-scrim" />
-            <div className="hero-copy">
-              <p>{hero.eyebrow}</p>
-              <h1>{hero.title.split("\n").map((line) => <span key={line}>{line}</span>)}</h1>
-              <div className="hero-footer">
-                <p>{hero.body}</p>
-                <Link href={heroLink} prefetch={false} onMouseEnter={() => prefetch(heroLink)} onFocus={() => prefetch(heroLink)}>
-                  {hero.cta}<ArrowRight size={18} />
-                </Link>
+            <div className="hero-story">
+              <ResilientImage
+                src={hero.imageUrl}
+                alt=""
+                width={1240}
+                height={570}
+                loading="eager"
+                fetchPriority="high"
+                fallbackLabel={t.imageUnavailable}
+                {...storefrontResponsiveImage(hero.imageUrl, "hero")}
+              />
+              <div className="hero-scrim" />
+              <div className="hero-copy">
+                <p>{hero.eyebrow}</p>
+                <h1>{hero.title.split("\n").map((line) => <span key={line}>{line}</span>)}</h1>
+                <div className="hero-footer">
+                  <p>{hero.body}</p>
+                  <Link href={heroLink} prefetch={false} onMouseEnter={() => prefetch(heroLink)} onFocus={() => prefetch(heroLink)}>
+                    {hero.cta}<ArrowRight size={18} />
+                  </Link>
+                </div>
+              </div>
+              <div
+                className="hero-dots"
+                role="group"
+                aria-label={locale === "zh" ? "轮播分页" : "Hero pagination"}
+              >
+                {config.heroes.map((item, dotIndex) => (
+                  <button
+                    aria-current={dotIndex === heroIndex ? "true" : undefined}
+                    aria-label={locale === "zh"
+                      ? `切换到第 ${dotIndex + 1} 张，共 ${config.heroes.length} 张`
+                      : `Show slide ${dotIndex + 1} of ${config.heroes.length}`}
+                    className={dotIndex === heroIndex ? "is-active" : ""}
+                    key={`${item.imageUrl}-${dotIndex}`}
+                    onClick={() => setHeroIndex(dotIndex)}
+                    type="button"
+                  />
+                ))}
               </div>
             </div>
-            <div
-              className="hero-dots"
-              role="group"
-              aria-label={locale === "zh" ? "轮播分页" : "Hero pagination"}
-            >
-              {config.heroes.map((item, dotIndex) => (
-                <button
-                  aria-current={dotIndex === heroIndex ? "true" : undefined}
-                  aria-label={locale === "zh"
-                    ? `切换到第 ${dotIndex + 1} 张，共 ${config.heroes.length} 张`
-                    : `Show slide ${dotIndex + 1} of ${config.heroes.length}`}
-                  className={dotIndex === heroIndex ? "is-active" : ""}
-                  key={`${item.imageUrl}-${dotIndex}`}
-                  onClick={() => setHeroIndex(dotIndex)}
-                  type="button"
-                />
-              ))}
-            </div>
+            <aside className="hero-service-panel">
+              <div className="hero-service-panel__label">
+                <span>{t.heroServiceLabel}</span>
+                <i aria-hidden="true" />
+              </div>
+              <span className="hero-service-panel__mark" aria-hidden="true">
+                <Headset size={46} weight="light" />
+              </span>
+              <h2>{t.heroServiceTitle}</h2>
+              <p>{t.heroServiceBody}</p>
+              <button onClick={openSupport} type="button">
+                {t.heroServiceAction}<ArrowRight aria-hidden="true" size={18} />
+              </button>
+            </aside>
           </article>
         ) : (
           <div className="hero-skeleton" aria-hidden="true" />

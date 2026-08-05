@@ -23,6 +23,9 @@ type ListingPosition = {
 type ExperienceContextValue = {
   currency: string;
   setCurrency: (currency: string) => void;
+  supportOpen: boolean;
+  openSupport: () => void;
+  closeSupport: () => void;
   getOrderDraft: (slug: string) => OrderDraft;
   updateOrderDraft: (slug: string, patch: Partial<OrderDraft>) => void;
   clearOrderDraft: (slug: string) => void;
@@ -42,6 +45,7 @@ const CURRENCY_KEY = "cloudbridge-storefront-currency";
 
 export function ExperienceProvider({ children }: { children: React.ReactNode }) {
   const [currency, setCurrencyState] = useState("CNY");
+  const [supportOpen, setSupportOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, OrderDraft>>({});
   const [listing, setListing] = useState<ListingPosition | null>(null);
 
@@ -54,6 +58,9 @@ export function ExperienceProvider({ children }: { children: React.ReactNode }) 
     setCurrencyState(next);
     window.sessionStorage.setItem(CURRENCY_KEY, next);
   }, []);
+
+  const openSupport = useCallback(() => setSupportOpen(true), []);
+  const closeSupport = useCallback(() => setSupportOpen(false), []);
 
   const getOrderDraft = useCallback(
     (slug: string) => drafts[slug] ?? DEFAULT_DRAFT,
@@ -95,6 +102,9 @@ export function ExperienceProvider({ children }: { children: React.ReactNode }) 
   const value = useMemo<ExperienceContextValue>(() => ({
     currency,
     setCurrency,
+    supportOpen,
+    openSupport,
+    closeSupport,
     getOrderDraft,
     updateOrderDraft,
     clearOrderDraft,
@@ -102,13 +112,16 @@ export function ExperienceProvider({ children }: { children: React.ReactNode }) 
     getListingHref,
     consumeListingScroll,
   }), [
+    closeSupport,
     clearOrderDraft,
     consumeListingScroll,
     currency,
     getListingHref,
     getOrderDraft,
+    openSupport,
     rememberListing,
     setCurrency,
+    supportOpen,
     updateOrderDraft,
   ]);
 

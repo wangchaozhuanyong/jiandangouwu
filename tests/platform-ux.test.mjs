@@ -76,7 +76,7 @@ test("正式客户端商品区标题在所有视口保持左主标题右副标�
   );
   assert.match(
     css,
-    /\.catalog-heading \{ display: grid; grid-template-columns: auto 1px minmax\(300px, 490px\); align-items: stretch;/u,
+    /\.catalog-heading \{ display: grid; grid-template-columns: minmax\(0, 1fr\) 1px minmax\(320px, 470px\); align-items: stretch;/u,
   );
   assert.match(
     css,
@@ -113,9 +113,11 @@ test("正式客户端刷新公开配置、恢复订单冲突并保持移动端�
   assert.match(detail, /Promise\.all\(\[\s*getConfig\(locale\),\s*getProduct\(slug, locale, currency\)/u);
   assert.match(detail, /contactChannelsUnavailableBody/u);
   assert.match(home, /className="product-purchase"/u);
-  assert.match(css, /\.product-copy \{[^}]*grid-template-rows:\s*52px 68px 72px;/u);
+  assert.match(css, /\.product-card \{[^}]*grid-template-columns:\s*185px minmax\(0, 1fr\);/u);
+  assert.match(css, /\.product-copy \{[^}]*grid-template-rows:\s*52px minmax\(54px, 1fr\) 52px;/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.product-card \{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/u);
   assert.match(css, /@media \(max-width: 390px\)[\s\S]*?\.product-copy \{ grid-template-rows:\s*40px 68px 72px;/u);
-  assert.match(css, /\.product-purchase \{[^}]*height:\s*72px;/u);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.product-purchase \{[^}]*height:\s*72px;/u);
   assert.match(css, /\.transit-service-entry \{[^}]*position:\s*fixed;/u);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.transit-service-entry \{ right:\s*12px;[^}]*bottom:\s*max\(12px,\s*env\(safe-area-inset-bottom\)\);/u);
   assert.doesNotMatch(css, /\.transit-service-(?:entry|notice)\.is-detail/u);

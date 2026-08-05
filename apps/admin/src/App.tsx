@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   ArrowsClockwise,
   Bell,
   CaretRight,
@@ -68,6 +69,18 @@ import {
   helpTriggerLabel,
 } from "./help-content";
 import { adminCopy } from "./i18n";
+import {
+  canLoadPreviewV2,
+  matchPreviewV2Route,
+} from "./preview-v2/preview-model";
+
+const isPreviewV2Development = (): boolean => (
+  import.meta.env?.DEV === true
+);
+
+const PreviewV2App = import.meta.env?.DEV
+  ? lazy(() => import("./preview-v2/preview-v2-app"))
+  : null;
 
 const DashboardPage = lazy(() => import("./pages/dashboard-page"));
 const ProductsPage = lazy(() => import("./pages/products-page"));
@@ -134,6 +147,11 @@ export function App() {
   const [locale, setLocale] = useState<Locale>("zh");
   const [user, setUser] = useState<AdminUser | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
+  const [previewV2Route] = useState(() => (
+    typeof window === "undefined"
+      ? { requested: false as const, pageId: null }
+      : matchPreviewV2Route(window.location.pathname)
+  ));
   const [page, setPage] = useState<Page>(() => (
     typeof window === "undefined" ? "dashboard" : pageFromPath(window.location.pathname)
   ));
@@ -174,15 +192,33 @@ export function App() {
   }, [locale]);
 
   useEffect(() => {
+    if (previewV2Route.requested) return;
     const canonical = pagePath(page);
     if (window.location.pathname !== canonical) {
       window.history.replaceState({ page }, "", canonical);
     }
-  }, []);
+  }, [page, previewV2Route.requested]);
 
   if (sessionLoading) return <AdminShellSkeleton label={adminCopy[locale].loading as string} locale={locale} />;
   if (!user) {
     return <SitesAuthScreen locale={locale} setLocale={setLocale} />;
+  }
+
+  if (previewV2Route.requested) {
+    if (!canLoadPreviewV2(isPreviewV2Development(), previewV2Route) || !PreviewV2App) {
+      return <PreviewV2Unavailable locale={locale} />;
+    }
+    return (
+      <AdminExperienceProvider>
+        <Suspense fallback={<AdminShellSkeleton label={adminCopy[locale].loading as string} locale={locale} />}>
+          <PreviewV2App
+            initialLocale={locale}
+            initialPageId={previewV2Route.pageId}
+            sessionDisplayName={user.displayName}
+          />
+        </Suspense>
+      </AdminExperienceProvider>
+    );
   }
 
   return (
@@ -201,6 +237,30 @@ export function App() {
         }}
       />
     </AdminExperienceProvider>
+  );
+}
+
+function PreviewV2Unavailable({ locale }: { locale: Locale }) {
+  return (
+    <main className="auth-page admin-preview-v2-unavailable">
+      <section className="auth-card">
+        <div className="auth-brand">
+          <span><img src="/assets/cloudbridge-logo.png" alt="" width={349} height={176} /></span>
+          <strong>{adminCopy[locale].brandName as string}</strong>
+        </div>
+        <div className="auth-mark"><WarningCircle aria-hidden="true" size={30} weight="duotone" /></div>
+        <h1>{locale === "zh" ? "404 · V2 预览不可用" : "404 · V2 preview unavailable"}</h1>
+        <p className="auth-intro">
+          {locale === "zh"
+            ? "该界面设计预览只在开发环境且通过真实管理会话后开放，生产环境不会加载预览组件。"
+            : "This interface-design preview is available only in development after a real admin session. Production does not load the preview component."}
+        </p>
+        <a className="primary-action" href="/admin/dashboard">
+          <ArrowLeft aria-hidden="true" size={19} />
+          {locale === "zh" ? "返回正式后台" : "Return to live admin"}
+        </a>
+      </section>
+    </main>
   );
 }
 

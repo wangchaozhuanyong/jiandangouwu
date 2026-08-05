@@ -11,7 +11,7 @@ import type { Locale } from "@cloudbridge/contracts";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getConfig, type StorefrontConfig } from "../lib/api";
 import { copy } from "../lib/copy";
 import { UX_TIMINGS } from "../lib/experience";
@@ -21,6 +21,7 @@ import {
   STOREFRONT_THEME_STORAGE_KEY,
   type StorefrontTheme,
 } from "../lib/theme";
+import { useExperience } from "./experience-provider";
 import { LanguagePicker, SupportDrawer } from "./storefront-controls";
 
 export function SiteShell({
@@ -35,14 +36,13 @@ export function SiteShell({
   const t = copy[locale];
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { closeSupport, openSupport, supportOpen } = useExperience();
   const [navigating, setNavigating] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
-  const [supportOpen, setSupportOpen] = useState(false);
   const [theme, setTheme] = useState<StorefrontTheme>("dark");
   const [transitNotice, setTransitNotice] = useState("");
   const [config, setConfig] = useState<StorefrontConfig | null>(initialConfig);
   const hasConsumedInitialConfig = useRef(false);
-  const closeSupport = useCallback(() => setSupportOpen(false), []);
   const isHome = pathname === `/${locale}` || pathname === `/${locale}/`;
   const isProductDetail = pathname.startsWith(`/${locale}/products/`);
   const settings = config?.settings;
@@ -136,11 +136,36 @@ export function SiteShell({
           </span>
           <span>
             <strong>{siteName}</strong>
-            {t.brandSecondary && <small>{t.brandSecondary}</small>}
           </span>
         </Link>
         <nav aria-label={locale === "zh" ? "主要导航" : "Primary navigation"}>
-          <Link href={`/${locale}#catalog`} onClick={() => pathname !== `/${locale}` && setNavigating(true)}>{t.navServices}</Link>
+          <Link
+            aria-current={isHome ? "page" : undefined}
+            href={`/${locale}`}
+            onClick={() => !isHome && setNavigating(true)}
+          >
+            {t.navHome}
+          </Link>
+          <Link
+            href={`/${locale}#catalog`}
+            onClick={() => !isHome && setNavigating(true)}
+          >
+            {t.navCatalog}
+          </Link>
+          <Link
+            aria-current={pathname === `/${locale}/policies/terms` ? "page" : undefined}
+            href={`/${locale}/policies/terms`}
+            onClick={() => pathname !== `/${locale}/policies/terms` && setNavigating(true)}
+          >
+            {t.navTerms}
+          </Link>
+          <Link
+            aria-current={pathname === `/${locale}/policies/privacy` ? "page" : undefined}
+            href={`/${locale}/policies/privacy`}
+            onClick={() => pathname !== `/${locale}/policies/privacy` && setNavigating(true)}
+          >
+            {t.navPrivacy}
+          </Link>
         </nav>
         <div className="header-utilities">
           <button
@@ -163,12 +188,20 @@ export function SiteShell({
           <button
             aria-label={t.customerSupport}
             className="support-trigger"
-            onClick={() => setSupportOpen(true)}
+            onClick={openSupport}
             type="button"
           >
             <Headset aria-hidden="true" size={18} />
             <span>{t.customerSupport}</span>
           </button>
+          <Link
+            className="header-order-link"
+            href={`/${locale}#catalog`}
+            onClick={() => !isHome && setNavigating(true)}
+          >
+            <span>{t.manualOrder}</span>
+            <ArrowRight aria-hidden="true" size={17} />
+          </Link>
         </div>
       </header>}
       {children}
@@ -232,7 +265,7 @@ export function SiteShell({
               <span>{t.privacy}</span>
               <ArrowRight size={16} aria-hidden="true" />
             </Link>
-            <button onClick={() => setSupportOpen(true)} type="button">
+            <button onClick={openSupport} type="button">
               <span>{t.navSupport}</span>
               <ArrowRight size={16} aria-hidden="true" />
             </button>

@@ -10,6 +10,7 @@ const read = (file: string) => readFileSync(
 
 test("the header always exposes truthful customer support", () => {
   const shell = read("components/site-shell.tsx");
+  const provider = read("components/experience-provider.tsx");
 
   assert.match(shell, /className="support-trigger"/u);
   assert.match(
@@ -24,6 +25,12 @@ test("the header always exposes truthful customer support", () => {
     shell,
     /\{supportEnabled && \(\s*<SupportDrawer/u,
   );
+  assert.match(provider, /supportOpen: boolean/u);
+  assert.match(provider, /openSupport: \(\) => void/u);
+  assert.match(provider, /closeSupport: \(\) => void/u);
+  assert.match(shell, /const \{ closeSupport, openSupport, supportOpen \} = useExperience\(\)/u);
+  assert.match(shell, /className="support-trigger"[\s\S]*?onClick=\{openSupport\}/u);
+  assert.match(shell, /<SupportDrawer[\s\S]*?onClose=\{closeSupport\}[\s\S]*?open=\{supportOpen\}/u);
   assert.equal(copy.zh.customerSupport, "客户服务");
   assert.equal(copy.en.customerSupport, "Customer Support");
   assert.equal(copy.zh.supportUnavailableTitle, "客服暂未开放");
@@ -31,6 +38,29 @@ test("the header always exposes truthful customer support", () => {
     copy.en.supportUnavailableTitle,
     "Customer support is not available yet",
   );
+});
+
+test("the header exposes only real destinations and a manual-order catalog action", () => {
+  const shell = read("components/site-shell.tsx");
+  const header = shell.slice(
+    shell.indexOf('<header className="site-header">'),
+    shell.indexOf("</header>"),
+  );
+
+  assert.match(
+    header,
+    /t\.navHome[\s\S]*?t\.navCatalog[\s\S]*?policies\/terms[\s\S]*?t\.navTerms[\s\S]*?policies\/privacy[\s\S]*?t\.navPrivacy/u,
+  );
+  assert.match(header, /aria-current=\{isHome \? "page" : undefined\}/u);
+  assert.match(header, /className="header-order-link"[\s\S]*?t\.manualOrder/u);
+  assert.doesNotMatch(header, /cart|basket|购物车|购物篮/iu);
+  assert.doesNotMatch(header, /brandSecondary/u);
+  assert.equal(copy.zh.navHome, "首页");
+  assert.equal(copy.zh.navCatalog, "服务目录");
+  assert.equal(copy.zh.navTerms, "条款");
+  assert.equal(copy.zh.navPrivacy, "隐私");
+  assert.equal(copy.zh.manualOrder, "人工下单");
+  assert.equal(copy.en.manualOrder, "Order with support");
 });
 
 test("QQ support uses a best-effort app handoff with a visible copy fallback", () => {
