@@ -3,6 +3,23 @@ import type { Money } from "./common.js";
 export const productStatuses = ["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"] as const;
 export type ProductStatus = (typeof productStatuses)[number];
 
+export const productSurfaces = ["HOME", "TRANSIT_SUBSCRIPTIONS", "AI_RECHARGE"] as const;
+export type ProductSurface = (typeof productSurfaces)[number];
+
+export const platformKeys = [
+  "OPENAI",
+  "ANTHROPIC",
+  "GOOGLE",
+  "MIDJOURNEY",
+  "PERPLEXITY",
+  "CURSOR",
+  "OTHER",
+] as const;
+export type PlatformKey = (typeof platformKeys)[number];
+
+export const transitPlanTypes = ["SUBSCRIPTION", "USAGE", "TEAM"] as const;
+export type TransitPlanType = (typeof transitPlanTypes)[number];
+
 export const stockModes = ["FINITE", "UNLIMITED"] as const;
 export type StockMode = (typeof stockModes)[number];
 
@@ -44,6 +61,8 @@ export type CategorySummary = {
   slug: string;
   name: string;
   order: number;
+  parentId?: string | null;
+  children?: CategorySummary[];
 };
 
 export type ProductSummary = {
@@ -59,6 +78,9 @@ export type ProductSummary = {
   stockMode: StockMode;
   stockQuantity: number | null;
   status: ProductStatus;
+  platformKey?: PlatformKey | null;
+  transitPlanType?: TransitPlanType | null;
+  surfaces?: ProductSurface[];
 };
 
 export type ProductDetail = ProductSummary & {

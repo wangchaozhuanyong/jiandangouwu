@@ -9,12 +9,7 @@ import {
   Plus,
   WarningCircle,
 } from "@phosphor-icons/react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createProduct,
   getCategories,
@@ -58,10 +53,14 @@ import { adminCopy } from "../i18n";
 
 type ProductDraft = {
   slug: string;
+  primaryCategoryId: string;
   categoryId: string;
   imageKey: string;
   basePrice: string;
   compareAtPrice: string;
+  platformKey: Exclude<AdminProduct["platformKey"], null> | "";
+  transitPlanType: Exclude<AdminProduct["transitPlanType"], null> | "";
+  surfaces: AdminProduct["surfaces"];
   stockMode: "FINITE" | "UNLIMITED";
   stockQuantity: number;
   status: "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED";
@@ -76,10 +75,14 @@ type ProductDraft = {
 
 const emptyProduct: ProductDraft = {
   slug: "",
+  primaryCategoryId: "",
   categoryId: "",
   imageKey: "/assets/product-codex.webp",
   basePrice: "0.00",
   compareAtPrice: "",
+  platformKey: "",
+  transitPlanType: "",
+  surfaces: ["HOME"],
   stockMode: "FINITE",
   stockQuantity: 0,
   status: "DRAFT",
@@ -92,12 +95,19 @@ const emptyProduct: ProductDraft = {
   descriptionEn: "",
 };
 
-const copy = (locale: Locale, zh: string, en: string): string => locale === "zh" ? zh : en;
+const copy = (locale: Locale, zh: string, en: string): string =>
+  locale === "zh" ? zh : en;
 
-const productImpactSignalCopy: Record<ProductImpactSignal, Record<Locale, string>> = {
+const productImpactSignalCopy: Record<
+  ProductImpactSignal,
+  Record<Locale, string>
+> = {
   MISSING_TRANSLATION: { zh: "双语内容缺失", en: "Missing bilingual content" },
   STOCK_DATA_CONFLICT: { zh: "库存数据冲突", en: "Stock data conflict" },
-  CATEGORY_NOT_LOADED: { zh: "分类未在列表中", en: "Category not in loaded list" },
+  CATEGORY_NOT_LOADED: {
+    zh: "分类未在列表中",
+    en: "Category not in loaded list",
+  },
   CATEGORY_NOT_ACTIVE: { zh: "分类未启用", en: "Category is not active" },
   ACTIVE_SOLD_OUT: { zh: "在售但已售罄", en: "Active and sold out" },
   ACTIVE_LOW_STOCK: { zh: "前台低库存提示", en: "Storefront low-stock label" },
@@ -121,31 +131,43 @@ export default function ProductsPage({
   locale: Locale;
 }) {
   const t = adminCopy[locale];
-  const [query, setQuery] = useState(() => readAdminProductQuery(window.location.search));
-  const [filter, setFilter] = useState<ProductQueryFilter>(
-    () => productFilterFromQuery(query),
+  const [query, setQuery] = useState(() =>
+    readAdminProductQuery(window.location.search),
+  );
+  const [filter, setFilter] = useState<ProductQueryFilter>(() =>
+    productFilterFromQuery(query),
   );
   const [editing, setEditing] = useState<AdminProduct | "new" | null>(null);
   const [impactOpen, setImpactOpen] = useState(false);
   const querySearch = useMemo(() => adminProductQuerySearch(query), [query]);
-  const productLoader = useCallback(async (signal: AbortSignal) => ({
-    ...await getProducts(query, signal),
-    querySearch,
-  }), [query, querySearch]);
-  const categoryLoader = useCallback((signal: AbortSignal) => getCategories(signal), []);
-  const productsResource = useCachedAdminResource<AdminProductPage & { querySearch: string }>(
-    `products:page:${querySearch || "default"}`,
-    productLoader,
+  const productLoader = useCallback(
+    async (signal: AbortSignal) => ({
+      ...(await getProducts(query, signal)),
+      querySearch,
+    }),
+    [query, querySearch],
   );
-  const categoriesResource = useCachedAdminResource<AdminCategory[]>("categories", categoryLoader);
+  const categoryLoader = useCallback(
+    (signal: AbortSignal) => getCategories(signal),
+    [],
+  );
+  const productsResource = useCachedAdminResource<
+    AdminProductPage & { querySearch: string }
+  >(`products:page:${querySearch || "default"}`, productLoader);
+  const categoriesResource = useCachedAdminResource<AdminCategory[]>(
+    "categories",
+    categoryLoader,
+  );
   const slow = useSlowAdminRequest(productsResource.state);
-  const page = productsResource.data?.querySearch === querySearch
-    ? productsResource.data
-    : null;
+  const page =
+    productsResource.data?.querySearch === querySearch
+      ? productsResource.data
+      : null;
   const products = page?.data ?? null;
   const categories = categoriesResource.data ?? [];
-  const listBusy = productsResource.state === "initial-loading"
-    || productsResource.state === "refreshing";
+  const listBusy =
+    productsResource.state === "initial-loading" ||
+    productsResource.state === "refreshing";
   const pageCount = page?.meta.pageCount ?? 0;
 
   useEffect(() => {
@@ -160,24 +182,24 @@ export default function ProductsPage({
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  const updateQuery = useCallback((
-    next: AdminProductQuery,
-    historyMode: "push" | "replace" = "push",
-  ) => {
-    const search = adminProductQuerySearch(next);
-    const url = `${window.location.pathname}${search ? `?${search}` : ""}`;
-    window.history[historyMode === "push" ? "pushState" : "replaceState"](
-      {
-        ...(window.history.state ?? {}),
-        page: "products",
-      },
-      "",
-      url,
-    );
-    setQuery(next);
-    setImpactOpen(false);
-    setEditing(null);
-  }, []);
+  const updateQuery = useCallback(
+    (next: AdminProductQuery, historyMode: "push" | "replace" = "push") => {
+      const search = adminProductQuerySearch(next);
+      const url = `${window.location.pathname}${search ? `?${search}` : ""}`;
+      window.history[historyMode === "push" ? "pushState" : "replaceState"](
+        {
+          ...(window.history.state ?? {}),
+          page: "products",
+        },
+        "",
+        url,
+      );
+      setQuery(next);
+      setImpactOpen(false);
+      setEditing(null);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!page || listBusy || page.meta.page !== query.page) return;
@@ -207,7 +229,12 @@ export default function ProductsPage({
           onClick={() => setImpactOpen(true)}
           type="button"
         >
-          <Eye />{copy(locale, "库存与上架概览", "Inventory and availability overview")}
+          <Eye />
+          {copy(
+            locale,
+            "库存与上架概览",
+            "Inventory and availability overview",
+          )}
         </button>
         {canWrite && (
           <button
@@ -216,7 +243,8 @@ export default function ProductsPage({
             onClick={() => setEditing("new")}
             type="button"
           >
-            <Plus />{t.addProduct as string}
+            <Plus />
+            {t.addProduct as string}
           </button>
         )}
       </div>
@@ -234,7 +262,13 @@ export default function ProductsPage({
         <div className="product-admin-truth-note" role="note">
           <Info aria-hidden="true" size={18} />
           <span>
-            <strong>{copy(locale, "完整目录服务端分页", "Full catalog server pagination")}</strong>
+            <strong>
+              {copy(
+                locale,
+                "完整目录服务端分页",
+                "Full catalog server pagination",
+              )}
+            </strong>
             {copy(
               locale,
               `当前筛选共 ${page.meta.total} 条，第 ${page.meta.page} 页加载 ${page.data.length} 条。未选择状态时不显示已归档商品；选择“已归档”可单独查看。筛选与分页在服务器执行。`,
@@ -250,10 +284,12 @@ export default function ProductsPage({
           <input
             value={filter.search}
             maxLength={160}
-            onChange={(event) => setFilter((current) => ({
-              ...current,
-              search: event.target.value,
-            }))}
+            onChange={(event) =>
+              setFilter((current) => ({
+                ...current,
+                search: event.target.value,
+              }))
+            }
             placeholder={copy(
               locale,
               "搜索中文名、英文名或 slug",
@@ -265,25 +301,31 @@ export default function ProductsPage({
           <span>{copy(locale, "商品状态", "Product status")}</span>
           <select
             value={filter.status}
-            onChange={(event) => setFilter((current) => ({
-              ...current,
-              status: event.target.value as ProductQueryFilter["status"],
-            }))}
+            onChange={(event) =>
+              setFilter((current) => ({
+                ...current,
+                status: event.target.value as ProductQueryFilter["status"],
+              }))
+            }
           >
-            <option value="all">{copy(locale, "全部非归档状态", "All non-archived statuses")}</option>
-            {(["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"] as const).map((status) => (
-              <option value={status} key={status}>
-                {statusLabels[status]?.[locale] ?? status}
-              </option>
-            ))}
+            <option value="all">
+              {copy(locale, "全部非归档状态", "All non-archived statuses")}
+            </option>
+            {(["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"] as const).map(
+              (status) => (
+                <option value={status} key={status}>
+                  {statusLabels[status]?.[locale] ?? status}
+                </option>
+              ),
+            )}
           </select>
         </label>
         <div className="product-admin-filter-actions">
           <button
             className="admin-secondary"
             disabled={
-              adminProductQuerySearch(productQueryFromFilter(filter)) === ""
-              && querySearch === ""
+              adminProductQuerySearch(productQueryFromFilter(filter)) === "" &&
+              querySearch === ""
             }
             onClick={resetFilters}
             type="button"
@@ -306,12 +348,19 @@ export default function ProductsPage({
           </button>
         </div>
       </form>
-      <RefreshNotice state={productsResource.state} locale={locale} retry={() => void productsResource.reload()} slow={slow} />
+      <RefreshNotice
+        state={productsResource.state}
+        locale={locale}
+        retry={() => void productsResource.reload()}
+        slow={slow}
+      />
       {!page ? (
         <PanelState
-          state={productsResource.state === "refreshing"
-            ? "initial-loading"
-            : productsResource.state}
+          state={
+            productsResource.state === "refreshing"
+              ? "initial-loading"
+              : productsResource.state
+          }
           locale={locale}
           retry={() => void productsResource.reload()}
           kind="cards"
@@ -319,13 +368,18 @@ export default function ProductsPage({
       ) : (
         <>
           <div className="product-admin-list-meta">
-            <span>{copy(
-              locale,
-              `第 ${page.meta.page} / ${Math.max(1, page.meta.pageCount)} 页 · 本页 ${products?.length ?? 0} 条`,
-              `Page ${page.meta.page} of ${Math.max(1, page.meta.pageCount)} · ${products?.length ?? 0} on this page`,
-            )}</span>
+            <span>
+              {copy(
+                locale,
+                `第 ${page.meta.page} / ${Math.max(1, page.meta.pageCount)} 页 · 本页 ${products?.length ?? 0} 条`,
+                `Page ${page.meta.page} of ${Math.max(1, page.meta.pageCount)} · ${products?.length ?? 0} on this page`,
+              )}
+            </span>
           </div>
-          <div className="product-admin-grid" aria-busy={productsResource.state === "refreshing"}>
+          <div
+            className="product-admin-grid"
+            aria-busy={productsResource.state === "refreshing"}
+          >
             {products?.length === 0 && (
               <div className="table-empty" role="status">
                 {copy(
@@ -347,9 +401,20 @@ export default function ProductsPage({
                 />
                 <div className="product-admin-copy">
                   <p>{item.category.name[locale] || item.category.slug}</p>
-                  <h3 title={item.translations[locale]?.name}>{item.translations[locale]?.name || "—"}</h3>
-                  <div><strong>MYR {item.basePrice}</strong><StatusPill status={item.status} locale={locale} /></div>
-                  <small>{item.stockMode === "UNLIMITED" ? (locale === "zh" ? "不限库存" : "Unlimited") : `${t.stock as string} ${item.stockQuantity ?? 0}`}</small>
+                  <h3 title={item.translations[locale]?.name}>
+                    {item.translations[locale]?.name || "—"}
+                  </h3>
+                  <div>
+                    <strong>MYR {item.basePrice}</strong>
+                    <StatusPill status={item.status} locale={locale} />
+                  </div>
+                  <small>
+                    {item.stockMode === "UNLIMITED"
+                      ? locale === "zh"
+                        ? "不限库存"
+                        : "Unlimited"
+                      : `${t.stock as string} ${item.stockQuantity ?? 0}`}
+                  </small>
                 </div>
                 {canWrite && (
                   <button
@@ -365,15 +430,22 @@ export default function ProductsPage({
           </div>
           <nav
             className="product-admin-pagination"
-            aria-label={copy(locale, "商品目录分页", "Product catalog pagination")}
+            aria-label={copy(
+              locale,
+              "商品目录分页",
+              "Product catalog pagination",
+            )}
           >
             <button
               className="admin-secondary"
               disabled={query.page <= 1 || listBusy}
-              onClick={() => updateQuery({ ...query, page: Math.max(1, query.page - 1) })}
+              onClick={() =>
+                updateQuery({ ...query, page: Math.max(1, query.page - 1) })
+              }
               type="button"
             >
-              <CaretLeft aria-hidden="true" />{copy(locale, "上一页", "Previous")}
+              <CaretLeft aria-hidden="true" />
+              {copy(locale, "上一页", "Previous")}
             </button>
             <button
               className="admin-secondary"
@@ -381,7 +453,8 @@ export default function ProductsPage({
               onClick={() => updateQuery({ ...query, page: query.page + 1 })}
               type="button"
             >
-              {copy(locale, "下一页", "Next")}<CaretRight aria-hidden="true" />
+              {copy(locale, "下一页", "Next")}
+              <CaretRight aria-hidden="true" />
             </button>
           </nav>
         </>
@@ -443,7 +516,9 @@ function ProductImpactDialog({
           `status “${statusLabels[query.status]?.en ?? query.status}”`,
         )
       : copy(locale, "全部非归档状态", "all non-archived statuses"),
-  ].filter(Boolean).join(copy(locale, "、", ", "));
+  ]
+    .filter(Boolean)
+    .join(copy(locale, "、", ", "));
   const summary = [
     [
       copy(locale, "已加载商品", "Loaded products"),
@@ -457,7 +532,11 @@ function ProductImpactDialog({
     [
       copy(locale, "在售 / 非在售", "Active / non-active"),
       `${impact.activeProductCount} / ${impact.nonActiveProductCount}`,
-      copy(locale, "公开列表只读取在售商品", "The public list reads active products only"),
+      copy(
+        locale,
+        "公开列表只读取在售商品",
+        "The public list reads active products only",
+      ),
     ],
     [
       copy(locale, "有限 / 不限库存", "Finite / unlimited"),
@@ -479,7 +558,11 @@ function ProductImpactDialog({
     <Dialog
       closeLabel={t.close as string}
       onClose={onClose}
-      title={copy(locale, "商品库存与上架概览", "Product inventory and availability overview")}
+      title={copy(
+        locale,
+        "商品库存与上架概览",
+        "Product inventory and availability overview",
+      )}
       wide
     >
       <div className="product-impact-dialog">
@@ -503,7 +586,11 @@ function ProductImpactDialog({
           </span>
         </p>
         <div
-          aria-label={copy(locale, "商品影响表，可横向滚动", "Product impact table, horizontally scrollable")}
+          aria-label={copy(
+            locale,
+            "商品影响表，可横向滚动",
+            "Product impact table, horizontally scrollable",
+          )}
           className="product-impact-table-wrap"
           tabIndex={0}
         >
@@ -515,8 +602,12 @@ function ProductImpactDialog({
                 <th scope="col">{copy(locale, "英文名称", "English name")}</th>
                 <th scope="col">{t.slug as string}</th>
                 <th scope="col">{t.category as string}</th>
-                <th scope="col">{copy(locale, "商品状态", "Product status")}</th>
-                <th scope="col">{copy(locale, "分类状态", "Category state")}</th>
+                <th scope="col">
+                  {copy(locale, "商品状态", "Product status")}
+                </th>
+                <th scope="col">
+                  {copy(locale, "分类状态", "Category state")}
+                </th>
                 <th scope="col">{copy(locale, "库存模式", "Stock mode")}</th>
                 <th scope="col">{t.stock as string}</th>
                 <th scope="col">{t.price as string} MYR</th>
@@ -527,27 +618,55 @@ function ProductImpactDialog({
             <tbody>
               {impact.rows.map((product) => (
                 <tr key={product.id}>
-                  <td><code>{String(product.sortOrder).padStart(2, "0")}</code></td>
-                  <td title={product.translations.zh?.name}>{product.translations.zh?.name || "—"}</td>
-                  <td title={product.translations.en?.name}>{product.translations.en?.name || "—"}</td>
-                  <td><code>{product.slug}</code></td>
-                  <td title={product.category.name[locale]}>{product.category.name[locale] || product.category.slug}</td>
-                  <td><StatusPill locale={locale} status={product.status} /></td>
                   <td>
-                    {product.categoryState === "NOT_LOADED" || product.categoryState === "NOT_CHECKED"
-                      ? categoryStateCopy[product.categoryState][locale]
-                      : <StatusPill locale={locale} status={product.categoryState} />}
+                    <code>{String(product.sortOrder).padStart(2, "0")}</code>
                   </td>
-                  <td>{copy(
-                    locale,
-                    product.stockMode === "FINITE" ? "有限" : "不限",
-                    product.stockMode === "FINITE" ? "Finite" : "Unlimited",
-                  )}</td>
-                  <td>{product.stockQuantity ?? "—"}</td>
-                  <td><code>{product.basePrice}</code></td>
-                  <td><time dateTime={product.updatedAt}>{formatDate(product.updatedAt, locale)}</time></td>
+                  <td title={product.translations.zh?.name}>
+                    {product.translations.zh?.name || "—"}
+                  </td>
+                  <td title={product.translations.en?.name}>
+                    {product.translations.en?.name || "—"}
+                  </td>
                   <td>
-                    <span className={`product-impact-signal is-${product.signal.toLocaleLowerCase()}`}>
+                    <code>{product.slug}</code>
+                  </td>
+                  <td title={product.category.name[locale]}>
+                    {product.category.name[locale] || product.category.slug}
+                  </td>
+                  <td>
+                    <StatusPill locale={locale} status={product.status} />
+                  </td>
+                  <td>
+                    {product.categoryState === "NOT_LOADED" ||
+                    product.categoryState === "NOT_CHECKED" ? (
+                      categoryStateCopy[product.categoryState][locale]
+                    ) : (
+                      <StatusPill
+                        locale={locale}
+                        status={product.categoryState}
+                      />
+                    )}
+                  </td>
+                  <td>
+                    {copy(
+                      locale,
+                      product.stockMode === "FINITE" ? "有限" : "不限",
+                      product.stockMode === "FINITE" ? "Finite" : "Unlimited",
+                    )}
+                  </td>
+                  <td>{product.stockQuantity ?? "—"}</td>
+                  <td>
+                    <code>{product.basePrice}</code>
+                  </td>
+                  <td>
+                    <time dateTime={product.updatedAt}>
+                      {formatDate(product.updatedAt, locale)}
+                    </time>
+                  </td>
+                  <td>
+                    <span
+                      className={`product-impact-signal is-${product.signal.toLocaleLowerCase()}`}
+                    >
                       {productImpactSignalCopy[product.signal][locale]}
                     </span>
                   </td>
@@ -556,7 +675,9 @@ function ProductImpactDialog({
             </tbody>
           </table>
           {impact.rows.length === 0 && (
-            <div className="table-empty" role="status">{t.empty as string}</div>
+            <div className="table-empty" role="status">
+              {t.empty as string}
+            </div>
           )}
         </div>
       </div>
@@ -579,32 +700,59 @@ function ProductDialog({
 }) {
   const t = adminCopy[locale];
   const { notify } = useAdminStatus();
-  const source = useMemo<ProductDraft>(() => item === "new" ? {
-    ...emptyProduct,
-    categoryId: categories[0]?.id ?? "",
-  } : {
-    slug: item.slug,
-    categoryId: item.category.id,
-    imageKey: item.imageKey,
-    basePrice: item.basePrice,
-    compareAtPrice: item.compareAtPrice ?? "",
-    stockMode: item.stockMode,
-    stockQuantity: item.stockQuantity ?? 0,
-    status: item.status,
-    sortOrder: item.sortOrder,
-    nameZh: item.translations.zh.name,
-    nameEn: item.translations.en.name,
-    kickerZh: item.translations.zh.kicker,
-    kickerEn: item.translations.en.kicker,
-    descriptionZh: item.translations.zh.description,
-    descriptionEn: item.translations.en.description,
-  }, [categories, item]);
+  const primaryCategories = categories.filter(
+    (category) => category.level === "PRIMARY",
+  );
+  const initialSecondary = categories.find(
+    (category) => category.level === "SECONDARY",
+  );
+  const source = useMemo<ProductDraft>(
+    () =>
+      item === "new"
+        ? {
+            ...emptyProduct,
+            primaryCategoryId:
+              initialSecondary?.parentId ?? primaryCategories[0]?.id ?? "",
+            categoryId: initialSecondary?.id ?? "",
+          }
+        : {
+            slug: item.slug,
+            primaryCategoryId:
+              categories.find((category) => category.id === item.category.id)
+                ?.parentId ?? "",
+            categoryId: item.category.id,
+            imageKey: item.imageKey,
+            basePrice: item.basePrice,
+            compareAtPrice: item.compareAtPrice ?? "",
+            platformKey: item.platformKey ?? "",
+            transitPlanType: item.transitPlanType ?? "",
+            surfaces: item.surfaces.length ? item.surfaces : ["HOME"],
+            stockMode: item.stockMode,
+            stockQuantity: item.stockQuantity ?? 0,
+            status: item.status,
+            sortOrder: item.sortOrder,
+            nameZh: item.translations.zh.name,
+            nameEn: item.translations.en.name,
+            kickerZh: item.translations.zh.kicker,
+            kickerEn: item.translations.en.kicker,
+            descriptionZh: item.translations.zh.description,
+            descriptionEn: item.translations.en.description,
+          },
+    [
+      categories,
+      initialSecondary?.id,
+      initialSecondary?.parentId,
+      item,
+      primaryCategories,
+    ],
+  );
   const [form, setForm] = useState(source);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const dirty = JSON.stringify(form) !== JSON.stringify(source);
   useUnsavedChanges(dirty);
-  const set = <K extends keyof ProductDraft>(key: K, value: ProductDraft[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const set = <K extends keyof ProductDraft>(key: K, value: ProductDraft[K]) =>
+    setForm((current) => ({ ...current, [key]: value }));
 
   const requestClose = useCallback(() => {
     if (dirty && !window.confirm(t.unsavedConfirm as string)) return;
@@ -616,18 +764,23 @@ function ProductDialog({
     if (busy) return;
     setBusy(true);
     setError("");
+    const { primaryCategoryId: _primaryCategoryId, ...editableForm } = form;
     const payload = {
-      ...form,
+      ...editableForm,
       compareAtPrice: form.compareAtPrice || null,
+      platformKey: form.platformKey || null,
+      transitPlanType: form.transitPlanType || null,
       stockQuantity: form.stockMode === "UNLIMITED" ? null : form.stockQuantity,
     };
     try {
-      const changesPriceOrStock = item === "new"
-        || item.basePrice !== form.basePrice
-        || (item.compareAtPrice ?? "") !== form.compareAtPrice
-        || item.stockMode !== form.stockMode
-        || (item.stockQuantity ?? 0) !== form.stockQuantity;
-      if (changesPriceOrStock && !window.confirm(t.productConfirm as string)) return;
+      const changesPriceOrStock =
+        item === "new" ||
+        item.basePrice !== form.basePrice ||
+        (item.compareAtPrice ?? "") !== form.compareAtPrice ||
+        item.stockMode !== form.stockMode ||
+        (item.stockQuantity ?? 0) !== form.stockQuantity;
+      if (changesPriceOrStock && !window.confirm(t.productConfirm as string))
+        return;
       if (item === "new") await createProduct(payload);
       else await updateProduct(item.id, { ...payload, version: item.version });
       invalidateAdminCache("dashboard", "categories");
@@ -644,31 +797,297 @@ function ProductDialog({
   };
 
   return (
-    <Dialog wide title={item === "new" ? t.addProduct as string : t.edit as string} closeLabel={t.close as string} onClose={requestClose}>
+    <Dialog
+      wide
+      title={item === "new" ? (t.addProduct as string) : (t.edit as string)}
+      closeLabel={t.close as string}
+      onClose={requestClose}
+    >
       <form className="editor-form product-editor" onSubmit={submit}>
         <div className="form-grid two">
-          <label><span>{t.zhName as string}</span><input value={form.nameZh} onChange={(event) => set("nameZh", event.target.value)} required /></label>
-          <label><span>{t.enName as string}</span><input value={form.nameEn} onChange={(event) => set("nameEn", event.target.value)} required /></label>
-          <label><span>{locale === "zh" ? "中文短标题" : "Chinese kicker"}</span><input value={form.kickerZh} onChange={(event) => set("kickerZh", event.target.value)} required /></label>
-          <label><span>{locale === "zh" ? "英文短标题" : "English kicker"}</span><input value={form.kickerEn} onChange={(event) => set("kickerEn", event.target.value)} required /></label>
+          <label>
+            <span>{t.zhName as string}</span>
+            <input
+              value={form.nameZh}
+              onChange={(event) => set("nameZh", event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span>{t.enName as string}</span>
+            <input
+              value={form.nameEn}
+              onChange={(event) => set("nameEn", event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span>{locale === "zh" ? "中文短标题" : "Chinese kicker"}</span>
+            <input
+              value={form.kickerZh}
+              onChange={(event) => set("kickerZh", event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span>{locale === "zh" ? "英文短标题" : "English kicker"}</span>
+            <input
+              value={form.kickerEn}
+              onChange={(event) => set("kickerEn", event.target.value)}
+              required
+            />
+          </label>
         </div>
         <div className="form-grid two">
-          <label><span>{t.slug as string}</span><input value={form.slug} onChange={(event) => set("slug", event.target.value.toLocaleLowerCase())} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required /></label>
-          <label><span>{t.category as string}</span><select value={form.categoryId} onChange={(event) => set("categoryId", event.target.value)} required>{categories.map((category) => <option value={category.id} key={category.id}>{category.name[locale]}</option>)}</select></label>
-          <label><span>{locale === "zh" ? "商品图片路径" : "Image path"}</span><input value={form.imageKey} onChange={(event) => set("imageKey", event.target.value)} required /></label>
-          <label><span>{t.status as string}</span><select value={form.status} onChange={(event) => set("status", event.target.value as ProductDraft["status"])}>{["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"].map((status) => <option key={status} value={status}>{statusLabels[status]?.[locale] ?? status}</option>)}</select></label>
-          <label><span>{t.price as string} MYR</span><input value={form.basePrice} onChange={(event) => set("basePrice", event.target.value)} pattern="\d+(?:\.\d{1,2})?" required /></label>
-          <label><span>{locale === "zh" ? "划线价格 MYR" : "Compare-at MYR"}</span><input value={form.compareAtPrice} onChange={(event) => set("compareAtPrice", event.target.value)} pattern="\d*(?:\.\d{1,2})?" /></label>
-          <label><span>{locale === "zh" ? "库存模式" : "Stock mode"}</span><select value={form.stockMode} onChange={(event) => set("stockMode", event.target.value as ProductDraft["stockMode"])}><option value="FINITE">{locale === "zh" ? "有限库存" : "Finite"}</option><option value="UNLIMITED">{locale === "zh" ? "不限库存" : "Unlimited"}</option></select></label>
-          <label><span>{t.stock as string}</span><input type="number" min="0" disabled={form.stockMode === "UNLIMITED"} value={form.stockQuantity} onChange={(event) => set("stockQuantity", Number(event.target.value))} /></label>
-          <label><span>{t.order as string}</span><input type="number" min="0" value={form.sortOrder} onChange={(event) => set("sortOrder", Number(event.target.value))} required /></label>
+          <label>
+            <span>{t.slug as string}</span>
+            <input
+              value={form.slug}
+              onChange={(event) =>
+                set("slug", event.target.value.toLocaleLowerCase())
+              }
+              pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+              required
+            />
+          </label>
+          <label>
+            <span>{locale === "zh" ? "一级分类" : "Primary category"}</span>
+            <select
+              value={form.primaryCategoryId}
+              onChange={(event) => {
+                const parentId = event.target.value;
+                setForm((current) => ({
+                  ...current,
+                  primaryCategoryId: parentId,
+                  categoryId:
+                    categories.find(
+                      (category) => category.parentId === parentId,
+                    )?.id ?? "",
+                }));
+              }}
+              required
+            >
+              {primaryCategories.map((category) => (
+                <option value={category.id} key={category.id}>
+                  {category.name[locale]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{locale === "zh" ? "二级分类" : "Secondary category"}</span>
+            <select
+              value={form.categoryId}
+              onChange={(event) => set("categoryId", event.target.value)}
+              required
+            >
+              <option value="">
+                {locale === "zh"
+                  ? "请选择二级分类"
+                  : "Choose a secondary category"}
+              </option>
+              {categories
+                .filter(
+                  (category) =>
+                    category.level === "SECONDARY" &&
+                    category.parentId === form.primaryCategoryId,
+                )
+                .map((category) => (
+                  <option value={category.id} key={category.id}>
+                    {category.name[locale]}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            <span>{locale === "zh" ? "商品图片路径" : "Image path"}</span>
+            <input
+              value={form.imageKey}
+              onChange={(event) => set("imageKey", event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span>{t.status as string}</span>
+            <select
+              value={form.status}
+              onChange={(event) =>
+                set("status", event.target.value as ProductDraft["status"])
+              }
+            >
+              {["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"].map((status) => (
+                <option key={status} value={status}>
+                  {statusLabels[status]?.[locale] ?? status}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t.price as string} MYR</span>
+            <input
+              value={form.basePrice}
+              onChange={(event) => set("basePrice", event.target.value)}
+              pattern="\d+(?:\.\d{1,2})?"
+              required
+            />
+          </label>
+          <label>
+            <span>{locale === "zh" ? "划线价格 MYR" : "Compare-at MYR"}</span>
+            <input
+              value={form.compareAtPrice}
+              onChange={(event) => set("compareAtPrice", event.target.value)}
+              pattern="\d*(?:\.\d{1,2})?"
+            />
+          </label>
+          <label>
+            <span>{locale === "zh" ? "库存模式" : "Stock mode"}</span>
+            <select
+              value={form.stockMode}
+              onChange={(event) =>
+                set(
+                  "stockMode",
+                  event.target.value as ProductDraft["stockMode"],
+                )
+              }
+            >
+              <option value="FINITE">
+                {locale === "zh" ? "有限库存" : "Finite"}
+              </option>
+              <option value="UNLIMITED">
+                {locale === "zh" ? "不限库存" : "Unlimited"}
+              </option>
+            </select>
+          </label>
+          <label>
+            <span>{t.stock as string}</span>
+            <input
+              type="number"
+              min="0"
+              disabled={form.stockMode === "UNLIMITED"}
+              value={form.stockQuantity}
+              onChange={(event) =>
+                set("stockQuantity", Number(event.target.value))
+              }
+            />
+          </label>
+          <label>
+            <span>{t.order as string}</span>
+            <input
+              type="number"
+              min="0"
+              value={form.sortOrder}
+              onChange={(event) => set("sortOrder", Number(event.target.value))}
+              required
+            />
+          </label>
+          <label>
+            <span>{locale === "zh" ? "平台标识" : "Platform"}</span>
+            <select
+              value={form.platformKey}
+              onChange={(event) =>
+                set(
+                  "platformKey",
+                  event.target.value as ProductDraft["platformKey"],
+                )
+              }
+            >
+              <option value="">—</option>
+              {[
+                "OPENAI",
+                "ANTHROPIC",
+                "GOOGLE",
+                "MIDJOURNEY",
+                "PERPLEXITY",
+                "CURSOR",
+                "OTHER",
+              ].map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>
+              {locale === "zh" ? "中转套餐类型" : "Transit plan type"}
+            </span>
+            <select
+              value={form.transitPlanType}
+              onChange={(event) =>
+                set(
+                  "transitPlanType",
+                  event.target.value as ProductDraft["transitPlanType"],
+                )
+              }
+            >
+              <option value="">—</option>
+              {["SUBSCRIPTION", "USAGE", "TEAM"].map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </label>
         </div>
+        <fieldset className="product-surface-fieldset">
+          <legend>
+            {locale === "zh" ? "展示页面" : "Storefront surfaces"}
+          </legend>
+          {(["HOME", "TRANSIT_SUBSCRIPTIONS", "AI_RECHARGE"] as const).map(
+            (surface) => (
+              <label key={surface}>
+                <input
+                  checked={form.surfaces.includes(surface)}
+                  onChange={(event) => {
+                    const next = event.target.checked
+                      ? [...form.surfaces, surface]
+                      : form.surfaces.filter((item) => item !== surface);
+                    if (!next.length) {
+                      setError(
+                        locale === "zh"
+                          ? "商品至少需要选择一个展示页面。"
+                          : "Choose at least one storefront surface.",
+                      );
+                      return;
+                    }
+                    setError("");
+                    set("surfaces", next);
+                  }}
+                  type="checkbox"
+                />
+                <span>{surface}</span>
+              </label>
+            ),
+          )}
+        </fieldset>
         <div className="form-grid two">
-          <label><span>{locale === "zh" ? "中文说明" : "Chinese description"}</span><textarea value={form.descriptionZh} onChange={(event) => set("descriptionZh", event.target.value)} required /></label>
-          <label><span>{locale === "zh" ? "英文说明" : "English description"}</span><textarea value={form.descriptionEn} onChange={(event) => set("descriptionEn", event.target.value)} required /></label>
+          <label>
+            <span>{locale === "zh" ? "中文说明" : "Chinese description"}</span>
+            <textarea
+              value={form.descriptionZh}
+              onChange={(event) => set("descriptionZh", event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span>{locale === "zh" ? "英文说明" : "English description"}</span>
+            <textarea
+              value={form.descriptionEn}
+              onChange={(event) => set("descriptionEn", event.target.value)}
+              required
+            />
+          </label>
         </div>
-        {error && <p className="form-error" role="alert"><WarningCircle />{error}</p>}
-        <div className="dialog-actions"><button type="button" onClick={requestClose}>{t.cancel as string}</button><button className="admin-primary" disabled={busy}>{busy ? t.submitting as string : t.save as string}</button></div>
+        {error && (
+          <p className="form-error" role="alert">
+            <WarningCircle />
+            {error}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <button type="button" onClick={requestClose}>
+            {t.cancel as string}
+          </button>
+          <button className="admin-primary" disabled={busy}>
+            {busy ? (t.submitting as string) : (t.save as string)}
+          </button>
+        </div>
       </form>
     </Dialog>
   );

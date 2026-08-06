@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { SiteShell } from "../../../storefront/components/site-shell";
+import { V2LiveShell } from "../../../storefront/components/v2-live/live-shell";
 import { isLocale } from "../../../storefront/lib/copy";
 import { readStorefrontBootstrap } from "../read-storefront-bootstrap";
 
@@ -15,8 +15,11 @@ export default async function LocaleLayout({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const bootstrap = await readStorefrontBootstrap();
-  const initialConfig = bootstrap?.locale === locale
-    ? bootstrap.data.config
-    : null;
-  return <SiteShell locale={locale} initialConfig={initialConfig}>{children}</SiteShell>;
+  const initialConfig =
+    bootstrap?.locale === locale ? bootstrap.data.config : null;
+  return (
+    <V2LiveShell locale={locale} initialConfig={initialConfig}>
+      {children}
+    </V2LiveShell>
+  );
 }

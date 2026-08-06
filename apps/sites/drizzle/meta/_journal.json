@@ -50,6 +50,13 @@
       "when": 1785412585191,
       "tag": "0006_nice_doctor_faustus",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1785911292920,
+      "tag": "0007_material_nightmare",
+      "breakpoints": true
     }
   ]
 }

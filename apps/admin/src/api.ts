@@ -39,7 +39,12 @@ type ApiFailure = {
   requestId: string;
 };
 
-export type PageMeta = { page: number; pageSize: number; total: number; pageCount: number };
+export type PageMeta = {
+  page: number;
+  pageSize: number;
+  total: number;
+  pageCount: number;
+};
 export type Locale = "zh" | "en";
 export type AdminUser = {
   id: string;
@@ -67,7 +72,12 @@ export type SitesReadiness = {
   checkedAt: string;
 };
 export type Overview = {
-  metrics: { productCount: number; activeProducts: number; openOrders: number; categoryCount: number };
+  metrics: {
+    productCount: number;
+    activeProducts: number;
+    openOrders: number;
+    categoryCount: number;
+  };
   inventoryRisk: AdminInventoryRiskSummary;
   latestOrders: AdminOrderListItem[];
 };
@@ -78,6 +88,9 @@ export type AdminCategory = {
   sortOrder: number;
   version: number;
   name: Record<Locale, string>;
+  parentId: string | null;
+  level: "PRIMARY" | "SECONDARY";
+  childCount: number;
   productCount: number;
   updatedAt: string;
 };
@@ -87,13 +100,63 @@ export type AdminProduct = {
   imageKey: string;
   basePrice: string;
   compareAtPrice: string | null;
+  platformKey:
+    | "OPENAI"
+    | "ANTHROPIC"
+    | "GOOGLE"
+    | "MIDJOURNEY"
+    | "PERPLEXITY"
+    | "CURSOR"
+    | "OTHER"
+    | null;
+  transitPlanType: "SUBSCRIPTION" | "USAGE" | "TEAM" | null;
+  surfaces: Array<"HOME" | "TRANSIT_SUBSCRIPTIONS" | "AI_RECHARGE">;
   stockMode: "FINITE" | "UNLIMITED";
   stockQuantity: number | null;
   status: "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED";
   sortOrder: number;
   version: number;
   category: { id: string; slug: string; name: Record<Locale, string> };
-  translations: Record<Locale, { name: string; kicker: string; description: string }>;
+  translations: Record<
+    Locale,
+    { name: string; kicker: string; description: string }
+  >;
+  updatedAt: string;
+};
+export type AdminSkillCategory = {
+  id: string;
+  slug: string;
+  status: AdminProduct["status"];
+  sortOrder: number;
+  version: number;
+  name: Record<Locale, string>;
+  skillCount: number;
+  updatedAt: string;
+};
+export type AdminSkillTranslation = {
+  name: string;
+  summary: string;
+  description: string;
+  suitableFor: string[];
+  unsuitableFor: string[];
+  installHint: string;
+};
+export type AdminSkill = {
+  id: string;
+  slug: string;
+  category: { id: string; slug: string; name: Record<Locale, string> };
+  resourceType: "SKILL" | "PLUGIN" | "CONNECTOR";
+  sourceLevel: "OFFICIAL" | "COMMUNITY";
+  maintainer: string;
+  githubUrl: string;
+  documentationUrl: string | null;
+  license: string;
+  compatibleEnvironments: string[];
+  verifiedAt: string;
+  status: AdminProduct["status"];
+  sortOrder: number;
+  version: number;
+  translations: Record<Locale, AdminSkillTranslation>;
   updatedAt: string;
 };
 export type AdminProductQuery = {
@@ -193,27 +256,42 @@ export const setUnauthorizedHandler = (handler: (() => void) | null): void => {
   unauthorizedHandler = handler;
 };
 
-export async function request<T>(path: string, init: RequestInit = {}): Promise<{ data: T; meta?: PageMeta }> {
+export async function request<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<{ data: T; meta?: PageMeta }> {
   const method = init.method ?? "GET";
-  const usesFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+  const usesFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
     credentials: "include",
     headers: {
       ...(!usesFormData ? { "content-type": "application/json" } : {}),
-      ...(!["GET", "HEAD"].includes(method) && csrfToken ? { "x-csrf-token": csrfToken } : {}),
+      ...(!["GET", "HEAD"].includes(method) && csrfToken
+        ? { "x-csrf-token": csrfToken }
+        : {}),
       ...init.headers,
     },
   });
   if (response.status === 204) return { data: undefined as T };
-  const payload = await response.json() as ApiSuccess<T> | ApiFailure;
+  const payload = (await response.json()) as ApiSuccess<T> | ApiFailure;
   if (!response.ok || "error" in payload) {
-    const error = "error" in payload ? payload.error : { code: "REQUEST_FAILED", message: "Request failed." };
+    const error =
+      "error" in payload
+        ? payload.error
+        : { code: "REQUEST_FAILED", message: "Request failed." };
     if (response.status === 401) {
       setCsrfToken("");
       unauthorizedHandler?.();
     }
-    throw new ApiError(error.message, response.status, error.code, payload.requestId, error.details);
+    throw new ApiError(
+      error.message,
+      response.status,
+      error.code,
+      payload.requestId,
+      error.details,
+    );
   }
   return { data: payload.data, meta: payload.meta };
 }
@@ -227,21 +305,25 @@ export async function getSession(): Promise<SessionPayload> {
 const isNonNegativeSafeInteger = (value: unknown): value is number =>
   Number.isSafeInteger(value) && Number(value) >= 0;
 
-export const getHealth = async (signal?: AbortSignal): Promise<HealthStatus> => {
+export const getHealth = async (
+  signal?: AbortSignal,
+): Promise<HealthStatus> => {
   const health = (await request<HealthStatus>("/health", { signal })).data;
   if (
-    health.status !== "healthy"
-    || health.runtime !== "sites"
-    || health.database !== "connected"
-    || !["bound", "missing"].includes(health.objectStorage)
-    || !isNonNegativeSafeInteger(health.latencyMs?.database)
-    || !Number.isFinite(Date.parse(health.timestamp))
+    health.status !== "healthy" ||
+    health.runtime !== "sites" ||
+    health.database !== "connected" ||
+    !["bound", "missing"].includes(health.objectStorage) ||
+    !isNonNegativeSafeInteger(health.latencyMs?.database) ||
+    !Number.isFinite(Date.parse(health.timestamp))
   ) {
     throw new Error("Health response failed the runtime contract.");
   }
   return health;
 };
-export const getSitesReadiness = async (signal?: AbortSignal): Promise<SitesReadiness> =>
+export const getSitesReadiness = async (
+  signal?: AbortSignal,
+): Promise<SitesReadiness> =>
   (await request<SitesReadiness>("/admin/sites-readiness", { signal })).data;
 
 export const logout = () => {
@@ -251,12 +333,55 @@ export const logout = () => {
   }
   return Promise.resolve({ data: undefined });
 };
-export const getOverview = async (signal?: AbortSignal) => (await request<Overview>("/admin/overview", { signal })).data;
-export const getCategories = async (signal?: AbortSignal) => (await request<AdminCategory[]>("/admin/categories", { signal })).data;
-export const getCurrencyRateHistory = async (code: string, signal?: AbortSignal) =>
-  (await request<AdminCurrencyRate[]>(`/admin/currencies/${encodeURIComponent(code)}/rates`, { signal })).data;
-export const createCategory = (body: unknown) => request<AdminCategory>("/admin/categories", { method: "POST", body: JSON.stringify(body) });
-export const updateCategory = (id: string, body: unknown) => request<AdminCategory>(`/admin/categories/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+export const getOverview = async (signal?: AbortSignal) =>
+  (await request<Overview>("/admin/overview", { signal })).data;
+export const getCategories = async (signal?: AbortSignal) =>
+  (await request<AdminCategory[]>("/admin/categories", { signal })).data;
+export const getCurrencyRateHistory = async (
+  code: string,
+  signal?: AbortSignal,
+) =>
+  (
+    await request<AdminCurrencyRate[]>(
+      `/admin/currencies/${encodeURIComponent(code)}/rates`,
+      { signal },
+    )
+  ).data;
+export const createCategory = (body: unknown) =>
+  request<AdminCategory>("/admin/categories", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+export const updateCategory = (id: string, body: unknown) =>
+  request<AdminCategory>(`/admin/categories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+export const getSkillCategories = async (signal?: AbortSignal) =>
+  (await request<AdminSkillCategory[]>("/admin/skill-categories", { signal }))
+    .data;
+export const createSkillCategory = (body: unknown) =>
+  request<AdminSkillCategory>("/admin/skill-categories", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+export const updateSkillCategory = (id: string, body: unknown) =>
+  request<AdminSkillCategory>(`/admin/skill-categories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+export const getSkills = async (signal?: AbortSignal) =>
+  (await request<AdminSkill[]>("/admin/skills", { signal })).data;
+export const createSkill = (body: unknown) =>
+  request<AdminSkill>("/admin/skills", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+export const updateSkill = (id: string, body: unknown) =>
+  request<AdminSkill>(`/admin/skills/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 export const getProducts = async (
   query: AdminProductQuery = { page: 1, pageSize: 30 },
   signal?: AbortSignal,
@@ -273,24 +398,27 @@ export const getProducts = async (
   );
   const { meta } = response;
   if (
-    !meta
-    || !Number.isSafeInteger(meta.page)
-    || meta.page < 1
-    || meta.page !== query.page
-    || !Number.isSafeInteger(meta.pageSize)
-    || meta.pageSize < 1
-    || meta.pageSize !== query.pageSize
-    || !isNonNegativeSafeInteger(meta.total)
-    || !isNonNegativeSafeInteger(meta.pageCount)
-    || !Array.isArray(response.data)
-    || response.data.length > meta.pageSize
-    || meta.pageCount !== (meta.total === 0 ? 0 : Math.ceil(meta.total / meta.pageSize))
+    !meta ||
+    !Number.isSafeInteger(meta.page) ||
+    meta.page < 1 ||
+    meta.page !== query.page ||
+    !Number.isSafeInteger(meta.pageSize) ||
+    meta.pageSize < 1 ||
+    meta.pageSize !== query.pageSize ||
+    !isNonNegativeSafeInteger(meta.total) ||
+    !isNonNegativeSafeInteger(meta.pageCount) ||
+    !Array.isArray(response.data) ||
+    response.data.length > meta.pageSize ||
+    meta.pageCount !==
+      (meta.total === 0 ? 0 : Math.ceil(meta.total / meta.pageSize))
   ) {
     throw new Error("Product pagination metadata failed the runtime contract.");
   }
   return { data: response.data, meta };
 };
-export const getAllProducts = async (signal?: AbortSignal): Promise<AdminProduct[]> => {
+export const getAllProducts = async (
+  signal?: AbortSignal,
+): Promise<AdminProduct[]> => {
   const products: AdminProduct[] = [];
   let page = 1;
   let pageCount = 1;
@@ -301,17 +429,34 @@ export const getAllProducts = async (signal?: AbortSignal): Promise<AdminProduct
     );
     products.push(...response.data);
     pageCount = response.meta?.pageCount ?? 1;
-    if (!Number.isSafeInteger(pageCount) || pageCount < 0 || pageCount > 10_000) {
+    if (
+      !Number.isSafeInteger(pageCount) ||
+      pageCount < 0 ||
+      pageCount > 10_000
+    ) {
       throw new Error("Invalid product pagination metadata.");
     }
     page += 1;
   } while (page <= pageCount);
   return products;
 };
-export const createProduct = (body: unknown) => request<AdminProduct>("/admin/products", { method: "POST", body: JSON.stringify(body) });
-export const updateProduct = (id: string, body: unknown) => request<AdminProduct>(`/admin/products/${id}`, { method: "PATCH", body: JSON.stringify(body) });
-export const getCurrencies = async (signal?: AbortSignal) => (await request<AdminCurrency[]>("/admin/currencies", { signal })).data;
-export const updateRate = (code: string, rate: string, reason: string) => request(`/admin/currencies/${code}/rate`, { method: "PATCH", body: JSON.stringify({ rate, reason }) });
+export const createProduct = (body: unknown) =>
+  request<AdminProduct>("/admin/products", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+export const updateProduct = (id: string, body: unknown) =>
+  request<AdminProduct>(`/admin/products/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+export const getCurrencies = async (signal?: AbortSignal) =>
+  (await request<AdminCurrency[]>("/admin/currencies", { signal })).data;
+export const updateRate = (code: string, rate: string, reason: string) =>
+  request(`/admin/currencies/${code}/rate`, {
+    method: "PATCH",
+    body: JSON.stringify({ rate, reason }),
+  });
 export const getAuditPage = async (
   query: AuditEventQuery = { page: 1, pageSize: 100 },
   signal?: AbortSignal,
@@ -323,7 +468,8 @@ export const getAuditPage = async (
   if (query.search?.trim()) params.set("search", query.search.trim());
   if (query.result) params.set("result", query.result);
   if (query.actor) params.set("actor", query.actor);
-  if (query.targetType?.trim()) params.set("targetType", query.targetType.trim());
+  if (query.targetType?.trim())
+    params.set("targetType", query.targetType.trim());
   if (query.timeRange) params.set("timeRange", query.timeRange);
   if (query.scope) params.set("scope", query.scope);
   if (query.category) params.set("category", query.category);
@@ -337,26 +483,30 @@ export const getAuditPage = async (
   }>(`/admin/audit?${params.toString()}`, { signal });
   const { meta } = response;
   const securitySummary = response.data?.facets?.securitySummary;
-  const validSecuritySummary = securitySummary !== undefined
-    && isNonNegativeSafeInteger(securitySummary.total)
-    && isNonNegativeSafeInteger(securitySummary.last24Hours)
-    && isNonNegativeSafeInteger(securitySummary.needsReview)
-    && isNonNegativeSafeInteger(securitySummary.deniedOrFailed);
+  const validSecuritySummary =
+    securitySummary !== undefined &&
+    isNonNegativeSafeInteger(securitySummary.total) &&
+    isNonNegativeSafeInteger(securitySummary.last24Hours) &&
+    isNonNegativeSafeInteger(securitySummary.needsReview) &&
+    isNonNegativeSafeInteger(securitySummary.deniedOrFailed);
   if (
-    !meta
-    || !Number.isSafeInteger(meta.page)
-    || meta.page < 1
-    || !Number.isSafeInteger(meta.pageSize)
-    || meta.pageSize < 1
-    || !isNonNegativeSafeInteger(meta.total)
-    || !isNonNegativeSafeInteger(meta.pageCount)
-    || !Array.isArray(response.data?.items)
-    || !Array.isArray(response.data?.facets?.targetTypes)
-    || response.data.facets.targetTypes.some((value) => (
-      typeof value !== "string" || value.length === 0 || value.length > 80
-    ))
-    || (query.scope === "security" && !validSecuritySummary)
-    || (query.scope !== "security" && securitySummary !== undefined && !validSecuritySummary)
+    !meta ||
+    !Number.isSafeInteger(meta.page) ||
+    meta.page < 1 ||
+    !Number.isSafeInteger(meta.pageSize) ||
+    meta.pageSize < 1 ||
+    !isNonNegativeSafeInteger(meta.total) ||
+    !isNonNegativeSafeInteger(meta.pageCount) ||
+    !Array.isArray(response.data?.items) ||
+    !Array.isArray(response.data?.facets?.targetTypes) ||
+    response.data.facets.targetTypes.some(
+      (value) =>
+        typeof value !== "string" || value.length === 0 || value.length > 80,
+    ) ||
+    (query.scope === "security" && !validSecuritySummary) ||
+    (query.scope !== "security" &&
+      securitySummary !== undefined &&
+      !validSecuritySummary)
   ) {
     throw new Error("Audit pagination metadata failed the runtime contract.");
   }
@@ -369,9 +519,8 @@ export const getAuditPage = async (
     },
   };
 };
-export const getAudit = async (signal?: AbortSignal) => (
-  await getAuditPage({ page: 1, pageSize: 100 }, signal)
-).data;
+export const getAudit = async (signal?: AbortSignal) =>
+  (await getAuditPage({ page: 1, pageSize: 100 }, signal)).data;
 export const exportAuditCsv = async (
   input: Omit<AuditEventExportInput, "confirmation">,
 ): Promise<AuditEventExport> => {
@@ -390,7 +539,7 @@ export const exportAuditCsv = async (
   if (!response.ok) {
     let payload: ApiFailure | null = null;
     try {
-      payload = await response.json() as ApiFailure;
+      payload = (await response.json()) as ApiFailure;
     } catch {
       payload = null;
     }
@@ -410,7 +559,12 @@ export const exportAuditCsv = async (
       error.details,
     );
   }
-  if (!response.headers.get("content-type")?.toLocaleLowerCase().includes("text/csv")) {
+  if (
+    !response.headers
+      .get("content-type")
+      ?.toLocaleLowerCase()
+      .includes("text/csv")
+  ) {
     throw new ApiError(
       "The server returned an invalid audit export.",
       502,
@@ -418,45 +572,51 @@ export const exportAuditCsv = async (
     );
   }
   const disposition = response.headers.get("content-disposition") ?? "";
-  const serverFilename = disposition.match(/filename="([A-Za-z0-9._-]+)"/u)?.[1];
+  const serverFilename = disposition.match(
+    /filename="([A-Za-z0-9._-]+)"/u,
+  )?.[1];
   const countHeader = response.headers.get("x-export-record-count");
   const count = countHeader === null ? null : Number(countHeader);
   return {
     blob: await response.blob(),
-    filename: serverFilename?.startsWith("cloudbridge-audit-")
-      && serverFilename.endsWith(".csv")
-      ? serverFilename
-      : auditCsvFilename(),
-    recordCount: Number.isSafeInteger(count) && Number(count) >= 0 ? count : null,
+    filename:
+      serverFilename?.startsWith("cloudbridge-audit-") &&
+      serverFilename.endsWith(".csv")
+        ? serverFilename
+        : auditCsvFilename(),
+    recordCount:
+      Number.isSafeInteger(count) && Number(count) >= 0 ? count : null,
   };
 };
-export const getTeamOverview = async (signal?: AbortSignal) => (
-  await request<AdminTeamOverview>("/admin/access/members", { signal })
-).data;
-export const getRolesOverview = async (signal?: AbortSignal) => (
-  await request<AdminRolesOverview>("/admin/access/roles", { signal })
-).data;
-export const createTeamMember = async (body: CreateAdminMemberInput) => (
-  await request<AdminTeamMember>("/admin/access/members", {
-    method: "POST",
-    body: JSON.stringify(body),
-  })
-).data;
+export const getTeamOverview = async (signal?: AbortSignal) =>
+  (await request<AdminTeamOverview>("/admin/access/members", { signal })).data;
+export const getRolesOverview = async (signal?: AbortSignal) =>
+  (await request<AdminRolesOverview>("/admin/access/roles", { signal })).data;
+export const createTeamMember = async (body: CreateAdminMemberInput) =>
+  (
+    await request<AdminTeamMember>("/admin/access/members", {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+  ).data;
 export const updateTeamMember = async (
   id: string,
   body: UpdateAdminMemberInput,
-) => (
-  await request<AdminTeamMember>(`/admin/access/members/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  })
-).data;
+) =>
+  (
+    await request<AdminTeamMember>(
+      `/admin/access/members/${encodeURIComponent(id)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      },
+    )
+  ).data;
 
 export const getManagedMedia = async (
   signal?: AbortSignal,
-): Promise<AdminManagedMediaObject[]> => (
-  await request<AdminManagedMediaObject[]>("/admin/media", { signal })
-).data;
+): Promise<AdminManagedMediaObject[]> =>
+  (await request<AdminManagedMediaObject[]>("/admin/media", { signal })).data;
 
 export const uploadManagedMedia = async (
   file: File,
@@ -465,10 +625,12 @@ export const uploadManagedMedia = async (
   const form = new FormData();
   form.set("file", file);
   form.set("reason", reason);
-  return (await request<AdminManagedMediaObject>("/admin/media", {
-    method: "POST",
-    body: form,
-  })).data;
+  return (
+    await request<AdminManagedMediaObject>("/admin/media", {
+      method: "POST",
+      body: form,
+    })
+  ).data;
 };
 
 export const replaceManagedMedia = async (
@@ -480,10 +642,12 @@ export const replaceManagedMedia = async (
   form.set("sourcePath", sourcePath);
   form.set("file", file);
   form.set("reason", reason);
-  return (await request<AdminMediaReplacement>("/admin/media/replace", {
-    method: "POST",
-    body: form,
-  })).data;
+  return (
+    await request<AdminMediaReplacement>("/admin/media/replace", {
+      method: "POST",
+      body: form,
+    })
+  ).data;
 };
 
 export const deleteManagedMedia = async (

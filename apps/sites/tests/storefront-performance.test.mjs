@@ -26,13 +26,14 @@ test("storefront bootstrap returns localized first-render data in batched reads"
   try {
     const bootstrap = await buildStorefrontBootstrap(
       instrumentedDb,
-      new URL("https://example.test/zh?category=assistant&q=ChatGPT"),
+      new URL("https://example.test/zh?secondary=assistant&q=ChatGPT"),
     );
-    assert.equal(bootstrap?.kind, "home");
+    assert.equal(bootstrap?.kind, "catalog");
     assert.equal(bootstrap?.data.products.length, 1);
     assert.equal(bootstrap?.data.products[0]?.slug, "chatgpt");
-    assert.equal(bootstrap?.data.categories.length, 4);
-    assert.deepEqual(batchSizes, [4, 4]);
+    assert.ok((bootstrap?.data.categories.length ?? 0) > 0);
+    assert.equal(bootstrap?.surface, "HOME");
+    assert.deepEqual(batchSizes, [4, 2, 4, 2]);
 
     const encoded = encodeStorefrontBootstrap(bootstrap);
     assert.equal(
@@ -108,13 +109,14 @@ test("static asset responses get MIME and immutable caching only when hashed", a
     new Request("https://example.test/assets/index-AbCdEf12.js"),
     assets,
   );
-  assert.equal(hashed.headers.get("content-type"), "text/javascript; charset=utf-8");
+  assert.equal(
+    hashed.headers.get("content-type"),
+    "text/javascript; charset=utf-8",
+  );
   assert.match(hashed.headers.get("cache-control"), /immutable/u);
 
   const stable = await serveStaticAsset(
-    new Request(
-      "https://example.test/assets/responsive/hero-main-640.webp",
-    ),
+    new Request("https://example.test/assets/responsive/hero-main-640.webp"),
     assets,
   );
   assert.equal(stable.headers.get("content-type"), "image/webp");

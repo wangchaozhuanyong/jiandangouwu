@@ -13,11 +13,12 @@ export default async function ProductPage({
   const { locale, slug } = await params;
   if (!isLocale(locale)) notFound();
   const bootstrap = await readStorefrontBootstrap();
-  const initialData = (
-    bootstrap?.kind === "product"
-    && bootstrap.locale === locale
-    && bootstrap.slug === slug
-  ) ? bootstrap.data : null;
+  const initialData =
+    bootstrap?.kind === "product" &&
+    bootstrap.locale === locale &&
+    bootstrap.slug === slug
+      ? bootstrap.data
+      : null;
   return (
     <ProductDetailView
       locale={locale}

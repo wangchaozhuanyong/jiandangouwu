@@ -5,6 +5,7 @@ export type Page =
   | "products"
   | "categories"
   | "banners"
+  | "skills"
   | "media"
   | "translations"
   | "contacts"
@@ -60,22 +61,67 @@ export type AdminNavigationGroup = {
 
 export const ADMIN_NAVIGATION = [
   { kind: "link", id: "dashboard", labelKey: "workspace" },
-  { kind: "group", id: "orders-after-sales", labelKey: "ordersAfterSales", items: ["orders", "disputes"] },
-  { kind: "group", id: "catalog-management", labelKey: "catalogManagement", items: ["products", "categories"] },
-  { kind: "group", id: "content-storefront", labelKey: "contentStorefront", items: ["banners", "media", "translations"] },
-  { kind: "group", id: "support-notifications", labelKey: "supportNotifications", items: ["contacts", "notifications", "telegram-bot"] },
-  { kind: "group", id: "finance-settlement", labelKey: "financeSettlement", items: ["currencies", "payments", "reconciliation"] },
-  { kind: "group", id: "team-access", labelKey: "teamAccess", items: ["team", "roles"] },
-  { kind: "group", id: "security-compliance", labelKey: "securityCompliance", items: ["security", "security-events", "data-security", "secrets"] },
-  { kind: "group", id: "systems-operations", labelKey: "systemsOperations", items: ["logs", "backups", "integrations", "settings"] },
+  {
+    kind: "group",
+    id: "orders-after-sales",
+    labelKey: "ordersAfterSales",
+    items: ["orders", "disputes"],
+  },
+  {
+    kind: "group",
+    id: "catalog-management",
+    labelKey: "catalogManagement",
+    items: ["products", "categories"],
+  },
+  {
+    kind: "group",
+    id: "content-storefront",
+    labelKey: "contentStorefront",
+    items: ["banners", "media", "translations", "skills"],
+  },
+  {
+    kind: "group",
+    id: "support-notifications",
+    labelKey: "supportNotifications",
+    items: ["contacts", "notifications", "telegram-bot"],
+  },
+  {
+    kind: "group",
+    id: "finance-settlement",
+    labelKey: "financeSettlement",
+    items: ["currencies", "payments", "reconciliation"],
+  },
+  {
+    kind: "group",
+    id: "team-access",
+    labelKey: "teamAccess",
+    items: ["team", "roles"],
+  },
+  {
+    kind: "group",
+    id: "security-compliance",
+    labelKey: "securityCompliance",
+    items: ["security", "security-events", "data-security", "secrets"],
+  },
+  {
+    kind: "group",
+    id: "systems-operations",
+    labelKey: "systemsOperations",
+    items: ["logs", "backups", "integrations", "settings"],
+  },
 ] as const satisfies readonly (AdminNavigationLink | AdminNavigationGroup)[];
 
-export function findAdminNavigationGroup(page: Page): AdminNavigationGroup | null {
-  return ADMIN_NAVIGATION.find(
-    (entry): entry is (typeof ADMIN_NAVIGATION)[number] & AdminNavigationGroup => (
-      entry.kind === "group" && entry.items.some((item) => item === page)
-    ),
-  ) ?? null;
+export function findAdminNavigationGroup(
+  page: Page,
+): AdminNavigationGroup | null {
+  return (
+    ADMIN_NAVIGATION.find(
+      (
+        entry,
+      ): entry is (typeof ADMIN_NAVIGATION)[number] & AdminNavigationGroup =>
+        entry.kind === "group" && entry.items.some((item) => item === page),
+    ) ?? null
+  );
 }
 
 export function toggleAdminNavigationGroup(
@@ -104,6 +150,7 @@ export const ADMIN_PAGES: readonly Page[] = [
   "products",
   "categories",
   "banners",
+  "skills",
   "media",
   "translations",
   "contacts",
@@ -131,8 +178,14 @@ const ADMIN_PAGE_ACCESS: Readonly<Record<Page, readonly string[] | null>> = {
   products: ["catalog.read"],
   categories: ["catalog.read"],
   banners: ["content.read"],
+  skills: ["content.read"],
   media: ["catalog.read", "content.read"],
-  translations: ["catalog.read", "content.read", "support.read", "settings.read"],
+  translations: [
+    "catalog.read",
+    "content.read",
+    "support.read",
+    "settings.read",
+  ],
   contacts: ["support.read"],
   notifications: ["settings.read"],
   "telegram-bot": ["settings.read"],
@@ -156,7 +209,10 @@ export function canAccessAdminPage(
   permissions: readonly string[],
 ): boolean {
   const required = ADMIN_PAGE_ACCESS[page];
-  return required === null || required.some((permission) => permissions.includes(permission));
+  return (
+    required === null ||
+    required.some((permission) => permissions.includes(permission))
+  );
 }
 
 export const UX_TIMINGS = {

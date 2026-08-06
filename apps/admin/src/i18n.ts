@@ -19,6 +19,7 @@ export const adminCopy = {
     products: "商品中心",
     categories: "商品分类",
     banners: "首页轮播",
+    skills: "Skill 推荐",
     media: "媒体资源",
     translations: "语言与内容",
     contacts: "联系方式",
@@ -97,7 +98,8 @@ export const adminCopy = {
     submitting: "正在提交",
     saveError: "保存失败，请检查输入后重试。",
     empty: "暂无记录",
-    revealConfirm: "将显示此订单的原始联系方式。该操作会写入审计日志，是否继续？",
+    revealConfirm:
+      "将显示此订单的原始联系方式。该操作会写入审计日志，是否继续？",
     rateConfirm: "将修改此币种的换算汇率，并影响后续新订单价格。是否确认提交？",
     productConfirm: "商品价格或库存已变化，将影响后续新订单。是否确认保存？",
     unsavedConfirm: "当前修改尚未保存。确定要离开吗？",
@@ -120,6 +122,7 @@ export const adminCopy = {
     products: "Products",
     categories: "Categories",
     banners: "Hero stories",
+    skills: "Skill recommendations",
     media: "Media library",
     translations: "Language & copy",
     contacts: "Contact channels",
@@ -145,7 +148,8 @@ export const adminCopy = {
     languageEn: "English",
     live: "Live",
     hello: "Welcome back",
-    overviewNote: "A live view of the catalog, manual orders and security posture.",
+    overviewNote:
+      "A live view of the catalog, manual orders and security posture.",
     totalProducts: "All products",
     activeProducts: "Active products",
     openOrders: "Open orders",
@@ -153,11 +157,14 @@ export const adminCopy = {
     latestOrders: "Latest orders",
     loading: "Loading data",
     refreshing: "Refreshing in the background. Current data remains available.",
-    refreshFailed: "Refresh did not complete. The previous data remains visible.",
+    refreshFailed:
+      "Refresh did not complete. The previous data remains visible.",
     offline: "You are offline. Reconnect and try again.",
-    slowNetwork: "The network is taking longer than usual. We are still waiting for the server.",
+    slowNetwork:
+      "The network is taking longer than usual. We are still waiting for the server.",
     loadError: "Data is temporarily unavailable",
-    forbidden: "This account does not have permission to view or change this module.",
+    forbidden:
+      "This account does not have permission to view or change this module.",
     retry: "Retry",
     addCategory: "Add category",
     edit: "Edit",
@@ -198,9 +205,12 @@ export const adminCopy = {
     submitting: "Submitting",
     saveError: "The change could not be saved. Check the input and try again.",
     empty: "No records",
-    revealConfirm: "This will reveal the original order contact and write an audit event. Continue?",
-    rateConfirm: "This will change the currency rate used by future new orders. Confirm the update?",
-    productConfirm: "Price or stock changed and will affect future new orders. Confirm save?",
+    revealConfirm:
+      "This will reveal the original order contact and write an audit event. Continue?",
+    rateConfirm:
+      "This will change the currency rate used by future new orders. Confirm the update?",
+    productConfirm:
+      "Price or stock changed and will affect future new orders. Confirm save?",
     unsavedConfirm: "You have unsaved changes. Leave without saving?",
   },
 } as const satisfies Record<Locale, Record<string, unknown>>;

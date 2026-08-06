@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   ArrowsClockwise,
   Bell,
   CaretRight,
@@ -19,6 +20,7 @@ import {
   ShieldCheck,
   SignOut,
   SlidersHorizontal,
+  Star,
   TelegramLogo,
   Translate,
   UsersThree,
@@ -57,41 +59,62 @@ import {
   type AdminNavigationGroupId,
   type Page,
 } from "./admin-model";
-import {
-  AdminShellSkeleton,
-  Dialog,
-  HelpTip,
-  PanelState,
-} from "./admin-ui";
-import {
-  adminPageHelp,
-  helpTriggerLabel,
-} from "./help-content";
+import { AdminShellSkeleton, Dialog, HelpTip, PanelState } from "./admin-ui";
+import { adminPageHelp, helpTriggerLabel } from "./help-content";
 import { adminCopy } from "./i18n";
+import {
+  canLoadPreviewV2,
+  matchPreviewV2Route,
+} from "./preview-v2/preview-model";
+
+const isPreviewV2Development = (): boolean => import.meta.env?.DEV === true;
+
+const PreviewV2App = import.meta.env?.DEV
+  ? lazy(() => import("./preview-v2/preview-v2-app"))
+  : null;
 
 const DashboardPage = lazy(() => import("./pages/dashboard-page"));
 const ProductsPage = lazy(() => import("./pages/products-page"));
 const CategoriesPage = lazy(() => import("./pages/categories-page"));
 const OrdersPage = lazy(() => import("./pages/orders-page"));
 const AfterSalesPage = lazy(() => import("./features/orders/after-sales-page"));
-const ManualPaymentsPage = lazy(() => import("./features/finance/manual-payments-page"));
-const ReconciliationPage = lazy(() => import("./features/finance/reconciliation-page"));
-const TelegramNewOrderPage = lazy(() => import("./features/notifications/telegram-new-order-page"));
-const NotificationsPage = lazy(() => import("./features/notifications/notifications-page"));
+const ManualPaymentsPage = lazy(
+  () => import("./features/finance/manual-payments-page"),
+);
+const ReconciliationPage = lazy(
+  () => import("./features/finance/reconciliation-page"),
+);
+const TelegramNewOrderPage = lazy(
+  () => import("./features/notifications/telegram-new-order-page"),
+);
+const NotificationsPage = lazy(
+  () => import("./features/notifications/notifications-page"),
+);
 const CurrenciesPage = lazy(() => import("./pages/currencies-page"));
 const AuditPage = lazy(() => import("./pages/audit-page"));
 const SecurityPage = lazy(() => import("./pages/security-page"));
 const BannersPage = lazy(() => import("./features/content/banners-page"));
+const SkillsPage = lazy(() => import("./features/content/skills-page"));
 const ContactsPage = lazy(() => import("./features/support/contacts-page"));
 const SettingsPage = lazy(() => import("./features/settings/settings-page"));
 const TeamPage = lazy(() => import("./features/access/team-page"));
 const RolesPage = lazy(() => import("./features/access/roles-page"));
-const TranslationsPage = lazy(() => import("./features/translations/translations-page"));
-const SecurityEventsPage = lazy(() => import("./features/security-events/security-events-page"));
-const DataSecurityPage = lazy(() => import("./features/data-security/data-security-page"));
+const TranslationsPage = lazy(
+  () => import("./features/translations/translations-page"),
+);
+const SecurityEventsPage = lazy(
+  () => import("./features/security-events/security-events-page"),
+);
+const DataSecurityPage = lazy(
+  () => import("./features/data-security/data-security-page"),
+);
 const MediaPage = lazy(() => import("./features/media/media-page"));
-const SitesPlatformPage = lazy(() => import("./features/sites/sites-platform-page"));
-const SitesBackupsPage = lazy(() => import("./features/sites/sites-backups-page"));
+const SitesPlatformPage = lazy(
+  () => import("./features/sites/sites-platform-page"),
+);
+const SitesBackupsPage = lazy(
+  () => import("./features/sites/sites-backups-page"),
+);
 const pageNavigationIcons: Record<Page, typeof CirclesFour> = {
   dashboard: CirclesFour,
   orders: Receipt,
@@ -99,6 +122,7 @@ const pageNavigationIcons: Record<Page, typeof CirclesFour> = {
   products: Cube,
   categories: ListChecks,
   banners: ImageIcon,
+  skills: Star,
   media: CloudArrowUp,
   translations: Translate,
   contacts: ChatsCircle,
@@ -119,30 +143,40 @@ const pageNavigationIcons: Record<Page, typeof CirclesFour> = {
   settings: SlidersHorizontal,
 };
 
-const groupNavigationIcons: Record<AdminNavigationGroupId, typeof CirclesFour> = {
-  "orders-after-sales": Receipt,
-  "catalog-management": Cube,
-  "content-storefront": ImageIcon,
-  "support-notifications": ChatsCircle,
-  "finance-settlement": Coins,
-  "team-access": UsersThree,
-  "security-compliance": LockKey,
-  "systems-operations": SlidersHorizontal,
-};
+const groupNavigationIcons: Record<AdminNavigationGroupId, typeof CirclesFour> =
+  {
+    "orders-after-sales": Receipt,
+    "catalog-management": Cube,
+    "content-storefront": ImageIcon,
+    "support-notifications": ChatsCircle,
+    "finance-settlement": Coins,
+    "team-access": UsersThree,
+    "security-compliance": LockKey,
+    "systems-operations": SlidersHorizontal,
+  };
 
 export function App() {
   const [locale, setLocale] = useState<Locale>("zh");
   const [user, setUser] = useState<AdminUser | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
-  const [page, setPage] = useState<Page>(() => (
-    typeof window === "undefined" ? "dashboard" : pageFromPath(window.location.pathname)
-  ));
+  const [previewV2Route] = useState(() =>
+    typeof window === "undefined"
+      ? { requested: false as const, pageId: null }
+      : matchPreviewV2Route(window.location.pathname),
+  );
+  const [page, setPage] = useState<Page>(() =>
+    typeof window === "undefined"
+      ? "dashboard"
+      : pageFromPath(window.location.pathname),
+  );
 
   const loadSession = useCallback(async (silent = false) => {
     if (!silent) setSessionLoading(true);
     try {
       const session = await getSession();
-      setAdminCacheScope(`${session.user.id}:${[...session.user.permissions].sort().join("|")}`);
+      setAdminCacheScope(
+        `${session.user.id}:${[...session.user.permissions].sort().join("|")}`,
+      );
       setUser(session.user);
     } catch {
       if (!silent) {
@@ -164,9 +198,12 @@ export function App() {
     });
     return () => setUnauthorizedHandler(null);
   }, []);
-  useEffect(() => { void loadSession(); }, [loadSession]);
   useEffect(() => {
-    if (localStorage.getItem("cloudbridge-admin-locale") === "en") setLocale("en");
+    void loadSession();
+  }, [loadSession]);
+  useEffect(() => {
+    if (localStorage.getItem("cloudbridge-admin-locale") === "en")
+      setLocale("en");
   }, []);
   useEffect(() => {
     localStorage.setItem("cloudbridge-admin-locale", locale);
@@ -174,15 +211,49 @@ export function App() {
   }, [locale]);
 
   useEffect(() => {
+    if (previewV2Route.requested) return;
     const canonical = pagePath(page);
     if (window.location.pathname !== canonical) {
       window.history.replaceState({ page }, "", canonical);
     }
-  }, []);
+  }, [page, previewV2Route.requested]);
 
-  if (sessionLoading) return <AdminShellSkeleton label={adminCopy[locale].loading as string} locale={locale} />;
+  if (sessionLoading)
+    return (
+      <AdminShellSkeleton
+        label={adminCopy[locale].loading as string}
+        locale={locale}
+      />
+    );
   if (!user) {
     return <SitesAuthScreen locale={locale} setLocale={setLocale} />;
+  }
+
+  if (previewV2Route.requested) {
+    if (
+      !canLoadPreviewV2(isPreviewV2Development(), previewV2Route) ||
+      !PreviewV2App
+    ) {
+      return <PreviewV2Unavailable locale={locale} />;
+    }
+    return (
+      <AdminExperienceProvider>
+        <Suspense
+          fallback={
+            <AdminShellSkeleton
+              label={adminCopy[locale].loading as string}
+              locale={locale}
+            />
+          }
+        >
+          <PreviewV2App
+            initialLocale={locale}
+            initialPageId={previewV2Route.pageId}
+            sessionDisplayName={user.displayName}
+          />
+        </Suspense>
+      </AdminExperienceProvider>
+    );
   }
 
   return (
@@ -201,6 +272,43 @@ export function App() {
         }}
       />
     </AdminExperienceProvider>
+  );
+}
+
+function PreviewV2Unavailable({ locale }: { locale: Locale }) {
+  return (
+    <main className="auth-page admin-preview-v2-unavailable">
+      <section className="auth-card">
+        <div className="auth-brand">
+          <span>
+            <img
+              src="/assets/cloudbridge-logo.png"
+              alt=""
+              width={349}
+              height={176}
+            />
+          </span>
+          <strong>{adminCopy[locale].brandName as string}</strong>
+        </div>
+        <div className="auth-mark">
+          <WarningCircle aria-hidden="true" size={30} weight="duotone" />
+        </div>
+        <h1>
+          {locale === "zh"
+            ? "404 · V2 预览不可用"
+            : "404 · V2 preview unavailable"}
+        </h1>
+        <p className="auth-intro">
+          {locale === "zh"
+            ? "该界面设计预览只在开发环境且通过真实管理会话后开放，生产环境不会加载预览组件。"
+            : "This interface-design preview is available only in development after a real admin session. Production does not load the preview component."}
+        </p>
+        <a className="primary-action" href="/admin/dashboard">
+          <ArrowLeft aria-hidden="true" size={19} />
+          {locale === "zh" ? "返回正式后台" : "Return to live admin"}
+        </a>
+      </section>
+    </main>
   );
 }
 
@@ -225,34 +333,56 @@ function AuthenticatedAdmin({
   const { confirmNavigation, notify } = useAdminStatus();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const [expandedGroup, setExpandedGroup] = useState<AdminNavigationGroupId | null>(
-    () => findAdminNavigationGroup(page)?.id ?? null,
-  );
+  const [expandedGroup, setExpandedGroup] =
+    useState<AdminNavigationGroupId | null>(
+      () => findAdminNavigationGroup(page)?.id ?? null,
+    );
   const [announcement, setAnnouncement] = useState("");
   const headingRef = useRef<HTMLHeadingElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
 
-  const go = useCallback((next: Page, historyMode: "push" | "replace" = "push") => {
-    if (!canAccessAdminPage(next, user.permissions)) {
-      notify(locale === "zh" ? "当前账号没有访问这个页面的权限。" : "This account cannot access that page.", "error");
-      return;
-    }
-    if (next !== page && !confirmNavigation(locale)) return;
-    if (next !== page) {
-      window.history[historyMode === "push" ? "pushState" : "replaceState"]({ page: next }, "", pagePath(next));
-      setPage(next);
-    }
-    setMenuOpen(false);
-  }, [confirmNavigation, locale, notify, page, setPage, user.permissions]);
+  const go = useCallback(
+    (next: Page, historyMode: "push" | "replace" = "push") => {
+      if (!canAccessAdminPage(next, user.permissions)) {
+        notify(
+          locale === "zh"
+            ? "当前账号没有访问这个页面的权限。"
+            : "This account cannot access that page.",
+          "error",
+        );
+        return;
+      }
+      if (next !== page && !confirmNavigation(locale)) return;
+      if (next !== page) {
+        window.history[historyMode === "push" ? "pushState" : "replaceState"](
+          { page: next },
+          "",
+          pagePath(next),
+        );
+        setPage(next);
+      }
+      setMenuOpen(false);
+    },
+    [confirmNavigation, locale, notify, page, setPage, user.permissions],
+  );
 
   useEffect(() => {
     const onPopState = () => {
       const next = pageFromPath(window.location.pathname);
       if (!canAccessAdminPage(next, user.permissions)) {
-        window.history.replaceState({ page: "dashboard" }, "", pagePath("dashboard"));
+        window.history.replaceState(
+          { page: "dashboard" },
+          "",
+          pagePath("dashboard"),
+        );
         setPage("dashboard");
-        notify(locale === "zh" ? "该页面需要其他权限，已返回工作台。" : "That page needs another permission. Returned to the workspace.", "error");
+        notify(
+          locale === "zh"
+            ? "该页面需要其他权限，已返回工作台。"
+            : "That page needs another permission. Returned to the workspace.",
+          "error",
+        );
         return;
       }
       if (next !== page && !confirmNavigation(locale)) {
@@ -267,7 +397,11 @@ function AuthenticatedAdmin({
 
   useEffect(() => {
     if (canAccessAdminPage(page, user.permissions)) return;
-    window.history.replaceState({ page: "dashboard" }, "", pagePath("dashboard"));
+    window.history.replaceState(
+      { page: "dashboard" },
+      "",
+      pagePath("dashboard"),
+    );
     setPage("dashboard");
   }, [page, setPage, user.permissions]);
 
@@ -278,7 +412,9 @@ function AuthenticatedAdmin({
   useLayoutEffect(() => {
     const title = t[page] as string;
     document.title = `${title} · CloudBridge`;
-    setAnnouncement(locale === "zh" ? `已进入${title}` : `${title} page opened`);
+    setAnnouncement(
+      locale === "zh" ? `已进入${title}` : `${title} page opened`,
+    );
     headingRef.current?.focus({ preventScroll: true });
   }, [locale, page, t]);
 
@@ -308,7 +444,12 @@ function AuthenticatedAdmin({
       await logout();
       onSignedOut();
     } catch {
-      notify(locale === "zh" ? "退出登录未完成，请重试。" : "Sign out did not complete. Try again.", "error");
+      notify(
+        locale === "zh"
+          ? "退出登录未完成，请重试。"
+          : "Sign out did not complete. Try again.",
+        "error",
+      );
     }
   };
 
@@ -316,9 +457,27 @@ function AuthenticatedAdmin({
     <div className="admin-shell">
       <aside className={menuOpen ? "is-open" : ""}>
         <div className="admin-brand">
-          <span><img src="/assets/cloudbridge-logo.png" alt="" width={349} height={176} /></span>
-          <div><strong>{t.brandName as string}</strong></div>
-          <button className="mobile-close" onClick={() => { setMenuOpen(false); menuButtonRef.current?.focus(); }} aria-label={locale === "zh" ? "关闭导航" : "Close navigation"}><X /></button>
+          <span>
+            <img
+              src="/assets/cloudbridge-logo.png"
+              alt=""
+              width={349}
+              height={176}
+            />
+          </span>
+          <div>
+            <strong>{t.brandName as string}</strong>
+          </div>
+          <button
+            className="mobile-close"
+            onClick={() => {
+              setMenuOpen(false);
+              menuButtonRef.current?.focus();
+            }}
+            aria-label={locale === "zh" ? "关闭导航" : "Close navigation"}
+          >
+            <X />
+          </button>
         </div>
         <nav aria-label={locale === "zh" ? "管理后台导航" : "Admin navigation"}>
           {ADMIN_NAVIGATION.map((entry) => {
@@ -334,29 +493,46 @@ function AuthenticatedAdmin({
                   }}
                   key={entry.id}
                 >
-                  <Icon size={18} weight={page === entry.id ? "fill" : "regular"} />
+                  <Icon
+                    size={18}
+                    weight={page === entry.id ? "fill" : "regular"}
+                  />
                   <span>{t[entry.labelKey] as string}</span>
                   <CaretRight size={13} />
                 </button>
               );
             }
 
-            const visibleItems = entry.items.filter((item) => canAccessAdminPage(item, user.permissions));
+            const visibleItems = entry.items.filter((item) =>
+              canAccessAdminPage(item, user.permissions),
+            );
             if (visibleItems.length === 0) return null;
             const Icon = groupNavigationIcons[entry.id];
             const isExpanded = expandedGroup === entry.id;
-            const containsCurrentPage = visibleItems.some((item) => item === page);
+            const containsCurrentPage = visibleItems.some(
+              (item) => item === page,
+            );
             const regionId = `admin-navigation-${entry.id}`;
 
             return (
-              <div className={`admin-nav-group${isExpanded ? " is-expanded" : ""}`} key={entry.id}>
+              <div
+                className={`admin-nav-group${isExpanded ? " is-expanded" : ""}`}
+                key={entry.id}
+              >
                 <button
                   className={`admin-nav-primary${containsCurrentPage ? " is-current" : ""}`}
                   aria-expanded={isExpanded}
                   aria-controls={regionId}
-                  onClick={() => setExpandedGroup((current) => toggleAdminNavigationGroup(current, entry.id))}
+                  onClick={() =>
+                    setExpandedGroup((current) =>
+                      toggleAdminNavigationGroup(current, entry.id),
+                    )
+                  }
                 >
-                  <Icon size={18} weight={containsCurrentPage ? "fill" : "regular"} />
+                  <Icon
+                    size={18}
+                    weight={containsCurrentPage ? "fill" : "regular"}
+                  />
                   <span>{t[entry.labelKey] as string}</span>
                   <CaretRight className="admin-nav-caret" size={13} />
                 </button>
@@ -371,7 +547,10 @@ function AuthenticatedAdmin({
                           onClick={() => go(item)}
                           key={item}
                         >
-                          <ItemIcon size={15} weight={page === item ? "fill" : "regular"} />
+                          <ItemIcon
+                            size={15}
+                            weight={page === item ? "fill" : "regular"}
+                          />
                           <span>{t[item] as string}</span>
                         </button>
                       );
@@ -385,33 +564,89 @@ function AuthenticatedAdmin({
         <div className="admin-account">
           <button
             className="admin-account-profile"
-            aria-label={locale === "zh" ? "打开管理员账户信息" : "Open administrator account information"}
+            aria-label={
+              locale === "zh"
+                ? "打开管理员账户信息"
+                : "Open administrator account information"
+            }
             onClick={() => setAccountOpen(true)}
           >
             <span>{user.displayName.slice(0, 1).toLocaleUpperCase()}</span>
-            <div><strong>{user.displayName}</strong><small>{user.email}</small></div>
+            <div>
+              <strong>{user.displayName}</strong>
+              <small>{user.email}</small>
+            </div>
           </button>
-          <button className="admin-account-signout" title={t.signOut as string} aria-label={t.signOut as string} onClick={() => void signOut()}><SignOut /></button>
+          <button
+            className="admin-account-signout"
+            title={t.signOut as string}
+            aria-label={t.signOut as string}
+            onClick={() => void signOut()}
+          >
+            <SignOut />
+          </button>
         </div>
       </aside>
-      {menuOpen && <button className="nav-backdrop" onClick={() => { setMenuOpen(false); menuButtonRef.current?.focus(); }} aria-label={locale === "zh" ? "关闭导航" : "Close navigation"} />}
+      {menuOpen && (
+        <button
+          className="nav-backdrop"
+          onClick={() => {
+            setMenuOpen(false);
+            menuButtonRef.current?.focus();
+          }}
+          aria-label={locale === "zh" ? "关闭导航" : "Close navigation"}
+        />
+      )}
       <section className="admin-main" ref={workspaceRef}>
         <header className="admin-topbar">
-          <button ref={menuButtonRef} className="mobile-menu" onClick={() => setMenuOpen(true)} aria-expanded={menuOpen} aria-label={locale === "zh" ? "打开导航" : "Open navigation"}><List /></button>
+          <button
+            ref={menuButtonRef}
+            className="mobile-menu"
+            onClick={() => setMenuOpen(true)}
+            aria-expanded={menuOpen}
+            aria-label={locale === "zh" ? "打开导航" : "Open navigation"}
+          >
+            <List />
+          </button>
           <div className="admin-page-title">
-            <h1 ref={headingRef} tabIndex={-1}>{t[page] as string}</h1>
+            <h1 ref={headingRef} tabIndex={-1}>
+              {t[page] as string}
+            </h1>
             <HelpTip label={helpTriggerLabel(locale, t[page] as string)}>
               {adminPageHelp[page][locale]}
             </HelpTip>
           </div>
-          <div className="admin-language" aria-label={t.languageLabel as string}>
-            <button className={locale === "zh" ? "is-active" : ""} onClick={() => setLocale("zh")}>{t.languageZh as string}</button>
+          <div
+            className="admin-language"
+            aria-label={t.languageLabel as string}
+          >
+            <button
+              className={locale === "zh" ? "is-active" : ""}
+              onClick={() => setLocale("zh")}
+            >
+              {t.languageZh as string}
+            </button>
             <span />
-            <button className={locale === "en" ? "is-active" : ""} onClick={() => setLocale("en")}>{t.languageEn as string}</button>
+            <button
+              className={locale === "en" ? "is-active" : ""}
+              onClick={() => setLocale("en")}
+            >
+              {t.languageEn as string}
+            </button>
           </div>
         </header>
         <main className="admin-content" key={page}>
-          <Suspense fallback={<section className="admin-panel"><PanelState state="initial-loading" locale={locale} retry={() => undefined} /></section>}>
+          <Suspense
+            fallback={
+              <section className="admin-panel">
+                <PanelState
+                  state="initial-loading"
+                  locale={locale}
+                  retry={() => undefined}
+                />
+              </section>
+            }
+          >
             <PageOutlet
               page={page}
               locale={locale}
@@ -422,7 +657,14 @@ function AuthenticatedAdmin({
           </Suspense>
         </main>
       </section>
-      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
+      <div
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {announcement}
+      </div>
       {accountOpen && (
         <AccountCenterDialog
           locale={locale}
@@ -449,7 +691,9 @@ function PageOutlet({
   onNavigate: (page: Page) => void;
 }) {
   if (page === "dashboard") {
-    return <DashboardPage locale={locale} onNavigate={onNavigate} user={user} />;
+    return (
+      <DashboardPage locale={locale} onNavigate={onNavigate} user={user} />
+    );
   }
   if (page === "products") {
     return (
@@ -532,9 +776,34 @@ function PageOutlet({
     return <AuditPage locale={locale} />;
   }
   if (page === "security") return <SecurityPage locale={locale} user={user} />;
-  if (page === "banners") return <BannersPage canWrite={user.permissions.includes("content.write")} locale={locale} />;
-  if (page === "contacts") return <ContactsPage canWrite={user.permissions.includes("support.write")} locale={locale} />;
-  if (page === "settings") return <SettingsPage canWrite={user.permissions.includes("settings.write")} locale={locale} />;
+  if (page === "banners")
+    return (
+      <BannersPage
+        canWrite={user.permissions.includes("content.write")}
+        locale={locale}
+      />
+    );
+  if (page === "skills")
+    return (
+      <SkillsPage
+        canWrite={user.permissions.includes("content.write")}
+        locale={locale}
+      />
+    );
+  if (page === "contacts")
+    return (
+      <ContactsPage
+        canWrite={user.permissions.includes("support.write")}
+        locale={locale}
+      />
+    );
+  if (page === "settings")
+    return (
+      <SettingsPage
+        canWrite={user.permissions.includes("settings.write")}
+        locale={locale}
+      />
+    );
   if (page === "team") {
     return <TeamPage currentUserEmail={user.email} locale={locale} />;
   }
@@ -576,12 +845,7 @@ function PageOutlet({
     return <SitesPlatformPage kind="integrations" locale={locale} />;
   }
   if (page === "media") {
-    return (
-      <MediaPage
-        locale={locale}
-        permissions={user.permissions}
-      />
-    );
+    return <MediaPage locale={locale} permissions={user.permissions} />;
   }
   const unhandledPage: never = page;
   return unhandledPage;
@@ -600,14 +864,19 @@ function AccountCenterDialog({
 }) {
   return (
     <Dialog
-      closeLabel={locale === "zh" ? "关闭账户信息" : "Close account information"}
+      closeLabel={
+        locale === "zh" ? "关闭账户信息" : "Close account information"
+      }
       onClose={onClose}
       title={locale === "zh" ? "管理员账户" : "Administrator account"}
     >
       <div className="admin-account-dialog">
         <div className="admin-account-dialog-identity">
           <span>{user.displayName.slice(0, 1).toLocaleUpperCase()}</span>
-          <div><strong>{user.displayName}</strong><small>{user.email}</small></div>
+          <div>
+            <strong>{user.displayName}</strong>
+            <small>{user.email}</small>
+          </div>
         </div>
         <dl>
           <div>
@@ -619,7 +888,9 @@ function AccountCenterDialog({
             <dd>{user.roles.map((role) => role.name[locale]).join(" · ")}</dd>
           </div>
           <div>
-            <dt>{locale === "zh" ? "商城顾客账号" : "Storefront customer account"}</dt>
+            <dt>
+              {locale === "zh" ? "商城顾客账号" : "Storefront customer account"}
+            </dt>
             <dd>{locale === "zh" ? "不需要" : "Not required"}</dd>
           </div>
         </dl>
@@ -631,7 +902,9 @@ function AccountCenterDialog({
         </p>
         <button className="admin-danger" onClick={onSignOut} type="button">
           <SignOut size={18} />
-          {locale === "zh" ? "退出 ChatGPT 管理登录" : "Sign out of ChatGPT administration"}
+          {locale === "zh"
+            ? "退出 ChatGPT 管理登录"
+            : "Sign out of ChatGPT administration"}
         </button>
       </div>
     </Dialog>
@@ -650,25 +923,53 @@ function SitesAuthScreen({
     <main className="auth-page">
       <div className="auth-orbit" aria-hidden="true" />
       <div className="auth-language" aria-label={t.languageLabel as string}>
-        <button className={locale === "zh" ? "is-active" : ""} onClick={() => setLocale("zh")}>{t.languageZh as string}</button>
+        <button
+          className={locale === "zh" ? "is-active" : ""}
+          onClick={() => setLocale("zh")}
+        >
+          {t.languageZh as string}
+        </button>
         <span />
-        <button className={locale === "en" ? "is-active" : ""} onClick={() => setLocale("en")}>{t.languageEn as string}</button>
+        <button
+          className={locale === "en" ? "is-active" : ""}
+          onClick={() => setLocale("en")}
+        >
+          {t.languageEn as string}
+        </button>
       </div>
       <section className="auth-card">
         <div className="auth-brand">
-          <span><img src="/assets/cloudbridge-logo.png" alt="" width={349} height={176} /></span>
+          <span>
+            <img
+              src="/assets/cloudbridge-logo.png"
+              alt=""
+              width={349}
+              height={176}
+            />
+          </span>
           <strong>{t.brandName as string}</strong>
         </div>
-        <div className="auth-mark"><ShieldCheck size={30} weight="duotone" /></div>
-        <h1>{locale === "zh" ? "管理员身份需要重新验证" : "Administrator identity must be verified again"}</h1>
+        <div className="auth-mark">
+          <ShieldCheck size={30} weight="duotone" />
+        </div>
+        <h1>
+          {locale === "zh"
+            ? "管理员身份需要重新验证"
+            : "Administrator identity must be verified again"}
+        </h1>
         <p className="auth-intro">
           {locale === "zh"
             ? "商城浏览和下单不需要顾客账号；只有管理后台使用 ChatGPT 登录保护。"
             : "Customers do not need an account to browse or order. Only the administration area uses ChatGPT sign-in."}
         </p>
-        <a className="primary-action" href="/signin-with-chatgpt?return_to=%2Fadmin">
+        <a
+          className="primary-action"
+          href="/signin-with-chatgpt?return_to=%2Fadmin"
+        >
           <LockKey size={19} />
-          {locale === "zh" ? "使用 ChatGPT 重新登录" : "Sign in again with ChatGPT"}
+          {locale === "zh"
+            ? "使用 ChatGPT 重新登录"
+            : "Sign in again with ChatGPT"}
         </a>
       </section>
     </main>

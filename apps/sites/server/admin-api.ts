@@ -5,6 +5,9 @@ import {
   DEFAULT_INVENTORY_RISK_THRESHOLD,
   INVENTORY_RISK_THRESHOLD_MAX,
   INVENTORY_RISK_THRESHOLD_MIN,
+  platformKeys,
+  productSurfaces,
+  transitPlanTypes,
   isConfiguredContactChannel,
   auditCsvFilename,
   securityAuditActions,
@@ -173,6 +176,48 @@ export async function handleAdminApi(
   if (categoryMatch && request.method === "PATCH") {
     const actor = await writeIdentity(env.DB, request, "catalog.write");
     return success(await updateCategory(env.DB, request, decodeURIComponent(categoryMatch[1]), actor));
+  }
+
+  if (pathname === "/v1/admin/skill-categories") {
+    if (request.method === "GET") {
+      await requireAdmin(env.DB, request, "content.read");
+      return success(await adminSkillCategories(env.DB));
+    }
+    if (request.method === "POST") {
+      const actor = await writeIdentity(env.DB, request, "content.write");
+      return success(await createSkillCategory(env.DB, request, actor), { status: 201 });
+    }
+  }
+  const skillCategoryMatch = pathname.match(/^\/v1\/admin\/skill-categories\/([^/]+)$/u);
+  if (skillCategoryMatch && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "content.write");
+    return success(await updateSkillCategory(
+      env.DB,
+      request,
+      decodeURIComponent(skillCategoryMatch[1]),
+      actor,
+    ));
+  }
+
+  if (pathname === "/v1/admin/skills") {
+    if (request.method === "GET") {
+      await requireAdmin(env.DB, request, "content.read");
+      return success(await adminSkills(env.DB));
+    }
+    if (request.method === "POST") {
+      const actor = await writeIdentity(env.DB, request, "content.write");
+      return success(await createSkill(env.DB, request, actor), { status: 201 });
+    }
+  }
+  const adminSkillMatch = pathname.match(/^\/v1\/admin\/skills\/([^/]+)$/u);
+  if (adminSkillMatch && request.method === "PATCH") {
+    const actor = await writeIdentity(env.DB, request, "content.write");
+    return success(await updateSkill(
+      env.DB,
+      request,
+      decodeURIComponent(adminSkillMatch[1]),
+      actor,
+    ));
   }
 
   if (pathname === "/v1/admin/products") {
@@ -1030,19 +1075,25 @@ async function inventoryRiskSummary(db: D1Database): Promise<AdminInventoryRiskS
 
 async function adminCategories(db: D1Database) {
   const rows = await db.prepare(
-    `SELECT c.id, c.slug, c.status, c.sort_order AS sortOrder, c.version,
+    `SELECT c.id, c.slug, c.parent_id AS parentId, c.status,
+      c.sort_order AS sortOrder, c.version,
       zh.name AS nameZh, en.name AS nameEn, c.updated_at AS updatedAt,
-      COUNT(p.id) AS productCount
+      (SELECT COUNT(*) FROM categories child
+       WHERE child.parent_id = c.id AND child.status <> 'ARCHIVED') AS childCount,
+      (SELECT COUNT(*) FROM products p
+       JOIN categories assigned ON assigned.id = p.category_id
+       WHERE p.status <> 'ARCHIVED'
+         AND (p.category_id = c.id OR assigned.parent_id = c.id)) AS productCount
      FROM categories c
      LEFT JOIN category_translations zh ON zh.category_id = c.id AND zh.locale = 'ZH'
      LEFT JOIN category_translations en ON en.category_id = c.id AND en.locale = 'EN'
-     LEFT JOIN products p ON p.category_id = c.id AND p.status <> 'ARCHIVED'
      WHERE c.status <> 'ARCHIVED'
-     GROUP BY c.id
-     ORDER BY c.sort_order ASC, c.id ASC`,
+     ORDER BY CASE WHEN c.parent_id IS NULL THEN 0 ELSE 1 END,
+       COALESCE(c.parent_id, c.id) ASC, c.sort_order ASC, c.id ASC`,
   ).all<{
     id: string;
     slug: string;
+    parentId: string | null;
     status: string;
     sortOrder: number;
     version: number;
@@ -1050,15 +1101,19 @@ async function adminCategories(db: D1Database) {
     nameEn: string | null;
     updatedAt: string;
     productCount: number;
+    childCount: number;
   }>();
   return (rows.results ?? []).map((row) => ({
     id: row.id,
     slug: row.slug,
+    parentId: row.parentId,
+    level: row.parentId === null ? "PRIMARY" : "SECONDARY",
     status: row.status,
     sortOrder: row.sortOrder,
     version: row.version,
     name: { zh: row.nameZh ?? "", en: row.nameEn ?? "" },
     productCount: Number(row.productCount),
+    childCount: Number(row.childCount),
     updatedAt: row.updatedAt,
   }));
 }
@@ -1066,12 +1121,13 @@ async function adminCategories(db: D1Database) {
 async function createCategory(db: D1Database, request: Request, actor: AdminIdentity) {
   const body = await readJson<Record<string, unknown>>(request);
   const input = categoryInput(body);
+  await assertValidCategoryParent(db, input.parentId);
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.batch([
     db.prepare(
-      "INSERT INTO categories (id, slug, status, sort_order, version, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
-    ).bind(id, input.slug, input.status, input.sortOrder, now, now),
+      "INSERT INTO categories (id, slug, parent_id, status, sort_order, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+    ).bind(id, input.slug, input.parentId, input.status, input.sortOrder, now, now),
     db.prepare(
       "INSERT INTO category_translations (category_id, locale, name) VALUES (?, 'ZH', ?)",
     ).bind(id, input.nameZh),
@@ -1097,12 +1153,29 @@ async function updateCategory(
 ) {
   const body = await readJson<Record<string, unknown>>(request);
   const input = categoryInput(body);
+  const current = await db.prepare(
+    "SELECT parent_id AS parentId FROM categories WHERE id = ? LIMIT 1",
+  ).bind(id).first<{ parentId: string | null }>();
+  if (!current) throw new ApiInputError("CATEGORY_NOT_FOUND", "Category was not found.", 404);
+  const parentId = body.parentId === undefined ? current.parentId : input.parentId;
+  if (parentId === id) {
+    throw new ApiInputError("CATEGORY_CYCLE", "A category cannot be its own parent.", 422);
+  }
+  await assertValidCategoryParent(db, parentId);
+  if (parentId) {
+    const children = await db.prepare(
+      "SELECT COUNT(*) AS count FROM categories WHERE parent_id = ? AND status <> 'ARCHIVED'",
+    ).bind(id).first<{ count: number }>();
+    if (Number(children?.count ?? 0) > 0) {
+      throw new ApiInputError("CATEGORY_MAX_DEPTH", "A category with children cannot become a secondary category.", 422);
+    }
+  }
   const version = safeInteger(body.version, "version", 1);
   const now = new Date().toISOString();
   const result = await db.prepare(
-    `UPDATE categories SET slug = ?, status = ?, sort_order = ?,
+    `UPDATE categories SET slug = ?, parent_id = ?, status = ?, sort_order = ?,
       version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
-  ).bind(input.slug, input.status, input.sortOrder, now, id, version).run();
+  ).bind(input.slug, parentId, input.status, input.sortOrder, now, id, version).run();
   if (changes(result) !== 1) throw new ApiInputError("VERSION_CONFLICT", "The category changed. Refresh and try again.", 409);
   await db.batch([
     db.prepare("UPDATE category_translations SET name = ? WHERE category_id = ? AND locale = 'ZH'")
@@ -1119,6 +1192,209 @@ async function updateCategory(
   });
   const saved = (await adminCategories(db)).find((item) => item.id === id);
   if (!saved) throw new ApiInputError("CATEGORY_NOT_FOUND", "Category was not found.", 404);
+  return saved;
+}
+
+async function adminSkillCategories(db: D1Database) {
+  const rows = await db.prepare(
+    `SELECT c.id, c.slug, c.status, c.sort_order AS sortOrder, c.version,
+      zh.name AS nameZh, en.name AS nameEn, c.updated_at AS updatedAt,
+      (SELECT COUNT(*) FROM skills s
+       WHERE s.category_id = c.id AND s.status <> 'ARCHIVED') AS skillCount
+     FROM skill_categories c
+     LEFT JOIN skill_category_translations zh ON zh.category_id = c.id AND zh.locale = 'ZH'
+     LEFT JOIN skill_category_translations en ON en.category_id = c.id AND en.locale = 'EN'
+     WHERE c.status <> 'ARCHIVED'
+     ORDER BY c.sort_order ASC, c.id ASC`,
+  ).all<{
+    id: string;
+    slug: string;
+    status: string;
+    sortOrder: number;
+    version: number;
+    nameZh: string | null;
+    nameEn: string | null;
+    updatedAt: string;
+    skillCount: number;
+  }>();
+  return (rows.results ?? []).map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    status: row.status,
+    sortOrder: row.sortOrder,
+    version: row.version,
+    name: { zh: row.nameZh ?? "", en: row.nameEn ?? "" },
+    skillCount: Number(row.skillCount),
+    updatedAt: row.updatedAt,
+  }));
+}
+
+async function createSkillCategory(
+  db: D1Database,
+  request: Request,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const input = skillCategoryInput(body);
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.batch([
+    db.prepare(
+      `INSERT INTO skill_categories
+        (id, slug, status, sort_order, version, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, ?, ?)`,
+    ).bind(id, input.slug, input.status, input.sortOrder, now, now),
+    db.prepare(
+      "INSERT INTO skill_category_translations (category_id, locale, name) VALUES (?, 'ZH', ?)",
+    ).bind(id, input.nameZh),
+    db.prepare(
+      "INSERT INTO skill_category_translations (category_id, locale, name) VALUES (?, 'EN', ?)",
+    ).bind(id, input.nameEn),
+  ]);
+  await writeAudit(db, {
+    action: "content.skill-category.created",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "SKILL_CATEGORY",
+    targetId: id,
+  });
+  return (await adminSkillCategories(db)).find((item) => item.id === id);
+}
+
+async function updateSkillCategory(
+  db: D1Database,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const input = skillCategoryInput(body);
+  const version = safeInteger(body.version, "version", 1);
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE skill_categories SET slug = ?, status = ?, sort_order = ?,
+      version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
+  ).bind(input.slug, input.status, input.sortOrder, now, id, version).run();
+  if (changes(result) !== 1) {
+    throw new ApiInputError("VERSION_CONFLICT", "The Skill category changed. Refresh and try again.", 409);
+  }
+  await db.batch([
+    db.prepare(
+      "UPDATE skill_category_translations SET name = ? WHERE category_id = ? AND locale = 'ZH'",
+    ).bind(input.nameZh, id),
+    db.prepare(
+      "UPDATE skill_category_translations SET name = ? WHERE category_id = ? AND locale = 'EN'",
+    ).bind(input.nameEn, id),
+  ]);
+  await writeAudit(db, {
+    action: "content.skill-category.updated",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "SKILL_CATEGORY",
+    targetId: id,
+  });
+  const saved = (await adminSkillCategories(db)).find((item) => item.id === id);
+  if (!saved) throw new ApiInputError("SKILL_CATEGORY_NOT_FOUND", "Skill category was not found.", 404);
+  return saved;
+}
+
+async function adminSkills(db: D1Database) {
+  const rows = await db.prepare(
+    `SELECT s.id, s.slug, s.category_id AS categoryId,
+      c.slug AS categorySlug, czh.name AS categoryNameZh, cen.name AS categoryNameEn,
+      s.resource_type AS resourceType, s.source_level AS sourceLevel,
+      s.maintainer, s.github_url AS githubUrl, s.documentation_url AS documentationUrl,
+      s.license, s.compatible_environments_json AS compatibleEnvironmentsJson,
+      s.verified_at AS verifiedAt, s.status, s.sort_order AS sortOrder,
+      s.version, s.updated_at AS updatedAt,
+      zh.name AS nameZh, zh.summary AS summaryZh, zh.description AS descriptionZh,
+      zh.suitable_for_json AS suitableForZh, zh.unsuitable_for_json AS unsuitableForZh,
+      zh.install_hint AS installHintZh,
+      en.name AS nameEn, en.summary AS summaryEn, en.description AS descriptionEn,
+      en.suitable_for_json AS suitableForEn, en.unsuitable_for_json AS unsuitableForEn,
+      en.install_hint AS installHintEn
+     FROM skills s
+     JOIN skill_categories c ON c.id = s.category_id
+     JOIN skill_category_translations czh ON czh.category_id = c.id AND czh.locale = 'ZH'
+     JOIN skill_category_translations cen ON cen.category_id = c.id AND cen.locale = 'EN'
+     JOIN skill_translations zh ON zh.skill_id = s.id AND zh.locale = 'ZH'
+     JOIN skill_translations en ON en.skill_id = s.id AND en.locale = 'EN'
+     WHERE s.status <> 'ARCHIVED'
+     ORDER BY s.sort_order ASC, s.id ASC`,
+  ).all<Record<string, unknown>>();
+  return (rows.results ?? []).map(adminSkillItem);
+}
+
+async function createSkill(db: D1Database, request: Request, actor: AdminIdentity) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const input = skillInput(body);
+  await assertSkillCategory(db, input.categoryId);
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.batch([
+    skillInsert(db, id, input, now),
+    skillTranslationInsert(db, id, "ZH", input.translations.zh),
+    skillTranslationInsert(db, id, "EN", input.translations.en),
+  ]);
+  await writeAudit(db, {
+    action: "content.skill.created",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "SKILL",
+    targetId: id,
+  });
+  return (await adminSkills(db)).find((item) => item.id === id);
+}
+
+async function updateSkill(
+  db: D1Database,
+  request: Request,
+  id: string,
+  actor: AdminIdentity,
+) {
+  const body = await readJson<Record<string, unknown>>(request);
+  const input = skillInput(body);
+  await assertSkillCategory(db, input.categoryId);
+  const version = safeInteger(body.version, "version", 1);
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE skills SET slug = ?, category_id = ?, resource_type = ?, source_level = ?,
+      maintainer = ?, github_url = ?, documentation_url = ?, license = ?,
+      compatible_environments_json = ?, verified_at = ?, status = ?, sort_order = ?,
+      version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
+  ).bind(
+    input.slug,
+    input.categoryId,
+    input.resourceType,
+    input.sourceLevel,
+    input.maintainer,
+    input.githubUrl,
+    input.documentationUrl,
+    input.license,
+    JSON.stringify(input.compatibleEnvironments),
+    input.verifiedAt,
+    input.status,
+    input.sortOrder,
+    now,
+    id,
+    version,
+  ).run();
+  if (changes(result) !== 1) {
+    throw new ApiInputError("VERSION_CONFLICT", "The Skill changed. Refresh and try again.", 409);
+  }
+  await db.batch([
+    skillTranslationUpdate(db, id, "ZH", input.translations.zh),
+    skillTranslationUpdate(db, id, "EN", input.translations.en),
+  ]);
+  await writeAudit(db, {
+    action: "content.skill.updated",
+    result: "SUCCEEDED",
+    actor,
+    targetType: "SKILL",
+    targetId: id,
+  });
+  const saved = (await adminSkills(db)).find((item) => item.id === id);
+  if (!saved) throw new ApiInputError("SKILL_NOT_FOUND", "Skill was not found.", 404);
   return saved;
 }
 
@@ -1159,14 +1435,17 @@ async function adminProducts(
 async function createProduct(db: D1Database, request: Request, actor: AdminIdentity) {
   const body = await readJson<Record<string, unknown>>(request);
   const input = productInput(body);
+  await assertSecondaryCategory(db, input.categoryId);
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  const surfaces = input.surfaces ?? ["HOME"];
   await db.batch([
     db.prepare(
       `INSERT INTO products (
         id, slug, category_id, image_key, base_price, compare_at_price,
+        platform_key, transit_plan_type,
         stock_mode, stock_quantity, status, sort_order, version, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     ).bind(
       id,
       input.slug,
@@ -1174,6 +1453,8 @@ async function createProduct(db: D1Database, request: Request, actor: AdminIdent
       input.imageKey,
       input.basePrice,
       input.compareAtPrice,
+      input.platformKey,
+      input.transitPlanType,
       input.stockMode,
       input.stockQuantity,
       input.status,
@@ -1183,6 +1464,11 @@ async function createProduct(db: D1Database, request: Request, actor: AdminIdent
     ),
     productTranslationInsert(db, id, "ZH", input.nameZh, input.kickerZh, input.descriptionZh),
     productTranslationInsert(db, id, "EN", input.nameEn, input.kickerEn, input.descriptionEn),
+    ...surfaces.map((surface, index) => db.prepare(
+      `INSERT INTO product_surfaces (
+        id, product_id, surface, sort_order, is_visible, version, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 1, 1, ?, ?)`,
+    ).bind(crypto.randomUUID(), id, surface, index + 1, now, now)),
   ]);
   await writeAudit(db, {
     action: "catalog.product.created",
@@ -1202,11 +1488,22 @@ async function updateProduct(
 ) {
   const body = await readJson<Record<string, unknown>>(request);
   const input = productInput(body);
+  await assertSecondaryCategory(db, input.categoryId);
+  const current = await db.prepare(
+    `SELECT platform_key AS platformKey, transit_plan_type AS transitPlanType
+     FROM products WHERE id = ? LIMIT 1`,
+  ).bind(id).first<{ platformKey: string | null; transitPlanType: string | null }>();
+  if (!current) throw new ApiInputError("PRODUCT_NOT_FOUND", "Product was not found.", 404);
+  const platformKey = body.platformKey === undefined ? current.platformKey : input.platformKey;
+  const transitPlanType = body.transitPlanType === undefined
+    ? current.transitPlanType
+    : input.transitPlanType;
   const version = safeInteger(body.version, "version", 1);
   const now = new Date().toISOString();
   const result = await db.prepare(
     `UPDATE products SET slug = ?, category_id = ?, image_key = ?, base_price = ?,
-      compare_at_price = ?, stock_mode = ?, stock_quantity = ?, status = ?,
+      compare_at_price = ?, platform_key = ?, transit_plan_type = ?,
+      stock_mode = ?, stock_quantity = ?, status = ?,
       sort_order = ?, version = version + 1, updated_at = ?
      WHERE id = ? AND version = ?`,
   ).bind(
@@ -1215,6 +1512,8 @@ async function updateProduct(
     input.imageKey,
     input.basePrice,
     input.compareAtPrice,
+    platformKey,
+    transitPlanType,
     input.stockMode,
     input.stockQuantity,
     input.status,
@@ -1228,6 +1527,16 @@ async function updateProduct(
     productTranslationUpdate(db, id, "ZH", input.nameZh, input.kickerZh, input.descriptionZh),
     productTranslationUpdate(db, id, "EN", input.nameEn, input.kickerEn, input.descriptionEn),
   ]);
+  if (input.surfaces) {
+    await db.batch([
+      db.prepare("DELETE FROM product_surfaces WHERE product_id = ?").bind(id),
+      ...input.surfaces.map((surface, index) => db.prepare(
+        `INSERT INTO product_surfaces (
+          id, product_id, surface, sort_order, is_visible, version, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 1, 1, ?, ?)`,
+      ).bind(crypto.randomUUID(), id, surface, index + 1, now, now)),
+    ]);
+  }
   await writeAudit(db, {
     action: "catalog.product.updated",
     result: "SUCCEEDED",
@@ -1345,6 +1654,11 @@ async function updateCurrencyRate(
 async function adminHeroes(db: D1Database) {
   const rows = await db.prepare(
     `SELECT h.id, h.key, h.image_key AS imageKey, h.target_slug AS targetSlug,
+      h.placement, h.mobile_image_key AS mobileImageKey,
+      h.target_type AS targetType, h.target_value AS targetValue,
+      h.secondary_cta_zh AS secondaryCtaZh, h.secondary_cta_en AS secondaryCtaEn,
+      h.secondary_target_type AS secondaryTargetType,
+      h.secondary_target_value AS secondaryTargetValue,
       h.tone, h.status, h.sort_order AS sortOrder, h.version,
       zh.eyebrow AS zhEyebrow, zh.title AS zhTitle, zh.body AS zhBody, zh.cta AS zhCta,
       en.eyebrow AS enEyebrow, en.title AS enTitle, en.body AS enBody, en.cta AS enCta,
@@ -1364,8 +1678,31 @@ async function createHero(db: D1Database, request: Request, actor: AdminIdentity
   const now = new Date().toISOString();
   await db.batch([
     db.prepare(
-      "INSERT INTO heroes (id, key, image_key, target_slug, tone, status, sort_order, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-    ).bind(id, input.key, input.imageKey, input.targetSlug, input.tone, input.status, input.sortOrder, now, now),
+      `INSERT INTO heroes (
+        id, key, image_key, mobile_image_key, placement, target_slug,
+        target_type, target_value, secondary_cta_zh, secondary_cta_en,
+        secondary_target_type, secondary_target_value, tone, status,
+        sort_order, version, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    ).bind(
+      id,
+      input.key,
+      input.imageKey,
+      input.mobileImageKey,
+      input.placement,
+      input.targetSlug,
+      input.targetType,
+      input.targetValue,
+      input.secondaryCtaZh,
+      input.secondaryCtaEn,
+      input.secondaryTargetType,
+      input.secondaryTargetValue,
+      input.tone,
+      input.status,
+      input.sortOrder,
+      now,
+      now,
+    ),
     heroTranslationInsert(db, id, "ZH", input.translations.zh),
     heroTranslationInsert(db, id, "EN", input.translations.en),
   ]);
@@ -1381,16 +1718,36 @@ async function createHero(db: D1Database, request: Request, actor: AdminIdentity
 
 async function updateHero(db: D1Database, request: Request, id: string, actor: AdminIdentity) {
   const body = await readJson<Record<string, unknown>>(request);
-  const input = heroInput(body);
+  const current = await db.prepare(
+    `SELECT placement, mobile_image_key AS mobileImageKey, target_type AS targetType,
+      target_value AS targetValue, secondary_cta_zh AS secondaryCtaZh,
+      secondary_cta_en AS secondaryCtaEn,
+      secondary_target_type AS secondaryTargetType,
+      secondary_target_value AS secondaryTargetValue
+     FROM heroes WHERE id = ? LIMIT 1`,
+  ).bind(id).first<HeroExtensionInput>();
+  if (!current) throw new ApiInputError("HERO_NOT_FOUND", "Hero was not found.", 404);
+  const input = heroInput(body, current);
   const version = safeInteger(body.version, "version", 1);
   const now = new Date().toISOString();
   const result = await db.prepare(
-    `UPDATE heroes SET key = ?, image_key = ?, target_slug = ?, tone = ?, status = ?,
-      sort_order = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
+    `UPDATE heroes SET key = ?, image_key = ?, mobile_image_key = ?, placement = ?,
+      target_slug = ?, target_type = ?, target_value = ?,
+      secondary_cta_zh = ?, secondary_cta_en = ?, secondary_target_type = ?,
+      secondary_target_value = ?, tone = ?, status = ?, sort_order = ?,
+      version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
   ).bind(
     input.key,
     input.imageKey,
+    input.mobileImageKey,
+    input.placement,
     input.targetSlug,
+    input.targetType,
+    input.targetValue,
+    input.secondaryCtaZh,
+    input.secondaryCtaEn,
+    input.secondaryTargetType,
+    input.secondaryTargetValue,
     input.tone,
     input.status,
     input.sortOrder,
@@ -1561,6 +1918,7 @@ async function adminSettings(db: D1Database) {
   const activeChannels = channels.filter((channel) => channel.active);
   return {
     ...settings,
+    bannerVisibility: normalizedBannerVisibility(settings.bannerVisibility),
     shareTemplate: normalizedShareTemplate(settings.shareTemplate),
     inventoryRiskThreshold: inventoryRiskThresholdValue(settings.inventoryRiskThreshold),
     version: row.version,
@@ -1598,6 +1956,9 @@ async function updateSettings(db: D1Database, request: Request, actor: AdminIden
     ),
     transitServiceEnabled: Boolean(body.transitServiceEnabled),
     transitServiceUrl: nullableHttpsUrl(body.transitServiceUrl, "transitServiceUrl"),
+    bannerVisibility: body.bannerVisibility === undefined
+      ? normalizedBannerVisibility(currentSettings.bannerVisibility)
+      : normalizedBannerVisibility(body.bannerVisibility, true),
     shareTemplate: body.shareTemplate === undefined
       ? normalizedShareTemplate(currentSettings.shareTemplate)
       : validatedShareTemplate(body.shareTemplate),
@@ -2185,6 +2546,9 @@ type AdminProductRow = {
   imageKey: string;
   basePrice: string;
   compareAtPrice: string | null;
+  platformKey: string | null;
+  transitPlanType: string | null;
+  surfacesCsv: string;
   stockMode: "FINITE" | "UNLIMITED";
   stockQuantity: number | null;
   status: string;
@@ -2208,6 +2572,14 @@ type HeroRow = {
   key: string;
   imageKey: string;
   targetSlug: string | null;
+  placement: string;
+  mobileImageKey: string | null;
+  targetType: string;
+  targetValue: string | null;
+  secondaryCtaZh: string | null;
+  secondaryCtaEn: string | null;
+  secondaryTargetType: string | null;
+  secondaryTargetValue: string | null;
   tone: string;
   status: string;
   sortOrder: number;
@@ -2264,7 +2636,14 @@ type OrderListRow = {
 
 function adminProductSql(): string {
   return `SELECT p.id, p.slug, p.image_key AS imageKey, p.base_price AS basePrice,
-    p.compare_at_price AS compareAtPrice, p.stock_mode AS stockMode,
+    p.compare_at_price AS compareAtPrice, p.platform_key AS platformKey,
+    p.transit_plan_type AS transitPlanType,
+    COALESCE((SELECT GROUP_CONCAT(surface, ',') FROM (
+      SELECT ps.surface AS surface FROM product_surfaces ps
+      WHERE ps.product_id = p.id AND ps.is_visible = 1
+      ORDER BY ps.sort_order ASC, ps.id ASC
+    )), '') AS surfacesCsv,
+    p.stock_mode AS stockMode,
     p.stock_quantity AS stockQuantity, p.status, p.sort_order AS sortOrder,
     p.version, c.id AS categoryId, c.slug AS categorySlug,
     czh.name AS categoryNameZh, cen.name AS categoryNameEn,
@@ -2286,6 +2665,9 @@ function adminProductItem(row: AdminProductRow) {
     imageKey: row.imageKey,
     basePrice: row.basePrice,
     compareAtPrice: row.compareAtPrice,
+    platformKey: row.platformKey,
+    transitPlanType: row.transitPlanType,
+    surfaces: row.surfacesCsv ? row.surfacesCsv.split(",") : [],
     stockMode: row.stockMode,
     stockQuantity: row.stockQuantity,
     status: row.status,
@@ -2310,6 +2692,13 @@ function heroItem(row: HeroRow) {
     key: row.key,
     imageKey: row.imageKey,
     targetSlug: row.targetSlug,
+    placement: row.placement,
+    mobileImageKey: row.mobileImageKey,
+    targetType: row.targetType,
+    targetValue: row.targetValue,
+    secondaryCta: { zh: row.secondaryCtaZh, en: row.secondaryCtaEn },
+    secondaryTargetType: row.secondaryTargetType,
+    secondaryTargetValue: row.secondaryTargetValue,
     tone: row.tone,
     status: row.status,
     sortOrder: row.sortOrder,
@@ -2407,9 +2796,241 @@ function categoryInput(body: Record<string, unknown>) {
     nameZh: requiredString(body.nameZh, "nameZh", 1, 160),
     nameEn: requiredString(body.nameEn, "nameEn", 1, 160),
     slug: slugString(body.slug),
+    parentId: nullableString(body.parentId, "parentId", 120),
     sortOrder: safeInteger(body.sortOrder, "sortOrder", 0),
     status,
   };
+}
+
+function skillCategoryInput(body: Record<string, unknown>) {
+  const status = requiredString(body.status, "status", 1, 20);
+  if (!["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"].includes(status)) {
+    throw new ApiInputError("INVALID_STATUS", "Skill category status is invalid.", 422);
+  }
+  return {
+    nameZh: requiredString(body.nameZh, "nameZh", 1, 160),
+    nameEn: requiredString(body.nameEn, "nameEn", 1, 160),
+    slug: slugString(body.slug),
+    sortOrder: safeInteger(body.sortOrder, "sortOrder", 0),
+    status,
+  };
+}
+
+function skillInput(body: Record<string, unknown>) {
+  const resourceType = requiredString(body.resourceType, "resourceType", 1, 20);
+  const sourceLevel = requiredString(body.sourceLevel, "sourceLevel", 1, 20);
+  const status = requiredString(body.status, "status", 1, 20);
+  if (!["SKILL", "PLUGIN", "CONNECTOR"].includes(resourceType)) throw fieldError("resourceType");
+  if (!["OFFICIAL", "COMMUNITY"].includes(sourceLevel)) throw fieldError("sourceLevel");
+  if (!["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"].includes(status)) {
+    throw new ApiInputError("INVALID_STATUS", "Skill status is invalid.", 422);
+  }
+  const translations = body.translations && typeof body.translations === "object"
+    ? body.translations as Record<string, unknown>
+    : {};
+  const githubUrl = validatedExternalUrl(body.githubUrl, "githubUrl", true);
+  return {
+    slug: slugString(body.slug),
+    categoryId: requiredString(body.categoryId, "categoryId", 1, 120),
+    resourceType,
+    sourceLevel,
+    maintainer: requiredString(body.maintainer, "maintainer", 1, 200),
+    githubUrl,
+    documentationUrl: body.documentationUrl === null || body.documentationUrl === ""
+      ? null
+      : validatedExternalUrl(body.documentationUrl, "documentationUrl", false),
+    license: requiredString(body.license, "license", 1, 120),
+    compatibleEnvironments: requiredStringArray(
+      body.compatibleEnvironments,
+      "compatibleEnvironments",
+      20,
+      120,
+    ),
+    verifiedAt: isoDateString(body.verifiedAt, "verifiedAt"),
+    status,
+    sortOrder: safeInteger(body.sortOrder, "sortOrder", 0),
+    translations: {
+      zh: skillTranslationInput(translations.zh, "translations.zh"),
+      en: skillTranslationInput(translations.en, "translations.en"),
+    },
+  };
+}
+
+function skillTranslationInput(value: unknown, field: string) {
+  const record = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return {
+    name: requiredString(record.name, `${field}.name`, 1, 200),
+    summary: requiredString(record.summary, `${field}.summary`, 1, 600),
+    description: requiredString(record.description, `${field}.description`, 1, 10_000),
+    suitableFor: requiredStringArray(record.suitableFor, `${field}.suitableFor`, 24, 500),
+    unsuitableFor: requiredStringArray(record.unsuitableFor, `${field}.unsuitableFor`, 24, 500),
+    installHint: requiredString(record.installHint, `${field}.installHint`, 1, 2_000),
+  };
+}
+
+async function assertSkillCategory(db: D1Database, categoryId: string): Promise<void> {
+  const category = await db.prepare(
+    "SELECT status FROM skill_categories WHERE id = ? LIMIT 1",
+  ).bind(categoryId).first<{ status: string }>();
+  if (!category || category.status === "ARCHIVED") {
+    throw new ApiInputError("SKILL_CATEGORY_NOT_FOUND", "Skill category was not found.", 422);
+  }
+}
+
+function skillInsert(
+  db: D1Database,
+  id: string,
+  input: ReturnType<typeof skillInput>,
+  now: string,
+) {
+  return db.prepare(
+    `INSERT INTO skills (
+      id, slug, category_id, resource_type, source_level, maintainer,
+      github_url, documentation_url, license, compatible_environments_json,
+      verified_at, status, sort_order, version, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+  ).bind(
+    id,
+    input.slug,
+    input.categoryId,
+    input.resourceType,
+    input.sourceLevel,
+    input.maintainer,
+    input.githubUrl,
+    input.documentationUrl,
+    input.license,
+    JSON.stringify(input.compatibleEnvironments),
+    input.verifiedAt,
+    input.status,
+    input.sortOrder,
+    now,
+    now,
+  );
+}
+
+function skillTranslationInsert(
+  db: D1Database,
+  skillId: string,
+  locale: "ZH" | "EN",
+  value: ReturnType<typeof skillTranslationInput>,
+) {
+  return db.prepare(
+    `INSERT INTO skill_translations (
+      skill_id, locale, name, normalized_name, summary, description,
+      suitable_for_json, unsuitable_for_json, install_hint
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    skillId,
+    locale,
+    value.name,
+    value.name.normalize("NFKC").trim().toLocaleLowerCase(),
+    value.summary,
+    value.description,
+    JSON.stringify(value.suitableFor),
+    JSON.stringify(value.unsuitableFor),
+    value.installHint,
+  );
+}
+
+function skillTranslationUpdate(
+  db: D1Database,
+  skillId: string,
+  locale: "ZH" | "EN",
+  value: ReturnType<typeof skillTranslationInput>,
+) {
+  return db.prepare(
+    `UPDATE skill_translations SET name = ?, normalized_name = ?, summary = ?,
+      description = ?, suitable_for_json = ?, unsuitable_for_json = ?, install_hint = ?
+     WHERE skill_id = ? AND locale = ?`,
+  ).bind(
+    value.name,
+    value.name.normalize("NFKC").trim().toLocaleLowerCase(),
+    value.summary,
+    value.description,
+    JSON.stringify(value.suitableFor),
+    JSON.stringify(value.unsuitableFor),
+    value.installHint,
+    skillId,
+    locale,
+  );
+}
+
+function adminSkillItem(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    slug: String(row.slug),
+    category: {
+      id: String(row.categoryId),
+      slug: String(row.categorySlug),
+      name: { zh: String(row.categoryNameZh), en: String(row.categoryNameEn) },
+    },
+    resourceType: String(row.resourceType),
+    sourceLevel: String(row.sourceLevel),
+    maintainer: String(row.maintainer),
+    githubUrl: String(row.githubUrl),
+    documentationUrl: row.documentationUrl === null ? null : String(row.documentationUrl),
+    license: String(row.license),
+    compatibleEnvironments: parsedStringArray(row.compatibleEnvironmentsJson),
+    verifiedAt: String(row.verifiedAt),
+    status: String(row.status),
+    sortOrder: Number(row.sortOrder),
+    version: Number(row.version),
+    translations: {
+      zh: {
+        name: String(row.nameZh),
+        summary: String(row.summaryZh),
+        description: String(row.descriptionZh),
+        suitableFor: parsedStringArray(row.suitableForZh),
+        unsuitableFor: parsedStringArray(row.unsuitableForZh),
+        installHint: String(row.installHintZh),
+      },
+      en: {
+        name: String(row.nameEn),
+        summary: String(row.summaryEn),
+        description: String(row.descriptionEn),
+        suitableFor: parsedStringArray(row.suitableForEn),
+        unsuitableFor: parsedStringArray(row.unsuitableForEn),
+        installHint: String(row.installHintEn),
+      },
+    },
+    updatedAt: String(row.updatedAt),
+  };
+}
+
+async function assertValidCategoryParent(db: D1Database, parentId: string | null): Promise<void> {
+  if (!parentId) return;
+  const parent = await db.prepare(
+    "SELECT parent_id AS parentId, status FROM categories WHERE id = ? LIMIT 1",
+  ).bind(parentId).first<{ parentId: string | null; status: string }>();
+  if (!parent || parent.status === "ARCHIVED") {
+    throw new ApiInputError("CATEGORY_PARENT_NOT_FOUND", "The primary category was not found.", 422);
+  }
+  if (parent.parentId !== null) {
+    throw new ApiInputError("CATEGORY_MAX_DEPTH", "Only two category levels are supported.", 422);
+  }
+}
+
+async function assertSecondaryCategory(db: D1Database, categoryId: string): Promise<void> {
+  const category = await db.prepare(
+    `SELECT c.parent_id AS parentId, c.status, parent.status AS parentStatus
+     FROM categories c
+     LEFT JOIN categories parent ON parent.id = c.parent_id
+     WHERE c.id = ? LIMIT 1`,
+  ).bind(categoryId).first<{ parentId: string | null; status: string; parentStatus: string | null }>();
+  if (
+    !category
+    || category.parentId === null
+    || category.status === "ARCHIVED"
+    || category.parentStatus === "ARCHIVED"
+  ) {
+    throw new ApiInputError(
+      "PRODUCT_SECONDARY_CATEGORY_REQUIRED",
+      "Products must belong to an available secondary category.",
+      422,
+    );
+  }
 }
 
 function productInput(body: Record<string, unknown>) {
@@ -2421,9 +3042,28 @@ function productInput(body: Record<string, unknown>) {
   if (!["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"].includes(status)) {
     throw new ApiInputError("INVALID_STATUS", "Product status is invalid.", 422);
   }
+  const platformKey = nullableString(body.platformKey, "platformKey", 40);
+  if (platformKey && !(platformKeys as readonly string[]).includes(platformKey)) {
+    throw fieldError("platformKey");
+  }
+  const transitPlanType = nullableString(body.transitPlanType, "transitPlanType", 40);
+  if (transitPlanType && !(transitPlanTypes as readonly string[]).includes(transitPlanType)) {
+    throw fieldError("transitPlanType");
+  }
+  let surfaces: string[] | null = null;
+  if (body.surfaces !== undefined) {
+    if (!Array.isArray(body.surfaces) || body.surfaces.length === 0) throw fieldError("surfaces");
+    surfaces = [...new Set(body.surfaces.map((value) => String(value).trim().toUpperCase()))];
+    if (surfaces.some((surface) => !(productSurfaces as readonly string[]).includes(surface))) {
+      throw fieldError("surfaces");
+    }
+  }
   return {
     slug: slugString(body.slug),
     categoryId: requiredString(body.categoryId, "categoryId", 1, 120),
+    platformKey,
+    transitPlanType,
+    surfaces,
     imageKey: safeImagePath(body.imageKey),
     basePrice: decimalString(body.basePrice, "basePrice", 2),
     compareAtPrice: body.compareAtPrice === null || body.compareAtPrice === ""
@@ -2444,7 +3084,18 @@ function productInput(body: Record<string, unknown>) {
   };
 }
 
-function heroInput(body: Record<string, unknown>) {
+type HeroExtensionInput = {
+  placement: string;
+  mobileImageKey: string | null;
+  targetType: string;
+  targetValue: string | null;
+  secondaryCtaZh: string | null;
+  secondaryCtaEn: string | null;
+  secondaryTargetType: string | null;
+  secondaryTargetValue: string | null;
+};
+
+function heroInput(body: Record<string, unknown>, current?: HeroExtensionInput) {
   const translations = body.translations as Record<string, unknown> | undefined;
   const zh = translations?.zh as Record<string, unknown> | undefined;
   const en = translations?.en as Record<string, unknown> | undefined;
@@ -2456,10 +3107,61 @@ function heroInput(body: Record<string, unknown>) {
   if (!["cyan", "blue", "violet", "green"].includes(tone)) {
     throw new ApiInputError("INVALID_TONE", "Hero tone is invalid.", 422);
   }
+  const placement = typeof body.placement === "string"
+    ? body.placement.trim().toUpperCase()
+    : current?.placement ?? "HOME";
+  if (!(productSurfaces as readonly string[]).includes(placement)) throw fieldError("placement");
+  const targetSlug = nullableString(body.targetSlug, "targetSlug", 160);
+  const targetType = typeof body.targetType === "string"
+    ? body.targetType.trim().toUpperCase()
+    : current?.targetType ?? (targetSlug ? "PRODUCT" : "NONE");
+  if (!["NONE", "PRODUCT", "CATEGORY", "EXTERNAL_URL"].includes(targetType)) {
+    throw fieldError("targetType");
+  }
+  const targetValue = body.targetValue === undefined
+    ? current?.targetValue ?? targetSlug
+    : nullableString(body.targetValue, "targetValue", 512);
+  if (targetType === "EXTERNAL_URL" && targetValue) {
+    validatedExternalUrl(targetValue, "targetValue", false);
+  }
+  const secondaryCta = body.secondaryCta && typeof body.secondaryCta === "object"
+    ? body.secondaryCta as Record<string, unknown>
+    : {};
+  const secondaryTargetType = body.secondaryTargetType === undefined
+    ? current?.secondaryTargetType ?? null
+    : nullableString(body.secondaryTargetType, "secondaryTargetType", 40)?.toUpperCase() ?? null;
+  if (
+    secondaryTargetType
+    && !["NONE", "PRODUCT", "CATEGORY", "EXTERNAL_URL"].includes(secondaryTargetType)
+  ) {
+    throw fieldError("secondaryTargetType");
+  }
+  const secondaryTargetValue = body.secondaryTargetValue === undefined
+    ? current?.secondaryTargetValue ?? null
+    : nullableString(body.secondaryTargetValue, "secondaryTargetValue", 512);
+  if (secondaryTargetType === "EXTERNAL_URL" && secondaryTargetValue) {
+    validatedExternalUrl(secondaryTargetValue, "secondaryTargetValue", false);
+  }
   return {
     key: slugString(body.key),
     imageKey: safeImagePath(body.imageKey),
-    targetSlug: nullableString(body.targetSlug, "targetSlug", 160),
+    mobileImageKey: body.mobileImageKey === undefined
+      ? current?.mobileImageKey ?? null
+      : body.mobileImageKey === null || body.mobileImageKey === ""
+        ? null
+        : safeImagePath(body.mobileImageKey),
+    placement,
+    targetSlug,
+    targetType,
+    targetValue,
+    secondaryCtaZh: body.secondaryCta === undefined
+      ? current?.secondaryCtaZh ?? null
+      : nullableString(secondaryCta.zh, "secondaryCta.zh", 160),
+    secondaryCtaEn: body.secondaryCta === undefined
+      ? current?.secondaryCtaEn ?? null
+      : nullableString(secondaryCta.en, "secondaryCta.en", 160),
+    secondaryTargetType,
+    secondaryTargetValue,
     tone,
     status,
     sortOrder: safeInteger(body.sortOrder, "sortOrder", 0),
@@ -2864,6 +3566,29 @@ function normalizedShareTemplate(value: unknown): { zh: string; en: string } {
   }
 }
 
+function normalizedBannerVisibility(
+  value: unknown,
+  requireBooleans = false,
+): Record<"HOME" | "TRANSIT_SUBSCRIPTIONS" | "AI_RECHARGE", boolean> {
+  const record = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const visibility = {
+    HOME: record.HOME !== false,
+    TRANSIT_SUBSCRIPTIONS: record.TRANSIT_SUBSCRIPTIONS !== false,
+    AI_RECHARGE: record.AI_RECHARGE !== false,
+  };
+  if (
+    requireBooleans
+    && ["HOME", "TRANSIT_SUBSCRIPTIONS", "AI_RECHARGE"].some(
+      (key) => typeof record[key] !== "boolean",
+    )
+  ) {
+    throw fieldError("bannerVisibility");
+  }
+  return visibility;
+}
+
 function validatedShareTemplate(value: unknown): { zh: string; en: string } {
   const template = localizedText(value, "shareTemplate");
   for (const localized of [template.zh, template.en]) {
@@ -2892,6 +3617,63 @@ function requiredString(
 function nullableString(value: unknown, field: string, maxLength: number): string | null {
   if (value === null || value === undefined || value === "") return null;
   return requiredString(value, field, 1, maxLength);
+}
+
+function requiredStringArray(
+  value: unknown,
+  field: string,
+  maxItems: number,
+  maxItemLength: number,
+): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > maxItems) throw fieldError(field);
+  const items = value.map((item, index) => requiredString(
+    item,
+    `${field}.${index}`,
+    1,
+    maxItemLength,
+  ));
+  return [...new Set(items)];
+}
+
+function parsedStringArray(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function isoDateString(value: unknown, field: string): string {
+  const raw = requiredString(value, field, 10, 40);
+  const parsed = new Date(raw);
+  if (!Number.isFinite(parsed.getTime())) throw fieldError(field);
+  return parsed.toISOString();
+}
+
+function validatedExternalUrl(value: unknown, field: string, githubOnly: boolean): string {
+  const raw = requiredString(value, field, 1, 512);
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw fieldError(field);
+  }
+  if (
+    url.protocol !== "https:"
+    || url.username
+    || url.password
+    || (githubOnly && (
+      url.hostname !== "github.com"
+      || url.pathname.split("/").filter(Boolean).length < 2
+    ))
+  ) {
+    throw fieldError(field);
+  }
+  return url.toString();
 }
 
 function nullableHttpsUrl(value: unknown, field: string): string | null {

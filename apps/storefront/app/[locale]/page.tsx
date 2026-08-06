@@ -1,31 +1,43 @@
 import { notFound } from "next/navigation";
-import { StorefrontHome } from "../../components/storefront-home";
-import { getStorefrontHomeData } from "../../lib/api";
+import { V2LiveCatalogPage } from "../../components/v2-live/live-catalog";
+import { getV2CatalogData } from "../../lib/api";
 import { isLocale } from "../../lib/copy";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage({
   params,
-  searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ category?: string; q?: string }>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
-  const query = await searchParams;
-  const category = typeof query.category === "string" ? query.category.slice(0, 80) : "";
-  const search = typeof query.q === "string" ? query.q.slice(0, 120) : "";
   try {
-    const initialData = await getStorefrontHomeData({
+    const data = await getV2CatalogData({
       locale,
       currency: "CNY",
-      category: category || undefined,
-      search: search || undefined,
+      surface: "HOME",
     });
-    return <StorefrontHome locale={locale} initialData={initialData} initialCategory={category} initialSearch={search} />;
+    return (
+      <V2LiveCatalogPage
+        banners={data.banners}
+        categories={data.categories}
+        config={data.config}
+        initialProducts={data.products}
+        locale={locale}
+        surface="HOME"
+      />
+    );
   } catch {
-    return <StorefrontHome locale={locale} initialData={null} initialCategory={category} initialSearch={search} />;
+    return (
+      <V2LiveCatalogPage
+        banners={[]}
+        categories={[]}
+        config={null}
+        initialProducts={[]}
+        locale={locale}
+        surface="HOME"
+      />
+    );
   }
 }

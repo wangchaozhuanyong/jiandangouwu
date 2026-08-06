@@ -5,11 +5,7 @@ import {
   Plus,
   WarningCircle,
 } from "@phosphor-icons/react";
-import {
-  useCallback,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   createCategory,
   getCategories,
@@ -38,11 +34,15 @@ import {
 } from "../features/categories/model";
 import { adminCopy } from "../i18n";
 
-const copy = (locale: Locale, zh: string, en: string): string => locale === "zh" ? zh : en;
+const copy = (locale: Locale, zh: string, en: string): string =>
+  locale === "zh" ? zh : en;
 
 const impactSignalCopy: Record<CategoryImpactSignal, Record<Locale, string>> = {
   MISSING_TRANSLATION: { zh: "双语缺失", en: "Missing locale" },
-  NON_ACTIVE_WITH_PRODUCTS: { zh: "非启用且有关联商品", en: "Non-active with products" },
+  NON_ACTIVE_WITH_PRODUCTS: {
+    zh: "非启用且有关联商品",
+    en: "Non-active with products",
+  },
   ORDER_REPEATED: { zh: "顺序值重复", en: "Repeated order" },
   EMPTY: { zh: "空分类", en: "Empty category" },
   CLEAR: { zh: "当前无提示", en: "No current signal" },
@@ -56,8 +56,14 @@ export default function CategoriesPage({
   locale: Locale;
 }) {
   const t = adminCopy[locale];
-  const loader = useCallback((signal: AbortSignal) => getCategories(signal), []);
-  const { data, state, reload } = useCachedAdminResource<AdminCategory[]>("categories", loader);
+  const loader = useCallback(
+    (signal: AbortSignal) => getCategories(signal),
+    [],
+  );
+  const { data, state, reload } = useCachedAdminResource<AdminCategory[]>(
+    "categories",
+    loader,
+  );
   const slow = useSlowAdminRequest(state);
   const [editing, setEditing] = useState<AdminCategory | "new" | null>(null);
   const [impactOpen, setImpactOpen] = useState(false);
@@ -71,7 +77,8 @@ export default function CategoriesPage({
           onClick={() => setImpactOpen(true)}
           type="button"
         >
-          <Eye />{copy(locale, "分类影响概览", "Category impact overview")}
+          <Eye />
+          {copy(locale, "分类影响概览", "Category impact overview")}
         </button>
         {canWrite && (
           <button
@@ -79,7 +86,8 @@ export default function CategoriesPage({
             onClick={() => setEditing("new")}
             type="button"
           >
-            <Plus />{t.addCategory as string}
+            <Plus />
+            {t.addCategory as string}
           </button>
         )}
       </div>
@@ -93,40 +101,75 @@ export default function CategoriesPage({
           )}
         </p>
       )}
-      <RefreshNotice state={state} locale={locale} retry={() => void reload()} slow={slow} />
-      {!data ? <PanelState state={state} locale={locale} retry={() => void reload()} /> : (
+      <RefreshNotice
+        state={state}
+        locale={locale}
+        retry={() => void reload()}
+        slow={slow}
+      />
+      {!data ? (
+        <PanelState state={state} locale={locale} retry={() => void reload()} />
+      ) : (
         <div
           aria-busy={state === "refreshing"}
           className="category-list"
           tabIndex={0}
-          aria-label={locale === "zh" ? "商品分类表，可横向滚动" : "Category table, horizontally scrollable"}
+          aria-label={
+            locale === "zh"
+              ? "商品分类表，可横向滚动"
+              : "Category table, horizontally scrollable"
+          }
         >
-          <div className="category-head"><span>{t.order as string}</span><span>{t.name as string}</span><span>{t.slug as string}</span><span>{t.productCount as string}</span><span>{t.status as string}</span><span /></div>
-          {data.length === 0 && <div className="table-empty">{t.empty as string}</div>}
+          <div className="category-head">
+            <span>{t.order as string}</span>
+            <span>{t.name as string}</span>
+            <span>{t.slug as string}</span>
+            <span>{t.productCount as string}</span>
+            <span>{t.status as string}</span>
+            <span />
+          </div>
+          {data.length === 0 && (
+            <div className="table-empty">{t.empty as string}</div>
+          )}
           {data.map((item) => (
             <article key={item.id}>
               <b>{String(item.sortOrder).padStart(2, "0")}</b>
-              <div><strong>{item.name[locale]}</strong></div>
+              <div
+                className={
+                  item.level === "SECONDARY" ? "is-secondary-category" : ""
+                }
+              >
+                <small>
+                  {item.level === "PRIMARY"
+                    ? copy(locale, "一级", "Primary")
+                    : copy(locale, "二级", "Secondary")}
+                </small>
+                <strong>{item.name[locale]}</strong>
+              </div>
               <code>{item.slug}</code>
-              <span>{item.productCount}</span>
+              <span>
+                {item.productCount}
+                {item.level === "PRIMARY" ? ` / ${item.childCount}` : ""}
+              </span>
               <StatusPill status={item.status} locale={locale} />
-              {canWrite
-                ? (
-                  <button
-                    aria-label={`${t.edit as string} ${item.name[locale]}`}
-                    onClick={() => setEditing(item)}
-                    type="button"
-                  >
-                    <NotePencil />
-                  </button>
-                )
-                : <span aria-hidden="true">—</span>}
+              {canWrite ? (
+                <button
+                  aria-label={`${t.edit as string} ${item.name[locale]}`}
+                  onClick={() => setEditing(item)}
+                  type="button"
+                >
+                  <NotePencil />
+                </button>
+              ) : (
+                <span aria-hidden="true">—</span>
+              )}
             </article>
           ))}
         </div>
       )}
       {canWrite && editing && (
         <CategoryDialog
+          categories={data ?? []}
           locale={locale}
           item={editing}
           onClose={() => setEditing(null)}
@@ -167,7 +210,11 @@ function CategoryImpactDialog({
     [
       copy(locale, "启用 / 非启用", "Active / non-active"),
       `${impact.activeCategoryCount} / ${impact.nonActiveCategoryCount}`,
-      copy(locale, "仅启用分类进入公开筛选导航", "Only active categories enter public filters"),
+      copy(
+        locale,
+        "仅启用分类进入公开筛选导航",
+        "Only active categories enter public filters",
+      ),
     ],
     [
       copy(locale, "已加载商品关联", "Loaded product assignments"),
@@ -213,7 +260,11 @@ function CategoryImpactDialog({
           </span>
         </p>
         <div
-          aria-label={copy(locale, "分类影响表，可横向滚动", "Category impact table, horizontally scrollable")}
+          aria-label={copy(
+            locale,
+            "分类影响表，可横向滚动",
+            "Category impact table, horizontally scrollable",
+          )}
           className="category-impact-table-wrap"
           tabIndex={0}
         >
@@ -233,15 +284,27 @@ function CategoryImpactDialog({
             <tbody>
               {impact.rows.map((category) => (
                 <tr key={category.id}>
-                  <td><code>{String(category.sortOrder).padStart(2, "0")}</code></td>
+                  <td>
+                    <code>{String(category.sortOrder).padStart(2, "0")}</code>
+                  </td>
                   <td title={category.name.zh}>{category.name.zh || "—"}</td>
                   <td title={category.name.en}>{category.name.en || "—"}</td>
-                  <td><code>{category.slug}</code></td>
-                  <td><StatusPill locale={locale} status={category.status} /></td>
-                  <td>{category.productCount}</td>
-                  <td><time dateTime={category.updatedAt}>{formatDate(category.updatedAt, locale)}</time></td>
                   <td>
-                    <span className={`category-impact-signal is-${category.signal.toLocaleLowerCase()}`}>
+                    <code>{category.slug}</code>
+                  </td>
+                  <td>
+                    <StatusPill locale={locale} status={category.status} />
+                  </td>
+                  <td>{category.productCount}</td>
+                  <td>
+                    <time dateTime={category.updatedAt}>
+                      {formatDate(category.updatedAt, locale)}
+                    </time>
+                  </td>
+                  <td>
+                    <span
+                      className={`category-impact-signal is-${category.signal.toLocaleLowerCase()}`}
+                    >
                       {impactSignalCopy[category.signal][locale]}
                     </span>
                   </td>
@@ -250,7 +313,9 @@ function CategoryImpactDialog({
             </tbody>
           </table>
           {impact.rows.length === 0 && (
-            <div className="table-empty" role="status">{t.empty as string}</div>
+            <div className="table-empty" role="status">
+              {t.empty as string}
+            </div>
           )}
         </div>
       </div>
@@ -259,11 +324,13 @@ function CategoryImpactDialog({
 }
 
 function CategoryDialog({
+  categories,
   locale,
   item,
   onClose,
   onSaved,
 }: {
+  categories: AdminCategory[];
   locale: Locale;
   item: AdminCategory | "new";
   onClose: () => void;
@@ -271,13 +338,18 @@ function CategoryDialog({
 }) {
   const t = adminCopy[locale];
   const { notify } = useAdminStatus();
-  const initialForm = useMemo(() => ({
-    nameZh: item === "new" ? "" : item.name.zh,
-    nameEn: item === "new" ? "" : item.name.en,
-    slug: item === "new" ? "" : item.slug,
-    sortOrder: item === "new" ? 1 : item.sortOrder,
-    status: item === "new" ? "ACTIVE" : item.status,
-  }), [item]);
+  const initialForm = useMemo(
+    () => ({
+      nameZh: item === "new" ? "" : item.name.zh,
+      nameEn: item === "new" ? "" : item.name.en,
+      slug: item === "new" ? "" : item.slug,
+      sortOrder: item === "new" ? 1 : item.sortOrder,
+      status: item === "new" ? "ACTIVE" : item.status,
+      level: item === "new" ? ("PRIMARY" as const) : item.level,
+      parentId: item === "new" ? "" : (item.parentId ?? ""),
+    }),
+    [item],
+  );
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -295,8 +367,12 @@ function CategoryDialog({
     setBusy(true);
     setError("");
     try {
-      if (item === "new") await createCategory(form);
-      else await updateCategory(item.id, { ...form, version: item.version });
+      const payload = {
+        ...form,
+        parentId: form.level === "PRIMARY" ? null : form.parentId,
+      };
+      if (item === "new") await createCategory(payload);
+      else await updateCategory(item.id, { ...payload, version: item.version });
       invalidateAdminCache("categories", "products", "dashboard");
       notify(locale === "zh" ? "分类已保存。" : "Category saved.");
       onSaved();
@@ -309,29 +385,166 @@ function CategoryDialog({
   };
 
   return (
-    <Dialog title={item === "new" ? t.addCategory as string : t.edit as string} closeLabel={t.close as string} onClose={requestClose}>
+    <Dialog
+      title={item === "new" ? (t.addCategory as string) : (t.edit as string)}
+      closeLabel={t.close as string}
+      onClose={requestClose}
+    >
       <form className="editor-form" onSubmit={submit}>
         <div className="form-grid two">
-          <label><span>{t.zhName as string}</span><input value={form.nameZh} onChange={(event) => setForm({ ...form, nameZh: event.target.value })} required /></label>
-          <label><span>{t.enName as string}</span><input value={form.nameEn} onChange={(event) => setForm({ ...form, nameEn: event.target.value })} required /></label>
+          <label>
+            <span>{copy(locale, "分类级别", "Category level")}</span>
+            <select
+              value={form.level}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  level: event.target.value as typeof form.level,
+                  parentId: "",
+                })
+              }
+            >
+              <option value="PRIMARY">
+                {copy(locale, "一级分类", "Primary")}
+              </option>
+              <option value="SECONDARY">
+                {copy(locale, "二级分类", "Secondary")}
+              </option>
+            </select>
+          </label>
+          <label>
+            <span>
+              {copy(locale, "所属一级分类", "Parent primary category")}
+            </span>
+            <select
+              disabled={form.level === "PRIMARY"}
+              required={form.level === "SECONDARY"}
+              value={form.parentId}
+              onChange={(event) =>
+                setForm({ ...form, parentId: event.target.value })
+              }
+            >
+              <option value="">
+                {copy(locale, "请选择一级分类", "Choose a primary category")}
+              </option>
+              {categories
+                .filter(
+                  (category) =>
+                    category.level === "PRIMARY" &&
+                    category.id !== (item === "new" ? "" : item.id),
+                )
+                .map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name[locale]}
+                  </option>
+                ))}
+            </select>
+          </label>
         </div>
-        <label><span>{t.slug as string}</span><input value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value.toLocaleLowerCase() })} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required /></label>
         <div className="form-grid two">
-          <label><span>{t.order as string}</span><input type="number" min="0" value={form.sortOrder} onChange={(event) => setForm({ ...form, sortOrder: Number(event.target.value) })} required /></label>
-          <label><span>{t.status as string}</span><select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as typeof form.status })}>{["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"].map((status) => <option key={status} value={status}>{statusLabels[status]?.[locale] ?? status}</option>)}</select></label>
+          <label>
+            <span>{t.zhName as string}</span>
+            <input
+              value={form.nameZh}
+              onChange={(event) =>
+                setForm({ ...form, nameZh: event.target.value })
+              }
+              required
+            />
+          </label>
+          <label>
+            <span>{t.enName as string}</span>
+            <input
+              value={form.nameEn}
+              onChange={(event) =>
+                setForm({ ...form, nameEn: event.target.value })
+              }
+              required
+            />
+          </label>
         </div>
-        {item !== "new" && item.productCount > 0 && form.status !== "ACTIVE" && (
-          <p className="category-status-impact-note" role="note">
-            <Info aria-hidden="true" size={18} />
-            {copy(
-              locale,
-              `该分类当前关联 ${item.productCount} 个商品。保存后分类会退出公开筛选导航，但商品不会自动隐藏、移动或删除。`,
-              `This category currently has ${item.productCount} linked products. Saving removes the category from public filters, but products are not hidden, moved, or deleted automatically.`,
-            )}
+        <label>
+          <span>{t.slug as string}</span>
+          <input
+            value={form.slug}
+            onChange={(event) =>
+              setForm({ ...form, slug: event.target.value.toLocaleLowerCase() })
+            }
+            pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+            required
+          />
+        </label>
+        <div className="form-grid two">
+          <label>
+            <span>{t.order as string}</span>
+            <input
+              type="number"
+              min="0"
+              value={form.sortOrder}
+              onChange={(event) =>
+                setForm({ ...form, sortOrder: Number(event.target.value) })
+              }
+              required
+            />
+          </label>
+          <label>
+            <span>{t.status as string}</span>
+            <select
+              value={form.status}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  status: event.target.value as typeof form.status,
+                })
+              }
+            >
+              {["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"].map((status) => (
+                <option key={status} value={status}>
+                  {statusLabels[status]?.[locale] ?? status}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {item !== "new" &&
+          item.productCount > 0 &&
+          form.status !== "ACTIVE" && (
+            <p className="category-status-impact-note" role="note">
+              <Info aria-hidden="true" size={18} />
+              {copy(
+                locale,
+                `该分类当前关联 ${item.productCount} 个商品。保存后分类会退出公开筛选导航，但商品不会自动隐藏、移动或删除。`,
+                `This category currently has ${item.productCount} linked products. Saving removes the category from public filters, but products are not hidden, moved, or deleted automatically.`,
+              )}
+            </p>
+          )}
+        {item !== "new" &&
+          item.level === "PRIMARY" &&
+          item.childCount > 0 &&
+          form.status !== "ACTIVE" && (
+            <p className="category-status-impact-note" role="note">
+              <Info aria-hidden="true" size={18} />
+              {copy(
+                locale,
+                `该一级分类包含 ${item.childCount} 个二级分类；停用后所有子分类都会退出前台导航。`,
+                `This primary category contains ${item.childCount} secondary categories; disabling it removes all children from storefront navigation.`,
+              )}
+            </p>
+          )}
+        {error && (
+          <p className="form-error" role="alert" tabIndex={-1}>
+            <WarningCircle />
+            {error}
           </p>
         )}
-        {error && <p className="form-error" role="alert" tabIndex={-1}><WarningCircle />{error}</p>}
-        <div className="dialog-actions"><button type="button" onClick={requestClose}>{t.cancel as string}</button><button className="admin-primary" disabled={busy}>{busy ? t.submitting as string : t.save as string}</button></div>
+        <div className="dialog-actions">
+          <button type="button" onClick={requestClose}>
+            {t.cancel as string}
+          </button>
+          <button className="admin-primary" disabled={busy}>
+            {busy ? (t.submitting as string) : (t.save as string)}
+          </button>
+        </div>
       </form>
     </Dialog>
   );

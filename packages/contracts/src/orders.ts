@@ -29,6 +29,27 @@ export type CreateOrderInput = {
   expectedPrice: Money;
 };
 
+export type CreateCartOrderItemInput = {
+  productId: string;
+  expectedPrice: Money;
+};
+
+export type CreateCartOrderInput = {
+  locale: Locale;
+  items: CreateCartOrderItemInput[];
+  currency: string;
+  contactChannel: ContactChannelType;
+  contactValue: string;
+  acceptedPolicyVersion: string;
+};
+
+export type OrderReceiptItem = {
+  productId: string;
+  productName: string;
+  amount: Money;
+  referenceAmount: Money | null;
+};
+
 export type OrderReceipt = {
   orderNumber: string;
   status: OrderStatus;
@@ -38,6 +59,29 @@ export type OrderReceipt = {
   contactChannel: ContactChannelType;
   maskedContact: string;
   reservedUntil: string;
+  items?: OrderReceiptItem[];
+};
+
+export const orderLookupModes = ["LOCAL", "CONTACT", "ORDER_NUMBER"] as const;
+export type OrderLookupMode = (typeof orderLookupModes)[number];
+
+export type OrderLookupInput = {
+  locale: Locale;
+  mode: OrderLookupMode;
+  orderNumber?: string;
+  contactValue?: string;
+  verificationCode?: string;
+  localAccessToken?: string;
+};
+
+export type OrderLookupResult = {
+  orderNumber: string;
+  status: OrderStatus;
+  items: OrderReceiptItem[];
+  amount: Money;
+  maskedContact: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export const manualPaymentStages = [

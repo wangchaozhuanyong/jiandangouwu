@@ -4,7 +4,12 @@ import { WarningCircle } from "@phosphor-icons/react";
 import { useParams } from "next/navigation";
 import { copy, isLocale } from "../../lib/copy";
 
-export default function LocaleError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function LocaleError({
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
   const params = useParams<{ locale: string }>();
   const locale = isLocale(params.locale) ? params.locale : "zh";
   const t = copy[locale];

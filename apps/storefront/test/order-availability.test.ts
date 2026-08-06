@@ -34,8 +34,13 @@ const config = (
     acceptOrders,
     supportEnabled: true,
     inventoryRiskThreshold: 3,
-    transitServiceEnabled: true,
-    transitServiceUrl: null,
+  transitServiceEnabled: true,
+  transitServiceUrl: null,
+  bannerVisibility: {
+    HOME: true,
+    TRANSIT_SUBSCRIPTIONS: true,
+    AI_RECHARGE: true,
+  },
     shareTemplate: {
       zh: "推荐 {productName}，价格 {price}",
       en: "Recommend {productName} at {price}",

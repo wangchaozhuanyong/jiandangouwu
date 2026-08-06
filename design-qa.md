@@ -1,3 +1,221 @@
+# CloudBridge V2「图 2」商品导航与 DEMO 购物车设计验收
+
+## 对照目标
+
+- source visual truth path: `/Users/wangchao/.codex/generated_images/019fb2c5-02c3-7bd1-b450-1d564182e212/exec-b80f6209-9c85-48c5-89a4-064d6681e692.png`
+- implementation URL: `http://localhost:3001/preview/v2/zh#catalog`
+- evidence base path: `/Users/wangchao/Desktop/源码文件夹/简易购物网站/.codex-audit/cloudbridge-v2-2026-08-02`
+- full-view comparison evidence: `v2-cart-design-comparison.png`
+- desktop implementation evidence: `v2-cart-desktop-top-1440x1024.png`
+- focused mobile catalog evidence: `v2-cart-mobile-390x844.png` and `v2-cart-mobile-320x844.png`
+- focused mobile cart evidence: `v2-cart-sheet-mobile-390x844.png`
+- source pixels: `2048 × 1152`
+- implementation screenshot pixels: desktop `1425 × 1013`; mobile catalog `375 × 812` and `305 × 804`; mobile cart `390 × 844`
+- density normalization: the combined comparison keeps the full source at `1800 × 1013`, normalizes desktop implementation to `1080 × 768`, and places the two mobile states at `350 × 768` without changing their aspect ratios.
+- state: Chinese light-theme V2 preview; desktop cart closed; mobile catalog and two-item DEMO cart states; all data remains local preview data.
+
+## Findings
+
+- P0: 0.
+- P1: 0.
+- P2: 0.
+- [P3] The reference uses concept artwork and shorter product copy, while the implementation reuses the project's safe product fixtures and existing Phosphor icon family. The five-column rhythm, mobile anatomy, image ratios, hierarchy and porcelain/navy palette match; replacing the project assets would reduce truthfulness.
+- [P3] The reference desktop category rail includes decorative icons. The implementation keeps its labels text-first and reserves the user's explicit icon removal for mobile, avoiding new handcrafted artwork while retaining the requested information hierarchy.
+
+## Required Fidelity Surfaces
+
+- Typography: desktop navigation and catalog labels use a readable 14px floor; mobile category labels show four Chinese characters without clipping; product titles, full prices and stock remain readable at 320px.
+- Layout: desktop top navigation is separate from the left product category rail; the 1440 acceptance width renders five products per row. Mobile uses a 96px text-only rail and one horizontal product row per item, with both image and content areas fixed to 116px height.
+- Color and depth: cool porcelain surfaces, deep-navy hero imagery, restrained cyan controls and bronze transit shortcut follow the selected visual without adding another competing accent system.
+- Content: Home and Skill remain site navigation; AI recharge, creative tools and transit subscriptions are catalog categories/surfaces. The cart is explicitly DEMO-only and never claims a real order was created.
+- Interaction: cart add/remove, badge count, desktop right drawer, mobile bottom sheet, contact validation, Escape close, focus restoration, theme/language/support controls and four-item mobile bottom navigation are present.
+- Accessibility: cart and navigation targets remain at least 44px; dialog focus is trapped and restored; reduced motion is respected; page-level horizontal overflow is zero at 1440, 1024, 768, 390 and 320 acceptance widths.
+
+## Comparison History
+
+### Pass 1 — blocked
+
+- P2: desktop hero remained too tall, so the first product row was pushed too far below the fold.
+- P2: desktop navigation and category text were visually smaller than the selected reference.
+- P2: desktop product cards retained excess vertical body space and looked less dense than the five-column reference.
+
+Fixes made: reduced the hero to `clamp(340px, 26vw, 420px)`, increased navigation/category typography to 14px, tightened product-card content height, and retained five deterministic desktop columns.
+
+### Pass 2 — passed
+
+- Desktop hero measures about 374px at the 1440 acceptance viewport, with five aligned product columns.
+- 768 and 1024 acceptance widths render two columns; 390 and 320 render a 96px product navigation rail plus 116px horizontal product rows.
+- Mobile cart opens as a bottom sheet directly above the fixed four-item navigation; desktop cart opens from the right.
+- Two distinct DEMO products total `CNY 326.00`; form completion returns `界面校验完成，未创建订单，也未保存服务器数据。`
+- Chinese and English mobile copy were checked; browser console warning/error count was zero in the verified flows.
+
+## Implementation Checklist
+
+- [x] Separate website navigation from product category navigation.
+- [x] Render five product cards per desktop row at the 1440 acceptance width.
+- [x] Remove mobile category icons and preserve four-character Chinese labels.
+- [x] Keep mobile image and text areas within the same 116px vertical bounds.
+- [x] Add a four-item mobile bottom navigation for Home, Skill, Cart and Order Lookup.
+- [x] Add an in-memory DEMO cart without order API, storage, D1, payment or production behavior.
+- [x] Verify comparison evidence, responsive overflow, dialog behavior and console state.
+
+final result: passed
+
+## 2026-08-04 V2 订单查询三模式重设计
+
+### Source and intent
+
+- Source: 用户明确要求订单查询提供三种可切换方式：本地缓存、下单联系方式、订单提交成功时获得的订单号。
+- Scope: `/preview/v2/{locale}/orders/lookup` 本地 V2 预览及其 Fixture、样式、测试和规范；不修改正式 API、D1、生产路由或订单数据。
+- Before evidence: `.codex-audit/order-lookup-three-modes-2026-08-04/01-before-desktop-1440.png` 与 `02-before-mobile-390.png`。旧页面把订单号与联系方式放在同一表单，标题和双面板占用过多空间，DEMO 凭证与辅助场景抢占主流程。
+
+### Visual and interaction evidence
+
+- After evidence: `04-after-desktop-local-1440.png`、`05-after-mobile-contact-390.png`、`06-after-english-320.png`。新页面采用紧凑标题、三个等宽标签和单一查询工作台；没有图片 Hero。
+- 1440px 本机记录使用单列完整宽度，状态、精简字段和操作对齐；390px 联系方式验证改为单列；320px 英文三个标签完整显示。
+- 标签高度在 1440/1024/768px 为 58px，在 390/320px 为 48px；五档 `documentElement.scrollWidth - innerWidth` 均不为正。
+- 本机模式清除与恢复、联系方式两步验证、完整订单号查询、方向键切换均通过真实浏览器交互；联系方式结果为两笔，订单号结果为一笔。
+- DEMO 凭证与场景控制收进折叠辅助区，主界面只保留当前任务需要的输入和反馈。
+- 浏览器错误为 0；开发会话只有既有 Next.js 平滑滚动与 Fast Refresh 提示。
+
+### Automated evidence
+
+- `npm run test:storefront`: 43/43 passed.
+- `npm run check`: exit 0，包含规则、平台、后台、前台、Sites、类型检查和生产构建。
+- `npm run build:sites`: exit 0；只生成本地发布包，未部署。
+- `git diff --check`: exit 0。
+
+### Findings
+
+- P0: 0。
+- P1: 0。
+- P2: 0。
+- 正式联系方式查询仍需真实所有权验证和防刷设计；当前验证码和结果均为 DEMO，不是生产能力。
+
+final result: passed
+
+## 2026-08-03 V2 购物车推荐列表单列调整
+
+### Source and intent
+
+- Source: user request to make `您可能喜欢 / You may also like` one item per row instead of one horizontally scrolling shelf.
+- Scope: V2 local cart-preview recommendation layout only; no production cart, order API, D1, payment, dependency, asset or deployment change.
+- Direction: retain the existing compact horizontal card anatomy while replacing only the outer shelf with a full-width vertical list.
+
+### Visual and interaction evidence
+
+- 1440px, 1024px and 768px: one full-width card per row, 110px card height, 56px-wide add action, and zero page/list horizontal overflow.
+- 390px and 320px: one card per row, 88px card height, 44px-wide add action, and zero page/list horizontal overflow.
+- Each viewport reported one computed grid column; card x positions were identical and y positions increased by one row gap, confirming that no second item shares a row.
+- Clicking the first recommendation changed the in-memory cart count from 0 to 1 and updated the subtotal while preserving the remaining recommendation list and DEMO truth boundary.
+- Browser errors: 0. One pre-existing Next.js development warning concerns the global smooth-scroll declaration and is unrelated to this V2-only layout change.
+
+### Automated evidence
+
+- `npm run test:storefront`: 43/43 passed.
+- `npm run typecheck --workspace @cloudbridge/storefront`: exit 0.
+- `npm run check`: exit 0, including admin 64/64, storefront 43/43, Sites 62/62, typechecks and production builds.
+- `npm run build:sites`: exit 0; the local release package was prepared but not deployed.
+- `git diff --check`: exit 0.
+
+### Findings
+
+- P0: 0.
+- P1: 0.
+- P2: 0.
+
+final result: passed
+
+---
+
+# CloudBridge 方案 2「瓷白双港」设计验收（历史）
+
+## 对照目标
+
+- source visual truth path: `/Users/wangchao/.codex/generated_images/019fb2c5-02c3-7bd1-b450-1d564182e212/exec-e99b8315-ed2f-4caa-8be9-d230a41b655d.png`
+- implementation URL: `http://localhost:3001/zh`
+- evidence base path: `/Users/wangchao/.codex/visualizations/2026/07/30/019fb2c5-02c3-7bd1-b450-1d564182e212/cloudbridge-option2-design-qa`
+- implementation screenshot path: `implementation-desktop-final-pass3.png`
+- full-view comparison evidence: `desktop-comparison-final.png`
+- focused hero comparison evidence: `hero-comparison-final.png`
+- focused catalog comparison evidence: `catalog-comparison-final.png`
+- source pixels: `1487 × 1058`
+- implementation pixels: `1487 × 1057`
+- CSS viewport: `1502 × 1068`; browser content width `1487`; device scale factor `1`
+- density normalization: both sides were normalized to `1487 × 1058` before composing the comparison image; the implementation screenshot received a one-pixel height normalization only.
+- state: Chinese storefront home, light theme, local Sites D1 catalog data, no authenticated client state.
+
+## Findings
+
+- No actionable P0, P1, or P2 visual differences remain.
+- [P3] The reference uses fixed concept products and one static bridge hero, while the implementation uses the existing admin-owned carousel and real catalog artwork. The subject matter differs, but image quality, crop, deep-navy palette, 70/30 split, and visual hierarchy match the selected direction. Replacing these assets would incorrectly override merchant content.
+- [P3] The implementation keeps the existing multi-category pill row and therefore starts the product cards slightly lower than the mock's single category selector. This is an intentional product constraint: all real category filters remain directly available without inventing a new menu interaction.
+- [P3] Product summaries do not expose a description field, so cards preserve honest whitespace instead of adding mock descriptions. Titles, prices, reference prices, stock states, and actions remain aligned.
+- The mock's cart, Skill navigation, in-site transit subscription, and product-category badges were deliberately not implemented. They conflict with CloudBridge's current capability boundary and are replaced by truthful navigation, manual-order entry, existing support, and the external transit action.
+
+## Required Fidelity Surfaces
+
+- Fonts and typography: editorial Songti/serif headings, compact sans-serif controls, weights, line heights, bilingual wrapping, and 320px title behavior were checked. No truncation or unreadable text remains.
+- Spacing and layout rhythm: header, full-bleed hero, 70/30 dual-harbor split, capability rail, catalog rhythm, horizontal desktop cards, two-column mobile cards, radii, borders, and fixed detail dock were checked.
+- Colors and visual tokens: porcelain background, deep navy anchors, restrained teal controls, white merchandise surfaces, bronze transit entry, contrast, and status colors were checked in the light theme. The paired dark theme remains supported and remains the default product setting.
+- Image quality and asset fidelity: all visible artwork is existing real PNG/WebP catalog or hero media; no placeholder, emoji, handcrafted SVG, or CSS-art substitute was introduced. Crops remain sharp at desktop and mobile sizes.
+- Copy and content: Chinese and English UI copy is complete and truthful. No payment, cart, account, subscription, or success state is simulated.
+- Icons and accessibility: the existing Phosphor icon family is used consistently; 44px controls, focus visibility, dialog focus restoration, Escape handling, semantic labels, and reduced-motion behavior remain present.
+
+## Responsive and Interaction Evidence
+
+- 390px viewport: CSS viewport `390 × 844`, client width `375`, document scroll width `375`; hero is one column, capability rail is `2 × 2`, and the product grid remains two columns. Evidence: `implementation-mobile-390-top.png` and `implementation-mobile-390-catalog.png` under the evidence base path.
+- 320px viewport: CSS viewport `320 × 844`, client width `305`, document scroll width `305`; the `云桥` wordmark remains visible, hero content wraps without clipping, the two-column grid remains intact, and the compact external transit action no longer overlaps the hero support action. Evidence: `implementation-mobile-320-top-final.png` under the evidence base path.
+- Product detail: no global storefront header or footer is rendered; the purchase dock remains fixed with reserved page space. Evidence: `implementation-detail-desktop.png` and `implementation-detail-mobile-320-final.png` under the evidence base path.
+- Header theme toggle was verified in-browser.
+- Chinese-to-English direct language navigation was verified at `/en` with complete English navigation and action labels.
+- Support drawer opened from the header, showed the truthful unavailable state, closed with Escape, and restored focus to the originating support button.
+- Search for `Gemini` updated the URL to `?q=Gemini` and returned exactly one real product.
+- The custom currency menu expanded with all configured currency options and closed with Escape.
+- Terms page retained the shared numbered editorial pattern and had no horizontal overflow at 320px.
+- Browser console errors checked after the primary interactions: none.
+
+## Comparison History
+
+### Pass 1 — blocked
+
+- P2: hero split was approximately 75/25 rather than the mock's 70/30 composition.
+- P2: desktop hero and capability rail retained side gutters, weakening the mock's full-width visual anchor.
+- P2: catalog heading, tools, and category rhythm pushed the first product row too far below the fold.
+- P2: desktop product imagery was flush to the card edge instead of using the mock's inset merchandise frame.
+
+Fixes made: changed the split to `7fr / 3fr`, made the desktop hero and capability rail full-bleed, tightened catalog typography and vertical spacing, and converted desktop cards to an inset horizontal image/content composition.
+
+### Pass 2 — blocked
+
+- P2: the service-panel icon/title group sat too high relative to the selected visual.
+- P2: the 320px transit capsule overlapped the hero support action.
+- P2: the 320px detail price currency wrapped onto a separate line.
+
+Fixes made: rebalanced the service-panel internal spacing while preserving the fixed action position, reduced the mobile transit capsule to a truthful full-label 150px layout, and tightened the compact detail currency/price row.
+
+### Pass 3 — passed
+
+- Post-fix full-view evidence: `desktop-comparison-final.png` under the evidence base path.
+- Post-fix focused evidence: `hero-comparison-final.png` and `catalog-comparison-final.png` under the evidence base path.
+- Desktop, 390px, 320px, detail, policy, search, currency, language, theme, support-drawer, focus-restoration, and console checks completed with no remaining actionable P0/P1/P2 finding.
+
+## Implementation Checklist
+
+- [x] Preserve real routes and existing business behavior.
+- [x] Keep cart, quantity, login, payment, and new APIs out of scope.
+- [x] Match the selected porcelain/navy visual hierarchy.
+- [x] Keep dark/light themes and bilingual controls intact.
+- [x] Verify desktop, 390px, and 320px layouts.
+- [x] Verify support, search, currency, language, policy, and detail flows.
+- [x] Verify console and horizontal overflow.
+
+final result: passed
+
+---
+
+# 历史设计验收记录
+
 # CloudBridge 完整设计补全 QA
 
 ## 2026-07-30 正式客户端页脚固定四入口
@@ -1073,5 +1291,62 @@ final result: passed
 - 字体、布局、颜色、素材与文案五项视觉表面均已复核；451/390/320 三档响应式、语言/币种菜单、客服抽屉、焦点返回和控制台均通过。
 - 首轮发现的 451px 四宫格 202.5px 半像素列宽已修复为 202/203px，并重新截图比较。
 - P0/P1/P2：0/0/0。
+
+final result: passed
+
+## 2026-08-03 V2 Skill 单级目录重设计
+
+### Source and intent
+
+- Source: user-approved CloudBridge Skill recommendation plan, using the existing porcelain/night-gallery design system rather than a new visual language.
+- Scope: `/preview/v2/{locale}/skills` list layout and shared compact Skill cards only; the formal API, D1, production routes, purchase and installation capabilities remain unchanged.
+- Hierarchy: landscape Hero, full-width search, one text-only content taxonomy on the left, and compact Skill results on the right. No product primary-category row is reused.
+
+### Visual and interaction evidence
+
+- 1440px: 173px category rail, three 390 × 280px cards; 1024px and 768px: 152px/136px rails with two cards per row.
+- 390px and 320px: 76px/72px text rails beside 269px/207px-wide, 116px-high horizontal cards; GitHub remains a separate 44 × 44px target and page overflow is 0.
+- The first 320px pass exposed a 6px GitHub-button overflow. The compact grid was constrained to one minmax row and a 102px inner body, then rechecked with card, body and action all contained.
+- Category switching, combined search, invalid URL cleanup, whole-card detail navigation, detail-page rail omission, six-card loading skeletons, Chinese and long English labels were exercised in the browser.
+- Mobile search sticks at 68px below the compact header; only after that point do the category and result panes enable independent vertical overflow. Empty categories are absent rather than disabled or clickable.
+- Browser console errors: 0. Two pre-existing Next.js development warnings describe the global smooth-scroll declaration; production/type/build gates remain green and this V2-only task does not alter the formal root layout.
+
+### Automated evidence
+
+- `npm run test:storefront`: 43/43 passed.
+- `npm run check`: exit 0, including admin 64/64, storefront 43/43, Sites 62/62, typechecks and production builds.
+- `npm run build:sites`: exit 0; release package prepared locally and not deployed.
+- `git diff --check`: exit 0.
+
+### Findings
+
+- P0: 0.
+- P1: 0.
+- P2: 0 after the 320px action containment correction.
+
+final result: passed
+
+## 2026-08-04 V2 Skill 间距、查询退出与页脚收口
+
+### Source and intent
+
+- 用户截图：`codex-clipboard-1d6fcc0f-f7bb-4ad4-a0b2-7b5df11426cd.png`、`codex-clipboard-0aa3d20e-aecc-4c70-ba1b-6b8a63679848.png`、`codex-clipboard-cc57d5f6-1fe0-4b16-8771-dc7eb695020e.png`。
+- 范围：Skill 搜索与目录间距、订单查询重复返回入口、V2 共享页脚比例与品牌锁定；不修改业务逻辑、页面路由、正式 API 或数据。
+- 改造前证据：`.codex-audit/v2-spacing-footer-cleanup-2026-08-04/01-before-skill-spacing-390.png`、`02-before-lookup-bottom-390.png`、`03-before-footer-1440.png`。
+
+### Visual and interaction evidence
+
+- Skill 搜索框与目录的移动端间距实测为 16px，桌面和平板为 14px；原先约 6px 的双边框拥挤感已消失。
+- 订单查询的 `.v2-preview-lookup-back` 在 1440、1024、768、390、320px 均为 0，退出能力仍由已有主导航承担。
+- 桌面页脚实测为 181px，高度由品牌/导航 128px 与法律栏 52px组成；Logo、品牌名和一句说明在同一紧凑视觉锁定中。
+- 移动端继续使用四个全宽导航行，品牌区缩小为 46 × 32px Logo 与紧凑说明；320px 英文页脚自身横向溢出为 0。
+- 改造后证据：`04-after-skill-spacing-390.png`、`05-after-lookup-bottom-390.png`、`06-after-footer-1440.png`、`07-after-footer-english-320.png`。
+
+### Findings
+
+- P0: 0。
+- P1: 0。
+- P2: 0。
+- 截图可以确认比例、间距和溢出；完整读屏语义仍以既有自动测试和后续正式无障碍验收为准。
 
 final result: passed

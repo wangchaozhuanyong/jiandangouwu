@@ -3,13 +3,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { copy } from "../lib/copy.js";
 
-const read = (file: string) => readFileSync(
-  new URL(`../${file}`, import.meta.url),
-  "utf8",
-);
+const read = (file: string) =>
+  readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 
 test("the header always exposes truthful customer support", () => {
   const shell = read("components/site-shell.tsx");
+  const provider = read("components/experience-provider.tsx");
 
   assert.match(shell, /className="support-trigger"/u);
   assert.match(
@@ -20,9 +19,21 @@ test("the header always exposes truthful customer support", () => {
     shell,
     /\{supportEnabled && \(\s*<button[\s\S]*?className="support-trigger"/u,
   );
-  assert.doesNotMatch(
+  assert.doesNotMatch(shell, /\{supportEnabled && \(\s*<SupportDrawer/u);
+  assert.match(provider, /supportOpen: boolean/u);
+  assert.match(provider, /openSupport: \(\) => void/u);
+  assert.match(provider, /closeSupport: \(\) => void/u);
+  assert.match(
     shell,
-    /\{supportEnabled && \(\s*<SupportDrawer/u,
+    /const \{ closeSupport, openSupport, supportOpen \} = useExperience\(\)/u,
+  );
+  assert.match(
+    shell,
+    /className="support-trigger"[\s\S]*?onClick=\{openSupport\}/u,
+  );
+  assert.match(
+    shell,
+    /<SupportDrawer[\s\S]*?onClose=\{closeSupport\}[\s\S]*?open=\{supportOpen\}/u,
   );
   assert.equal(copy.zh.customerSupport, "客户服务");
   assert.equal(copy.en.customerSupport, "Customer Support");
@@ -31,6 +42,29 @@ test("the header always exposes truthful customer support", () => {
     copy.en.supportUnavailableTitle,
     "Customer support is not available yet",
   );
+});
+
+test("the header exposes only real destinations and a manual-order catalog action", () => {
+  const shell = read("components/site-shell.tsx");
+  const header = shell.slice(
+    shell.indexOf('<header className="site-header">'),
+    shell.indexOf("</header>"),
+  );
+
+  assert.match(
+    header,
+    /t\.navHome[\s\S]*?t\.navCatalog[\s\S]*?policies\/terms[\s\S]*?t\.navTerms[\s\S]*?policies\/privacy[\s\S]*?t\.navPrivacy/u,
+  );
+  assert.match(header, /aria-current=\{isHome \? "page" : undefined\}/u);
+  assert.match(header, /className="header-order-link"[\s\S]*?t\.manualOrder/u);
+  assert.doesNotMatch(header, /cart|basket|购物车|购物篮/iu);
+  assert.doesNotMatch(header, /brandSecondary/u);
+  assert.equal(copy.zh.navHome, "首页");
+  assert.equal(copy.zh.navCatalog, "服务目录");
+  assert.equal(copy.zh.navTerms, "条款");
+  assert.equal(copy.zh.navPrivacy, "隐私");
+  assert.equal(copy.zh.manualOrder, "人工下单");
+  assert.equal(copy.en.manualOrder, "Order with support");
 });
 
 test("QQ support uses a best-effort app handoff with a visible copy fallback", () => {
@@ -83,7 +117,7 @@ test("the language control is one compact direct toggle", () => {
   assert.doesNotMatch(shell, /className="language-switch"/u);
   assert.match(
     styles,
-    /\.theme-toggle, \.language-picker \{ width: 48px; height: 48px;[\s\S]*?@media \(max-width: 760px\)[\s\S]*?\.theme-toggle, \.language-picker \{ width: 44px; height: 44px;/u,
+    /\.theme-toggle,\s*\.language-picker\s*\{[^}]*width:\s*48px;[^}]*height:\s*48px;[\s\S]*?@media \(max-width: 760px\)[\s\S]*?\.theme-toggle,\s*\.language-picker\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/u,
   );
   assert.doesNotMatch(styles, /\.language-picker__trigger/u);
 });
@@ -101,8 +135,14 @@ test("the storefront theme is persistent, prepaint-safe, and fully localized", (
   assert.match(layout, /window\.localStorage\.getItem/u);
   assert.match(layout, /document\.documentElement\.dataset\.theme=theme/u);
   assert.match(shell, /className="theme-toggle"/u);
-  assert.match(shell, /window\.localStorage\.setItem\(STOREFRONT_THEME_STORAGE_KEY, nextTheme\)/u);
-  assert.match(shell, /document\.documentElement\.style\.colorScheme = nextTheme/u);
+  assert.match(
+    shell,
+    /window\.localStorage\.setItem\(STOREFRONT_THEME_STORAGE_KEY, nextTheme\)/u,
+  );
+  assert.match(
+    shell,
+    /document\.documentElement\.style\.colorScheme = nextTheme/u,
+  );
   assert.match(styles, /:root\[data-theme="light"\]/u);
   assert.match(styles, /html\[data-theme="light"\] \.product-card/u);
   assert.match(styles, /html\[data-theme="light"\] \.order-action-dock/u);
@@ -118,36 +158,27 @@ test("currency controls render only the locale-specific currency name", () => {
     controls,
     /<strong>\{activeCurrency\?\.name \?\? ariaLabel\}<\/strong>/u,
   );
-  assert.match(
-    controls,
-    /<span><strong>\{currency\.name\}<\/strong><\/span>/u,
-  );
-  assert.doesNotMatch(
-    controls,
-    /<strong>\{activeCurrency\?\.code/u,
-  );
-  assert.doesNotMatch(
-    controls,
-    /<strong>\{currency\.code\}<\/strong>/u,
-  );
+  assert.match(controls, /<span><strong>\{currency\.name\}<\/strong><\/span>/u);
+  assert.doesNotMatch(controls, /<strong>\{activeCurrency\?\.code/u);
+  assert.doesNotMatch(controls, /<strong>\{currency\.code\}<\/strong>/u);
 });
 
 test("rounded storefront frames use real borders without simulated padding", () => {
   const styles = read("app/globals.css");
 
   assert.match(styles, /--frame-line:\s*rgba\(128,\s*218,\s*239,\s*0\.42\);/u);
-  assert.match(styles, /--frame-line-soft:\s*rgba\(157,\s*201,\s*228,\s*0\.24\);/u);
+  assert.match(
+    styles,
+    /--frame-line-soft:\s*rgba\(157,\s*201,\s*228,\s*0\.24\);/u,
+  );
   assert.match(
     styles,
     /\.capability-rail \{[^}]*gap:\s*1px;[^}]*padding:\s*0;[^}]*border:\s*1px solid var\(--frame-line\);[^}]*border-radius:\s*18px;[^}]*background:\s*var\(--line-strong\);[^}]*background-clip:\s*padding-box;/u,
   );
-  assert.doesNotMatch(
-    styles,
-    /\.capability-rail \{[^}]*padding:\s*1px;/u,
-  );
+  assert.doesNotMatch(styles, /\.capability-rail \{[^}]*padding:\s*1px;/u);
   assert.match(
     styles,
-    /@media \(max-width: 760px\)[\s\S]*?\.capability-rail \{[^}]*grid-template-columns:\s*round\(down,\s*calc\(\(100% - 1px\) \/ 2\),\s*1px\)\s+minmax\(0,\s*1fr\);/u,
+    /@media \(max-width: 760px\)[\s\S]*?\.capability-rail\s*\{[^}]*grid-template-columns:\s*round\(down,\s*calc\(\(100% - 1px\) \/ 2\),\s*1px\)\s+minmax\(\s*0,\s*1fr\s*\);/u,
   );
 
   for (const selector of [
@@ -160,9 +191,16 @@ test("rounded storefront frames use real borders without simulated padding", () 
     ".policy-grid",
     ".support-channel-list article",
   ]) {
+    const selectorPattern = selector
+      .split(",")
+      .map((part) => part.trim().replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+      .join(",\\s*");
     assert.match(
       styles,
-      new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")} \\{[^}]*background-clip:\\s*padding-box;`, "u"),
+      new RegExp(
+        `${selectorPattern}\\s*\\{[^}]*background-clip:\\s*padding-box;`,
+        "u",
+      ),
     );
   }
 });

@@ -4,7 +4,9 @@ export default function LocaleLoading() {
       <div className="route-loading-line" />
       <div className="route-loading-hero" />
       <div className="route-loading-grid">
-        {Array.from({ length: 4 }, (_, index) => <div key={index} />)}
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} />
+        ))}
       </div>
     </main>
   );

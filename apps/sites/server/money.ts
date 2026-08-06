@@ -15,6 +15,18 @@ export function normalizeMoney(value: string, digits = 2): string {
   return rescale(parsed.value, parsed.scale, digits);
 }
 
+export function sumDecimalAmounts(values: readonly string[], digits = 2): string {
+  const scale = 10n ** BigInt(digits);
+  const total = values.reduce((sum, value) => {
+    const normalized = normalizeMoney(value, digits);
+    const [whole, fraction = ""] = normalized.split(".");
+    return sum + BigInt(whole) * scale + BigInt(fraction || "0");
+  }, 0n);
+  const raw = total.toString().padStart(digits + 1, "0");
+  if (digits === 0) return raw;
+  return `${raw.slice(0, -digits)}.${raw.slice(-digits)}`;
+}
+
 function parseDecimal(value: string): { value: bigint; scale: number } {
   const normalized = value.trim();
   if (!/^\d+(?:\.\d+)?$/u.test(normalized)) {
