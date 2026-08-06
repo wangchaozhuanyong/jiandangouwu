@@ -514,7 +514,7 @@ export function ProductDetailView({
                   </span>
                   <button
                     aria-label={locale === "zh" ? "加入购物车" : "Add to cart"}
-                    className="order-add-cart"
+                    className="order-add-cart v2-action v2-action--primary"
                     disabled={
                       cartItems.some((item) => item.id === product.id) ||
                       product.stockQuantity === 0
@@ -538,7 +538,7 @@ export function ProductDetailView({
                     </span>
                   </button>
                   <button
-                    className="order-submit"
+                    className="order-submit v2-action v2-action--primary"
                     type="submit"
                     disabled={
                       !canOrder ||

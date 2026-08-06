@@ -46,6 +46,21 @@ test("storefront bootstrap returns localized first-render data in batched reads"
   }
 });
 
+test("cart bootstrap keeps HOME recommendations available for the cart surface", async () => {
+  const { sqlite, db } = createTestDatabase();
+  try {
+    const bootstrap = await buildStorefrontBootstrap(
+      db,
+      new URL("https://example.test/zh/cart"),
+    );
+    assert.equal(bootstrap?.kind, "cart");
+    assert.ok((bootstrap?.data.products.length ?? 0) > 0);
+    assert.ok(bootstrap?.data.products.every((product) => product.slug));
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("public storefront responses declare short shared caches", async () => {
   const { sqlite, db } = createTestDatabase();
   const waits = [];

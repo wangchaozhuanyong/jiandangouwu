@@ -20,7 +20,7 @@ test("正式客户端使用持续壳层和路由级加载错误边界", () => {
     localeLayout,
     /<V2LiveShell locale=\{locale\} initialConfig=\{config\}>[\s\S]*?\{children\}[\s\S]*?<\/V2LiveShell>/u,
   );
-  assert.match(liveShell, /className="v2-preview-header"/u);
+  assert.match(liveShell, /className="v2-preview-header(?:\s|")/u);
   assert.match(liveCatalog, /export function V2LiveCatalogPage/u);
   assert.doesNotMatch(detail, /<SiteShell/u);
   assert.doesNotMatch(policy, /<SiteShell/u);
@@ -106,6 +106,7 @@ test("正式客户端商品区使用两级分类和五列响应式目录", () =>
 test("正式客户端刷新公开配置、恢复订单冲突并保持移动端卡片节奏", () => {
   const shell = read("apps/storefront/components/v2-live/live-shell.tsx");
   const catalog = read("apps/storefront/components/v2-live/live-catalog.tsx");
+  const commerce = read("apps/storefront/components/v2-live/live-commerce.tsx");
   const detail = read("apps/storefront/components/product-detail.tsx");
   const css = read("apps/storefront/app/globals.css");
 
@@ -114,6 +115,21 @@ test("正式客户端刷新公开配置、恢复订单冲突并保持移动端�
   assert.match(shell, /config\?\.settings\.transitServiceEnabled/u);
   assert.match(shell, /className="v2-preview-transit-float"/u);
   assert.match(shell, /className="v2-preview-mobile-bottom-nav"/u);
+  assert.match(shell, /const isMobileServicePage = isCartPage \|\| isLookupPage/u);
+  assert.match(shell, /is-mobile-service-page/u);
+  assert.doesNotMatch(shell, /className="v2-preview-order-lookup-button"/u);
+  assert.doesNotMatch(shell, /className="v2-preview-cart-button"/u);
+  assert.match(
+    commerce,
+    /className="v2-preview-lookup-heading"[\s\S]*?<h1>\{t\.lookupEyebrow\}<\/h1>/u,
+  );
+  assert.doesNotMatch(commerce, /<span>\{t\.channel\}<\/span>/u);
+  assert.doesNotMatch(commerce, /<span>\{t\.account\}<\/span>/u);
+  assert.match(commerce, /aria-label=\{t\.account\}/u);
+  assert.match(
+    css,
+    /\.contact-picker__trigger\.is-empty > \.contact-picker__placeholder\s*\{[^}]*width:\s*auto;/u,
+  );
   assert.match(detail, /resolveOrderAvailability\(config\) !== "available"/u);
   assert.match(
     detail,
@@ -130,6 +146,44 @@ test("正式客户端刷新公开配置、恢复订单冲突并保持移动端�
     /@media \(max-width: 760px\)[\s\S]*?\.v2-preview-product-card\s*\{[^}]*height:\s*104px/u,
   );
   assert.match(css, /\.v2-preview-transit-float\s*\{[^}]*position:\s*fixed/u);
+  assert.match(
+    css,
+    /@media \(max-width: 760px\)[\s\S]*?\.v2-live-shell\.is-mobile-service-page \.v2-preview-header\s*\{[^}]*display:\s*none;/u,
+  );
+  assert.match(
+    css,
+    /\.v2-live-shell\.is-mobile-service-page \.v2-preview-lookup-tabs\s*\{[^}]*top:\s*0;/u,
+  );
+});
+
+test("购物车是独立下单工作页，且只提交当前勾选的服务", () => {
+  const shell = read("apps/storefront/components/v2-live/live-shell.tsx");
+  const commerce = read("apps/storefront/components/v2-live/live-commerce.tsx");
+  const provider = read("apps/storefront/components/experience-provider.tsx");
+  const css = read("apps/storefront/app/globals.css");
+
+  assert.match(
+    shell,
+    /\{!isProductDetail && !isCartPage && \(\s*<header className="v2-preview-header/u,
+  );
+  assert.match(
+    shell,
+    /\{!isProductDetail && \(\s*<nav aria-label=\{t\.primary\} className="v2-preview-mobile-bottom-nav"/u,
+  );
+  assert.match(commerce, /const \[selectedIds, setSelectedIds\]/u);
+  assert.match(commerce, /type="checkbox"/u);
+  assert.match(commerce, /items: selectedItems\.map/u);
+  assert.match(commerce, /removeCartItems\(selectedItems\.map/u);
+  assert.match(commerce, /selectAllRef\.current\.indeterminate/u);
+  assert.match(provider, /removeCartItems: \(productIds: readonly string\[\]\)/u);
+  assert.match(
+    css,
+    /\.v2-live-shell \.v2-live-cart__all-checkbox,\s*\.v2-live-shell \.v2-live-cart__item-checkbox\s*\{[\s\S]*?min-width:\s*44px/u,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 760px\) \{[\s\S]*?\.v2-live-shell \.v2-live-cart\.is-page \.v2-preview-cart__dock\s*\{[\s\S]*?bottom:\s*calc\(74px \+ env\(safe-area-inset-bottom\)\)/u,
+  );
 });
 
 test("遗留后台登录入口首屏直接挂载且关键控制具备 44px 点击目标", () => {
@@ -233,7 +287,7 @@ test("正式客户端恢复可访问币种菜单、客服抽屉、旧版编辑�
     /const isProductDetail = pathname\.startsWith\(`\$\{base\}\/products\/`\)/u,
   );
   assert.match(shell, /!isProductDetail && !isCartPage && !isHome/u);
-  assert.match(shell, /className="v2-preview-footer"/u);
+  assert.match(shell, /className="v2-preview-footer(?:\s|")/u);
   assert.match(shell, /className="v2-preview-footer__legal"/u);
   assert.match(detail, /className="order-action-dock"/u);
   assert.match(

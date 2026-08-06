@@ -25,16 +25,19 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSkills } from "../../lib/api";
 import { ResilientImage } from "../resilient-image";
+import { V2ContentFrame, V2HeroFrame, V2PageFrame } from "./page-frame";
 
 const labels = {
   zh: {
-    title: "经过整理的工具线索，而不是安全背书。",
-    body: "从用途、兼容环境与来源级别判断 Skill、Plugin 和 Connector 是否适合当前任务。",
+    title: "先看用途，再决定是否安装。",
+    body: "通过用途、兼容环境与来源信息，判断它是否适合当前任务。",
     search: "搜索 Skill、Plugin、Connector 或兼容环境",
     all: "全部 Skill",
     categories: "Skill 分类",
     empty: "没有找到匹配内容",
     emptyBody: "请缩短关键词或切换其他分类。",
+    pending: "Skill 内容正在整理",
+    pendingBody: "这里会在内容发布后展示分类与工具条目。",
     clear: "清除筛选",
     error: "Skill 内容暂时无法连接",
     retry: "重新连接",
@@ -57,13 +60,15 @@ const labels = {
     github: "GitHub 仓库",
   },
   en: {
-    title: "Curated tool leads, never a security endorsement.",
-    body: "Evaluate Skills, Plugins, and Connectors by purpose, compatibility, and source level.",
+    title: "Understand the tool before you install it.",
+    body: "Use purpose, compatibility, and source information to decide whether it fits the task.",
     search: "Search Skills, Plugins, Connectors, or environments",
     all: "All skills",
     categories: "Skill categories",
     empty: "No matching content",
     emptyBody: "Try a shorter query or another category.",
+    pending: "Skill content is being prepared",
+    pendingBody: "Published categories and tools will appear here.",
     clear: "Clear filters",
     error: "Skill content is temporarily unavailable",
     retry: "Reconnect",
@@ -151,6 +156,7 @@ function SkillCard({ locale, skill }: { locale: Locale; skill: SkillSummary }) {
         {safeGitHub(skill.githubUrl) && (
           <a
             aria-label={`${skill.name} GitHub`}
+            className="v2-action v2-action--secondary"
             href={skill.githubUrl}
             onClick={(event) => event.stopPropagation()}
             rel="noopener noreferrer"
@@ -193,6 +199,8 @@ export function V2LiveSkills({
       ),
     [categories, initialSkills],
   );
+  const isPublishedCatalogEmpty =
+    initialSkills.length === 0 && !query.trim() && category === "all";
 
   useEffect(() => {
     if (
@@ -240,26 +248,31 @@ export function V2LiveSkills({
     updateQuery({ filter: "", q: "" });
   };
   return (
-    <main className="v2-preview-page v2-preview-skills-page">
-      <section className="v2-preview-skills-intro">
-        <ResilientImage
-          alt=""
-          fallbackLabel={
-            locale === "zh" ? "图片暂时无法显示" : "Image unavailable"
-          }
-          height={720}
-          sizes="100vw"
-          src="/assets/hero-codex.webp"
-          width={1600}
-        />
-        <span aria-hidden="true" />
-        <div>
-          <small>CloudBridge Skills</small>
-          <h1>{t.title}</h1>
-        </div>
-        <p>{t.body}</p>
-      </section>
-      <section className="v2-preview-skills-catalog">
+    <main className="v2-page-surface v2-preview-page v2-preview-skills-page">
+      <V2HeroFrame>
+        <section
+          className={`v2-preview-skills-intro${isPublishedCatalogEmpty ? " is-empty" : ""}`}
+        >
+          <div className="v2-live-skills-intro__copy">
+            <h1>{t.title}</h1>
+            <p>{t.body}</p>
+          </div>
+          <div className="v2-live-skills-intro__media">
+            <ResilientImage
+              alt=""
+              fallbackLabel={
+                locale === "zh" ? "图片暂时无法显示" : "Image unavailable"
+              }
+              height={720}
+              sizes="(max-width: 760px) 42vw, 46vw"
+              src="/assets/hero-codex.webp"
+              width={1600}
+            />
+          </div>
+        </section>
+      </V2HeroFrame>
+      <V2ContentFrame layout="commerce">
+        <section className="v2-preview-skills-catalog">
         <div className="v2-preview-skill-discovery">
           <label>
             <MagnifyingGlass aria-hidden="true" size={19} />
@@ -277,6 +290,7 @@ export function V2LiveSkills({
             {query && (
               <button
                 aria-label={t.clear}
+                className="v2-action v2-action--icon"
                 onClick={() => {
                   setQuery("");
                   updateQuery({ q: "" });
@@ -329,7 +343,7 @@ export function V2LiveSkills({
                   <WarningCircle aria-hidden="true" size={25} />
                 </span>
                 <h3>{t.error}</h3>
-                <button onClick={clear} type="button">
+                <button className="v2-action v2-action--secondary" onClick={clear} type="button">
                   {t.retry}
                 </button>
               </div>
@@ -342,15 +356,19 @@ export function V2LiveSkills({
                 ))}
               </div>
             ) : (
-              <div className="v2-preview-state is-empty">
+              <div
+                className={`v2-preview-state is-empty${isPublishedCatalogEmpty ? " v2-live-skills__pending" : ""}`}
+              >
                 <span>
                   <Package aria-hidden="true" size={25} />
                 </span>
-                <h3>{t.empty}</h3>
-                <p>{t.emptyBody}</p>
-                <button onClick={clear} type="button">
-                  {t.clear}
-                </button>
+                <h3>{isPublishedCatalogEmpty ? t.pending : t.empty}</h3>
+                <p>{isPublishedCatalogEmpty ? t.pendingBody : t.emptyBody}</p>
+                {!isPublishedCatalogEmpty && (
+                  <button className="v2-action v2-action--tertiary" onClick={clear} type="button">
+                    {t.clear}
+                  </button>
+                )}
               </div>
             )}
             <aside className="v2-preview-skill-safety">
@@ -362,7 +380,8 @@ export function V2LiveSkills({
             </aside>
           </div>
         </div>
-      </section>
+        </section>
+      </V2ContentFrame>
     </main>
   );
 }
@@ -376,9 +395,9 @@ export function V2LiveSkillDetail({
 }) {
   const t = labels[locale];
   return (
-    <main className="v2-preview-page v2-preview-skill-detail">
+    <V2PageFrame className="v2-preview-skill-detail" layout="reading">
       <nav>
-        <Link href={`/${locale}/skills`}>
+        <Link className="v2-action v2-action--tertiary" href={`/${locale}/skills`}>
           <ArrowLeft aria-hidden="true" size={16} />
           {t.back}
         </Link>
@@ -459,7 +478,7 @@ export function V2LiveSkillDetail({
           <small>{t.source}</small>
           <h2>{skill.name}</h2>
           {safeGitHub(skill.githubUrl) && (
-            <a href={skill.githubUrl} rel="noopener noreferrer" target="_blank">
+            <a className="v2-action v2-action--secondary" href={skill.githubUrl} rel="noopener noreferrer" target="_blank">
               <GithubLogo aria-hidden="true" size={18} />
               <span>{t.github}</span>
               <ArrowSquareOut aria-hidden="true" size={16} />
@@ -467,6 +486,7 @@ export function V2LiveSkillDetail({
           )}
           {skill.documentationUrl && (
             <a
+              className="v2-action v2-action--secondary"
               href={skill.documentationUrl}
               rel="noopener noreferrer"
               target="_blank"
@@ -479,6 +499,6 @@ export function V2LiveSkillDetail({
           <p>{t.safetyBody}</p>
         </aside>
       </div>
-    </main>
+    </V2PageFrame>
   );
 }

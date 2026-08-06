@@ -103,6 +103,8 @@ export function V2LiveShell({
   const isHome = pathname === base || pathname === `${base}/`;
   const isProductDetail = pathname.startsWith(`${base}/products/`);
   const isCartPage = pathname === `${base}/cart`;
+  const isLookupPage = pathname.startsWith(`${base}/orders/lookup`);
+  const isMobileServicePage = isCartPage || isLookupPage;
 
   useEffect(() => {
     document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
@@ -187,9 +189,11 @@ export function V2LiveShell({
     (locale === "zh" ? "云桥" : "CloudBridge");
 
   return (
-    <div className="v2-preview-shell v2-live-shell">
-      {!isProductDetail && (
-        <header className="v2-preview-header">
+    <div
+      className={`v2-preview-shell v2-live-shell${isMobileServicePage ? " is-mobile-service-page" : ""}`}
+    >
+      {!isProductDetail && !isCartPage && (
+        <header className="v2-preview-header v2-shell-frame">
           <Link aria-label={t.brand} className="v2-preview-brand" href={base}>
             <span>
               <Image
@@ -215,17 +219,10 @@ export function V2LiveShell({
             ))}
           </nav>
           <div className="v2-preview-header__actions">
-            <Link
-              className="v2-preview-order-lookup-button"
-              href={`${base}/orders/lookup`}
-            >
-              <Receipt aria-hidden="true" size={18} />
-              <span>{t.lookup}</span>
-            </Link>
             <button
               aria-label={theme === "dark" ? t.light : t.dark}
               aria-pressed={theme === "light"}
-              className="v2-preview-icon-button"
+              className="v2-preview-icon-button v2-action v2-action--icon"
               onClick={toggleTheme}
               type="button"
             >
@@ -248,17 +245,6 @@ export function V2LiveShell({
               <Headset aria-hidden="true" size={18} />
               <span>{t.support}</span>
             </button>
-            <Link
-              aria-label={`${t.cart} · ${cartItems.length}`}
-              className="v2-preview-cart-button"
-              href={`${base}/cart`}
-            >
-              <ShoppingCartSimple aria-hidden="true" size={19} />
-              <span>{t.cart}</span>
-              {cartItems.length > 0 && (
-                <i aria-hidden="true">{cartItems.length}</i>
-              )}
-            </Link>
           </div>
         </header>
       )}
@@ -283,10 +269,10 @@ export function V2LiveShell({
         </nav>
       )}
 
-      <div className="v2-preview-stage">{children}</div>
+      <div className="v2-preview-stage v2-page-stage">{children}</div>
 
       {!isProductDetail && !isCartPage && !isHome && (
-        <footer className="v2-preview-footer">
+        <footer className="v2-preview-footer v2-shell-frame">
           <div className="v2-preview-footer__brand">
             <span>
               <Image
@@ -315,7 +301,7 @@ export function V2LiveShell({
               {t.privacy}
               <ArrowRight aria-hidden="true" size={17} />
             </Link>
-            <button onClick={openSupport} type="button">
+            <button className="v2-action v2-action--tertiary" onClick={openSupport} type="button">
               {t.contact}
               <ArrowRight aria-hidden="true" size={17} />
             </button>

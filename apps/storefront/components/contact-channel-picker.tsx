@@ -30,18 +30,34 @@ const channelIcons = {
   QQ: ChatsCircle,
 } satisfies Record<ContactChannelType, typeof ChatsCircle>;
 
+export type ContactChannelPickerOption = Pick<
+  StorefrontChannel,
+  "type" | "label"
+> & {
+  detail?: string;
+  serviceHours?: string;
+};
+
 export function ContactChannelPicker({
   ariaLabel,
   channels,
   disabled,
+  emptyLabel,
+  invalid,
   locale,
+  menuEyebrow,
+  menuTitle,
   onChange,
   value,
 }: {
   ariaLabel: string;
-  channels: StorefrontChannel[];
+  channels: readonly ContactChannelPickerOption[];
   disabled: boolean;
+  emptyLabel?: string;
+  invalid?: boolean;
   locale: Locale;
+  menuEyebrow?: string;
+  menuTitle?: string;
   onChange: (value: ContactChannelType) => void;
   value: ContactChannelType | "";
 }) {
@@ -50,9 +66,10 @@ export function ContactChannelPicker({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [open, setOpen] = useState(false);
-  const selectedIndex = Math.max(0, channels.findIndex((channel) => channel.type === value));
-  const [activeIndex, setActiveIndex] = useState(selectedIndex);
-  const selected = channels[selectedIndex] ?? null;
+  const selectedIndex = channels.findIndex((channel) => channel.type === value);
+  const initialActiveIndex = Math.max(0, selectedIndex);
+  const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
+  const selected = selectedIndex >= 0 ? (channels[selectedIndex] ?? null) : null;
   const zh = locale === "zh";
 
   const focusOption = (index: number) => {
@@ -67,7 +84,7 @@ export function ContactChannelPicker({
     if (restoreFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
   };
 
-  const openMenu = (index = selectedIndex) => {
+  const openMenu = (index = initialActiveIndex) => {
     if (disabled || !channels.length) return;
     setOpen(true);
     focusOption(index);
@@ -111,7 +128,7 @@ export function ContactChannelPicker({
     };
   }, [open]);
 
-  const choose = (channel: StorefrontChannel) => {
+  const choose = (channel: ContactChannelPickerOption) => {
     onChange(channel.type);
     close(true);
   };
@@ -123,13 +140,17 @@ export function ContactChannelPicker({
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-label={ariaLabel}
-        className="contact-picker__trigger"
+        className={`contact-picker__trigger${selected ? "" : " is-empty"}${invalid ? " is-invalid" : ""}`}
         disabled={disabled || !channels.length}
         onClick={() => (open ? close() : openMenu())}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
-            openMenu(event.key === "ArrowDown" ? selectedIndex : selectedIndex - 1);
+            openMenu(
+              event.key === "ArrowDown"
+                ? initialActiveIndex
+                : initialActiveIndex - 1,
+            );
           }
         }}
         ref={triggerRef}
@@ -143,12 +164,18 @@ export function ContactChannelPicker({
               <span><Icon aria-hidden="true" size={19} /></span>
               <span>
                 <strong>{selected.label}</strong>
-                <small>{selected.serviceHours}</small>
+                {(selected.detail ?? selected.serviceHours) && (
+                  <small>{selected.detail ?? selected.serviceHours}</small>
+                )}
               </span>
             </>
           );
-        })() : <span><strong>{ariaLabel}</strong></span>}
-        <CaretDown aria-hidden="true" size={16} />
+        })() : (
+          <span className="contact-picker__placeholder">
+            <strong>{emptyLabel ?? ariaLabel}</strong>
+          </span>
+        )}
+        {selected && <CaretDown aria-hidden="true" size={16} />}
       </button>
       {open && (
         <div
@@ -161,8 +188,8 @@ export function ContactChannelPicker({
             <i aria-hidden="true" className="contact-picker__handle" />
             <header>
               <div>
-                <small>{zh ? "联系方式" : "Contact channel"}</small>
-                <strong>{zh ? "选择客服联系渠道" : "Choose a support channel"}</strong>
+                <small>{menuEyebrow ?? (zh ? "联系方式" : "Contact channel")}</small>
+                <strong>{menuTitle ?? (zh ? "选择客服联系渠道" : "Choose a support channel")}</strong>
               </div>
               <button
                 aria-label={zh ? "关闭渠道选择" : "Close channel selection"}
@@ -206,7 +233,9 @@ export function ContactChannelPicker({
                     <span><Icon aria-hidden="true" size={21} /></span>
                     <span>
                       <strong>{channel.label}</strong>
-                      <small>{channel.serviceHours}</small>
+                      {(channel.detail ?? channel.serviceHours) && (
+                        <small>{channel.detail ?? channel.serviceHours}</small>
+                      )}
                     </span>
                     {isSelected && <Check aria-hidden="true" size={18} weight="bold" />}
                   </button>

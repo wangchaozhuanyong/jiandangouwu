@@ -1,6 +1,10 @@
 "use client";
 
-import type { OrderReceipt, ProductSummary } from "@cloudbridge/contracts";
+import {
+  contactChannelTypes,
+  type OrderReceipt,
+  type ProductSummary,
+} from "@cloudbridge/contracts";
 
 import {
   createContext,
@@ -37,9 +41,12 @@ type ExperienceContextValue = {
   cartItems: ProductSummary[];
   addCartItem: (product: ProductSummary) => void;
   removeCartItem: (productId: string) => void;
+  removeCartItems: (productIds: readonly string[]) => void;
   clearCart: () => void;
   orderReceipts: OrderReceipt[];
+  orderReceiptsReady: boolean;
   rememberOrderReceipt: (receipt: OrderReceipt) => void;
+  clearOrderReceipts: () => void;
 };
 
 const DEFAULT_DRAFT: OrderDraft = {
@@ -50,6 +57,65 @@ const DEFAULT_DRAFT: OrderDraft = {
 
 const ExperienceContext = createContext<ExperienceContextValue | null>(null);
 const CURRENCY_KEY = "cloudbridge-storefront-currency";
+const ORDER_RECEIPTS_KEY = "cloudbridge-storefront-order-receipts";
+const MAX_ORDER_RECEIPTS = 20;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isMoney(value: unknown): value is { amount: string; currency: string } {
+  return isRecord(value)
+    && typeof value.amount === "string"
+    && typeof value.currency === "string"
+    && value.amount.length <= 48
+    && /^[A-Z]{3,8}$/u.test(value.currency);
+}
+
+function isReceiptItem(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.productId === "string"
+    && typeof value.productName === "string"
+    && isMoney(value.amount)
+    && (value.referenceAmount === null || isMoney(value.referenceAmount));
+}
+
+function isSafeOrderReceipt(value: unknown): value is OrderReceipt {
+  return isRecord(value)
+    && /^CB\d{8}[A-F0-9]{24}$/u.test(String(value.orderNumber ?? ""))
+    && typeof value.status === "string"
+    && /^[A-Z_]{3,40}$/u.test(value.status)
+    && typeof value.productName === "string"
+    && isMoney(value.amount)
+    && (value.referenceAmount === null || isMoney(value.referenceAmount))
+    && contactChannelTypes.includes(value.contactChannel as (typeof contactChannelTypes)[number])
+    && typeof value.maskedContact === "string"
+    && typeof value.reservedUntil === "string"
+    && (
+      value.items === undefined
+      || (Array.isArray(value.items)
+        && value.items.length <= 10
+        && value.items.every(isReceiptItem))
+    );
+}
+
+function readOrderReceipts(): OrderReceipt[] {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(ORDER_RECEIPTS_KEY) ?? "null");
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    return parsed
+      .filter(isSafeOrderReceipt)
+      .filter((receipt) => {
+        if (seen.has(receipt.orderNumber)) return false;
+        seen.add(receipt.orderNumber);
+        return true;
+      })
+      .slice(0, MAX_ORDER_RECEIPTS);
+  } catch {
+    return [];
+  }
+}
 
 export function ExperienceProvider({
   children,
@@ -62,11 +128,30 @@ export function ExperienceProvider({
   const [listing, setListing] = useState<ListingPosition | null>(null);
   const [cartItems, setCartItems] = useState<ProductSummary[]>([]);
   const [orderReceipts, setOrderReceipts] = useState<OrderReceipt[]>([]);
+  const [orderReceiptsReady, setOrderReceiptsReady] = useState(false);
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem(CURRENCY_KEY);
     if (saved && /^[A-Z]{3,8}$/u.test(saved)) setCurrencyState(saved);
   }, []);
+
+  useEffect(() => {
+    setOrderReceipts(readOrderReceipts());
+    setOrderReceiptsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!orderReceiptsReady) return;
+    try {
+      if (orderReceipts.length) {
+        window.sessionStorage.setItem(ORDER_RECEIPTS_KEY, JSON.stringify(orderReceipts));
+      } else {
+        window.sessionStorage.removeItem(ORDER_RECEIPTS_KEY);
+      }
+    } catch {
+      // A restricted browser storage context only loses local restoration.
+    }
+  }, [orderReceipts, orderReceiptsReady]);
 
   const setCurrency = useCallback((next: string) => {
     setCurrencyState(next);
@@ -134,6 +219,11 @@ export function ExperienceProvider({
     setCartItems((current) => current.filter((item) => item.id !== productId));
   }, []);
 
+  const removeCartItems = useCallback((productIds: readonly string[]) => {
+    const submittedIds = new Set(productIds);
+    setCartItems((current) => current.filter((item) => !submittedIds.has(item.id)));
+  }, []);
+
   const clearCart = useCallback(() => setCartItems([]), []);
 
   const rememberOrderReceipt = useCallback((receipt: OrderReceipt) => {
@@ -141,9 +231,11 @@ export function ExperienceProvider({
       [
         receipt,
         ...current.filter((item) => item.orderNumber !== receipt.orderNumber),
-      ].slice(0, 20),
+      ].slice(0, MAX_ORDER_RECEIPTS),
     );
   }, []);
+
+  const clearOrderReceipts = useCallback(() => setOrderReceipts([]), []);
 
   const value = useMemo<ExperienceContextValue>(
     () => ({
@@ -161,9 +253,12 @@ export function ExperienceProvider({
       cartItems,
       addCartItem,
       removeCartItem,
+      removeCartItems,
       clearCart,
       orderReceipts,
+      orderReceiptsReady,
       rememberOrderReceipt,
+      clearOrderReceipts,
     }),
     [
       closeSupport,
@@ -172,14 +267,17 @@ export function ExperienceProvider({
       cartItems,
       addCartItem,
       removeCartItem,
+      removeCartItems,
       clearCart,
       currency,
       getListingHref,
       getOrderDraft,
       openSupport,
       orderReceipts,
+      orderReceiptsReady,
       rememberListing,
       rememberOrderReceipt,
+      clearOrderReceipts,
       setCurrency,
       supportOpen,
       updateOrderDraft,

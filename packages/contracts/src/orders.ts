@@ -69,6 +69,7 @@ export type OrderLookupInput = {
   locale: Locale;
   mode: OrderLookupMode;
   orderNumber?: string;
+  contactChannel?: ContactChannelType;
   contactValue?: string;
   verificationCode?: string;
   localAccessToken?: string;

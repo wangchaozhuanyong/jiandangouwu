@@ -92,7 +92,7 @@ export default async function PolicyPage({
   const content = policies[policy as keyof typeof policies][locale];
   const t = copy[locale];
   return (
-    <main className="policy-page">
+    <main className="policy-page v2-page-frame v2-page-frame--reading">
       <a className="back-link" href={`/${locale}`}>
         ← {t.backHome}
       </a>

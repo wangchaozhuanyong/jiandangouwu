@@ -292,22 +292,54 @@ test("V2 cart order creates one manual order with distinct server-priced items a
     );
     assert.equal(limited.status, 429);
     assert.ok(Number(limited.headers.get("retry-after")) > 0);
-    const persistedRateData = JSON.stringify(
-      sqlite.prepare("SELECT * FROM order_lookup_rate_limits").all(),
-    );
-    assert.doesNotMatch(persistedRateData, /203\.0\.113\.20|CB20260804/u);
-
     const contactLookup = await handlePublicApi(
-      new Request("https://example.test/v1/orders/lookup", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ locale: "zh", mode: "CONTACT" }),
-      }),
+      contactLookupRequest(payload.data.orderNumber, "EMAIL", "customer@example.test"),
       { DB: db, CLOUDBRIDGE_DATA_KEY: dataKey },
       "/v1/orders/lookup",
     );
-    assert.equal(contactLookup.status, 409);
-    assert.equal((await contactLookup.json()).error.code, "ORDER_LOOKUP_VERIFICATION_REQUIRED");
+    assert.equal(contactLookup.status, 200);
+    assert.equal(contactLookup.headers.get("cache-control"), "no-store");
+    assert.equal((await contactLookup.json()).data.orderNumber, payload.data.orderNumber);
+
+    const wrongContact = await handlePublicApi(
+      contactLookupRequest(payload.data.orderNumber, "EMAIL", "other@example.test"),
+      { DB: db, CLOUDBRIDGE_DATA_KEY: dataKey },
+      "/v1/orders/lookup",
+    );
+    const wrongChannel = await handlePublicApi(
+      contactLookupRequest(payload.data.orderNumber, "WHATSAPP", "customer@example.test"),
+      { DB: db, CLOUDBRIDGE_DATA_KEY: dataKey },
+      "/v1/orders/lookup",
+    );
+    assert.equal(wrongContact.status, 404);
+    assert.equal(wrongChannel.status, 404);
+    const wrongContactError = (await wrongContact.json()).error;
+    const wrongChannelError = (await wrongChannel.json()).error;
+    assert.deepEqual(wrongContactError, wrongChannelError);
+
+    sqlite.prepare(
+      "UPDATE orders SET contact_erased_at = ? WHERE order_number = ?",
+    ).run(new Date().toISOString(), payload.data.orderNumber);
+    const erasedContact = await handlePublicApi(
+      contactLookupRequest(payload.data.orderNumber, "EMAIL", "customer@example.test"),
+      { DB: db, CLOUDBRIDGE_DATA_KEY: dataKey },
+      "/v1/orders/lookup",
+    );
+    assert.equal(erasedContact.status, 404);
+    assert.deepEqual((await erasedContact.json()).error, wrongContactError);
+
+    const persistedRateData = JSON.stringify(
+      sqlite.prepare("SELECT * FROM order_lookup_rate_limits").all(),
+    );
+    assert.doesNotMatch(
+      persistedRateData,
+      /203\.0\.113\.20|CB20260804|customer@example\.test/u,
+    );
+    assert.ok(
+      sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM order_lookup_rate_limits WHERE subject_kind = 'CONTACT'",
+      ).get().count >= 1,
+    );
 
     const expiry = await reconcileExpiredOrders(db, new Date(Date.now() + 31 * 60_000));
     assert.deepEqual(expiry, { candidates: 1, released: 1 });
@@ -333,5 +365,22 @@ function lookupRequest(orderNumber) {
       "cf-connecting-ip": "203.0.113.20",
     },
     body: JSON.stringify({ locale: "zh", mode: "ORDER_NUMBER", orderNumber }),
+  });
+}
+
+function contactLookupRequest(orderNumber, contactChannel, contactValue) {
+  return new Request("https://example.test/v1/orders/lookup", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-connecting-ip": "203.0.113.21",
+    },
+    body: JSON.stringify({
+      locale: "zh",
+      mode: "CONTACT",
+      orderNumber,
+      contactChannel,
+      contactValue,
+    }),
   });
 }

@@ -4,6 +4,7 @@ import {
   INVENTORY_RISK_THRESHOLD_MAX,
   INVENTORY_RISK_THRESHOLD_MIN,
   bannerPlacements,
+  contactChannelTypes,
   isConfiguredContactChannel,
   platformKeys,
   productSurfaces,
@@ -663,21 +664,33 @@ async function orderLookupResponse(request: Request, env: SitesEnv): Promise<Res
       locale?: unknown;
       mode?: unknown;
       orderNumber?: unknown;
+      contactChannel?: unknown;
+      contactValue?: unknown;
     }>(request);
     if (body.locale !== "zh" && body.locale !== "en") {
       return noStore(failure(422, "ORDER_LOOKUP_VALIDATION_FAILED", "The lookup details are incomplete."));
     }
-    if (body.mode !== "ORDER_NUMBER") {
-      return noStore(failure(
-        409,
-        "ORDER_LOOKUP_VERIFICATION_REQUIRED",
-        "This lookup method requires an approved ownership-verification channel.",
-      ));
+    if (body.mode !== "ORDER_NUMBER" && body.mode !== "CONTACT") {
+      return noStore(failure(422, "ORDER_LOOKUP_VALIDATION_FAILED", "The lookup details are incomplete."));
     }
+    const contactLookup = body.mode === "CONTACT";
     const orderNumber = typeof body.orderNumber === "string"
       ? body.orderNumber.normalize("NFKC").trim().toUpperCase()
       : "";
-    if (!/^CB\d{8}[A-F0-9]{24}$/u.test(orderNumber)) {
+    const contactChannel = typeof body.contactChannel === "string"
+      ? body.contactChannel.normalize("NFKC").trim().toUpperCase()
+      : "";
+    const contactValue = typeof body.contactValue === "string"
+      ? body.contactValue.normalize("NFKC").trim()
+      : "";
+    if (
+      !/^CB\d{8}[A-F0-9]{24}$/u.test(orderNumber)
+      || (contactLookup && (
+        !contactChannelTypes.includes(contactChannel as ContactChannelType)
+        || contactValue.length < 4
+        || contactValue.length > 240
+      ))
+    ) {
       return noStore(failure(404, "ORDER_LOOKUP_NOT_FOUND", "No matching order was found."));
     }
 
@@ -689,7 +702,7 @@ async function orderLookupResponse(request: Request, env: SitesEnv): Promise<Res
     const requesterSource = request.headers.get("cf-connecting-ip")?.trim()
       || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
       || `anonymous:${request.headers.get("user-agent")?.slice(0, 120) ?? "unknown"}`;
-    const [clientHash, orderHash] = await Promise.all([
+    const [clientHash, orderHash, contactRateHash] = await Promise.all([
       hashOrderLookupSubject(
         `client:${requesterSource}`,
         env.CLOUDBRIDGE_DATA_KEY,
@@ -700,8 +713,15 @@ async function orderLookupResponse(request: Request, env: SitesEnv): Promise<Res
         env.CLOUDBRIDGE_DATA_KEY,
         env.CLOUDBRIDGE_DATA_KEY_NEXT,
       ),
+      contactLookup
+        ? hashOrderLookupSubject(
+            `contact:${contactChannel}:${contactValue}`,
+            env.CLOUDBRIDGE_DATA_KEY,
+            env.CLOUDBRIDGE_DATA_KEY_NEXT,
+          )
+        : Promise.resolve(null),
     ]);
-    const [clientLimit, orderLimit] = await Promise.all([
+    const [clientLimit, orderLimit, contactLimit] = await Promise.all([
       env.DB.prepare(
         `SELECT attempt_count AS attemptCount, failure_count AS failureCount
          FROM order_lookup_rate_limits
@@ -714,8 +734,20 @@ async function orderLookupResponse(request: Request, env: SitesEnv): Promise<Res
          WHERE subject_kind = 'ORDER' AND subject_hash = ? AND window_started_at = ?
          LIMIT 1`,
       ).bind(orderHash, windowStartedAt).first<{ attemptCount: number; failureCount: number }>(),
+      contactRateHash
+        ? env.DB.prepare(
+            `SELECT attempt_count AS attemptCount, failure_count AS failureCount
+             FROM order_lookup_rate_limits
+             WHERE subject_kind = 'CONTACT' AND subject_hash = ? AND window_started_at = ?
+             LIMIT 1`,
+          ).bind(contactRateHash, windowStartedAt).first<{ attemptCount: number; failureCount: number }>()
+        : Promise.resolve(null),
     ]);
-    if (Number(clientLimit?.attemptCount ?? 0) >= 10 || Number(orderLimit?.failureCount ?? 0) >= 5) {
+    if (
+      Number(clientLimit?.attemptCount ?? 0) >= 10
+      || Number(orderLimit?.failureCount ?? 0) >= 5
+      || Number(contactLimit?.failureCount ?? 0) >= 5
+    ) {
       const retryAfter = Math.max(1, Math.ceil((new Date(expiresAt).getTime() - now.getTime()) / 1000));
       const response = noStore(failure(
         429,
@@ -726,14 +758,32 @@ async function orderLookupResponse(request: Request, env: SitesEnv): Promise<Res
       return response;
     }
 
-    const order = await env.DB.prepare(
+    const orderQuery = env.DB.prepare(
       `SELECT id, order_number AS orderNumber, status, amount,
         currency_code AS currency, masked_contact AS maskedContact,
         created_at AS createdAt, updated_at AS updatedAt
        FROM orders
-       WHERE order_number = ? AND contact_erased_at IS NULL
+       WHERE order_number = ?
+         AND contact_erased_at IS NULL
+         ${contactLookup ? "AND contact_channel = ? AND contact_hash IN (?, ?)" : ""}
        LIMIT 1`,
-    ).bind(orderNumber).first<{
+    );
+    const contactHashCandidates = contactLookup
+      ? [...new Set(await Promise.all(
+          [env.CLOUDBRIDGE_DATA_KEY, env.CLOUDBRIDGE_DATA_KEY_NEXT]
+            .filter((key): key is string => Boolean(key))
+            .map((key) => hashOrderContact(contactValue, key)),
+        ))]
+      : [];
+    const order = await (contactLookup
+      ? orderQuery.bind(
+          orderNumber,
+          contactChannel,
+          contactHashCandidates[0],
+          contactHashCandidates[1] ?? contactHashCandidates[0],
+        )
+      : orderQuery.bind(orderNumber)
+    ).first<{
       id: string;
       orderNumber: string;
       status: string;
@@ -748,6 +798,17 @@ async function orderLookupResponse(request: Request, env: SitesEnv): Promise<Res
       env.DB.prepare("DELETE FROM order_lookup_rate_limits WHERE expires_at <= ?").bind(nowIso),
       lookupRateLimitUpsert(env.DB, "CLIENT", clientHash, windowStartedAt, expiresAt, 0, nowIso),
       lookupRateLimitUpsert(env.DB, "ORDER", orderHash, windowStartedAt, expiresAt, failed, nowIso),
+      ...(contactRateHash
+        ? [lookupRateLimitUpsert(
+            env.DB,
+            "CONTACT",
+            contactRateHash,
+            windowStartedAt,
+            expiresAt,
+            failed,
+            nowIso,
+          )]
+        : []),
     ]);
     if (!order) {
       return noStore(failure(404, "ORDER_LOOKUP_NOT_FOUND", "No matching order was found."));
@@ -791,7 +852,7 @@ async function orderLookupResponse(request: Request, env: SitesEnv): Promise<Res
 
 function lookupRateLimitUpsert(
   db: D1Database,
-  subjectKind: "CLIENT" | "ORDER",
+  subjectKind: "CLIENT" | "ORDER" | "CONTACT",
   subjectHash: string,
   windowStartedAt: string,
   expiresAt: string,

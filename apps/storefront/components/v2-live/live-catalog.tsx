@@ -23,6 +23,7 @@ import { getProducts } from "../../lib/api";
 import { useExperience } from "../experience-provider";
 import { ResilientImage } from "../resilient-image";
 import { CurrencyPicker } from "../storefront-controls";
+import { V2ContentFrame, V2HeroFrame } from "./page-frame";
 
 const text = {
   zh: {
@@ -167,17 +168,17 @@ function LiveHero({
           fetchPriority="high"
           height={720}
           loading="eager"
-          sizes="100vw"
+          sizes="(max-width: 760px) calc(100vw - 24px), (max-width: 1328px) calc(100vw - 48px), 1280px"
           src={active.imageUrl}
           width={1600}
         />
         <span aria-hidden="true" className="v2-preview-hero__scrim" />
         <div className="v2-preview-hero__copy">
-          <p>{active.eyebrow}</p>
           <h1>{active.title}</h1>
           <div>
             <span>{active.body}</span>
             <a
+              className="v2-action v2-action--primary"
               href={href}
               {...(external
                 ? { rel: "noopener noreferrer", target: "_blank" }
@@ -221,9 +222,11 @@ function stockLabel(product: ProductSummary, locale: Locale) {
 
 function LiveProductCard({
   locale,
+  priority = false,
   product,
 }: {
   locale: Locale;
+  priority?: boolean;
   product: ProductSummary;
 }) {
   const t = text[locale];
@@ -241,7 +244,9 @@ function LiveProductCard({
         <ResilientImage
           alt=""
           fallbackLabel={t.image}
+          fetchPriority={priority ? "high" : "auto"}
           height={520}
+          loading={priority ? "eager" : "lazy"}
           sizes="(max-width:760px) 92px,20vw"
           src={product.imageUrl}
           width={720}
@@ -269,14 +274,9 @@ function LiveProductCard({
             {stock.label}
           </span>
           <div>
-            <Link
-              aria-disabled={stock.disabled}
-              href={`/${locale}/products/${product.slug}`}
-            >
-              {t.view}
-            </Link>
             <button
               aria-label={`${selected ? t.added : t.add} · ${product.name}`}
+              className="v2-action v2-action--primary"
               disabled={stock.disabled || selected}
               onClick={() => addCartItem(product)}
               type="button"
@@ -443,10 +443,13 @@ export function V2LiveCatalogPage({
 
   return (
     <main
-      className={`v2-preview-page ${surface === "HOME" ? "v2-preview-home" : "v2-preview-market-page"}`}
+      className={`v2-page-surface v2-preview-page ${surface === "HOME" ? "v2-preview-home" : "v2-preview-market-page"}`}
     >
-      <LiveHero banners={banners} locale={locale} />
-      <section className="v2-preview-catalog" id="catalog">
+      <V2HeroFrame>
+        <LiveHero banners={banners} locale={locale} />
+      </V2HeroFrame>
+      <V2ContentFrame layout="commerce">
+        <section className="v2-preview-catalog" id="catalog">
         <div className="v2-preview-catalog__main">
           <div className="v2-preview-catalog__controls">
             <div className="v2-preview-catalog__toolbar">
@@ -467,6 +470,7 @@ export function V2LiveCatalogPage({
                 {query && (
                   <button
                     aria-label={t.clear}
+                    className="v2-action v2-action--icon"
                     onClick={() => {
                       setQuery("");
                       updateQuery({ q: "" });
@@ -544,7 +548,7 @@ export function V2LiveCatalogPage({
                 </span>
                 <h3>{t.error}</h3>
                 <p>{t.errorBody}</p>
-                <button onClick={() => setCurrency(currency)} type="button">
+                <button className="v2-action v2-action--secondary" onClick={() => setCurrency(currency)} type="button">
                   {t.retry}
                 </button>
               </div>
@@ -552,10 +556,11 @@ export function V2LiveCatalogPage({
               <div
                 className={`v2-preview-product-grid${state === "loading" ? " is-refreshing" : ""}`}
               >
-                {products.map((product) => (
+                {products.map((product, index) => (
                   <LiveProductCard
                     key={product.id}
                     locale={locale}
+                    priority={index < 5}
                     product={product}
                   />
                 ))}
@@ -567,14 +572,15 @@ export function V2LiveCatalogPage({
                 </span>
                 <h3>{t.empty}</h3>
                 <p>{t.emptyBody}</p>
-                <button onClick={clear} type="button">
+                <button className="v2-action v2-action--tertiary" onClick={clear} type="button">
                   {t.clear}
                 </button>
               </div>
             )}
           </div>
         </div>
-      </section>
+        </section>
+      </V2ContentFrame>
     </main>
   );
 }
