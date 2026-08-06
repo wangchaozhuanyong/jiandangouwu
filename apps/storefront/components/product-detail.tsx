@@ -7,6 +7,7 @@ import {
   Headset,
   LockKey,
   ShareNetwork,
+  ShoppingCartSimple,
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
@@ -17,12 +18,7 @@ import {
   type ProductDetail,
 } from "@cloudbridge/contracts";
 import Link from "next/link";
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   ApiRequestError,
   createOrder,
@@ -76,11 +72,16 @@ export function ProductDetailView({
     updateOrderDraft,
     clearOrderDraft,
     getListingHref,
+    addCartItem,
+    cartItems,
+    rememberOrderReceipt,
   } = useExperience();
   const draft = getOrderDraft(slug);
   const [product, setProduct] = useState<ProductDetail | null>(initialProduct);
   const [config, setConfig] = useState<StorefrontConfig | null>(initialConfig);
-  const [viewState, setViewState] = useState<AsyncViewState>(initialProduct ? "ready" : "initial-loading");
+  const [viewState, setViewState] = useState<AsyncViewState>(
+    initialProduct ? "ready" : "initial-loading",
+  );
   const [mutationState, setMutationState] = useState<MutationState>("idle");
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
   const [requestError, setRequestError] = useState("");
@@ -94,48 +95,72 @@ export function ProductDetailView({
   const topSentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!config || config.currencies.some((item) => item.code === currency)) return;
+    if (!config || config.currencies.some((item) => item.code === currency))
+      return;
     setCurrency(config.currencies[0]?.code ?? "CNY");
   }, [config, currency, setCurrency]);
 
   useEffect(() => {
     const controller = new AbortController();
-    if (lastLoadedCurrency.current === currency && product && config) return () => controller.abort();
+    if (lastLoadedCurrency.current === currency && product && config)
+      return () => controller.abort();
     lastLoadedCurrency.current = currency;
-    setViewState(resolveAsyncViewState({
-      hasData: Boolean(product),
-      pending: true,
-      failed: false,
-    }));
+    setViewState(
+      resolveAsyncViewState({
+        hasData: Boolean(product),
+        pending: true,
+        failed: false,
+      }),
+    );
     Promise.all([
       getProduct(slug, locale, currency, controller.signal),
       config ? Promise.resolve(config) : getConfig(locale, controller.signal),
-    ]).then(([nextProduct, nextConfig]) => {
-      setProduct(nextProduct);
-      setConfig(nextConfig);
-      const nextChannel = resolveAvailableContactChannel(nextConfig.channels, draft.channel);
-      if (nextChannel && nextChannel !== draft.channel) {
-        updateOrderDraft(slug, { channel: nextChannel });
-      }
-      setViewState("ready");
-    }).catch((error) => {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      setViewState(resolveAsyncViewState({
-        hasData: Boolean(product),
-        pending: false,
-        failed: true,
-        online: navigator.onLine,
-      }));
-    });
+    ])
+      .then(([nextProduct, nextConfig]) => {
+        setProduct(nextProduct);
+        setConfig(nextConfig);
+        const nextChannel = resolveAvailableContactChannel(
+          nextConfig.channels,
+          draft.channel,
+        );
+        if (nextChannel && nextChannel !== draft.channel) {
+          updateOrderDraft(slug, { channel: nextChannel });
+        }
+        setViewState("ready");
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+        setViewState(
+          resolveAsyncViewState({
+            hasData: Boolean(product),
+            pending: false,
+            failed: true,
+            online: navigator.onLine,
+          }),
+        );
+      });
     return () => controller.abort();
-  }, [config, currency, draft.channel, locale, product, reloadNonce, slug, updateOrderDraft]);
+  }, [
+    config,
+    currency,
+    draft.channel,
+    locale,
+    product,
+    reloadNonce,
+    slug,
+    updateOrderDraft,
+  ]);
 
   useEffect(() => {
     if (mutationState !== "submitting") {
       setSlow(false);
       return undefined;
     }
-    const timer = window.setTimeout(() => setSlow(true), UX_TIMINGS.slowRequestMs);
+    const timer = window.setTimeout(
+      () => setSlow(true),
+      UX_TIMINGS.slowRequestMs,
+    );
     return () => window.clearTimeout(timer);
   }, [mutationState]);
 
@@ -151,7 +176,8 @@ export function ProductDetailView({
 
   useEffect(() => {
     const sentinel = topSentinelRef.current;
-    if (!sentinel || typeof IntersectionObserver === "undefined") return undefined;
+    if (!sentinel || typeof IntersectionObserver === "undefined")
+      return undefined;
     const observer = new IntersectionObserver(
       ([entry]) => setCompactNav(!entry?.isIntersecting),
       { rootMargin: "-1px 0px 0px", threshold: 0 },
@@ -164,7 +190,9 @@ export function ProductDetailView({
     window.requestAnimationFrame(() => {
       field?.focus();
       field?.scrollIntoView({
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
         block: "center",
       });
     });
@@ -173,11 +201,12 @@ export function ProductDetailView({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (
-      !product
-      || !config
-      || resolveOrderAvailability(config) !== "available"
-      || mutationState === "submitting"
-    ) return;
+      !product ||
+      !config ||
+      resolveOrderAvailability(config) !== "available" ||
+      mutationState === "submitting"
+    )
+      return;
     setFieldError("");
     setRequestError("");
     if (!isValidOrderContact(draft.contact)) {
@@ -189,16 +218,20 @@ export function ProductDetailView({
     if (!draft.idempotencyKey) updateOrderDraft(slug, { idempotencyKey });
     setMutationState("submitting");
     try {
-      const nextReceipt = await createOrder<OrderReceipt>({
-        locale,
-        productId: product.id,
-        currency: product.price.currency,
-        contactChannel: draft.channel,
-        contactValue: draft.contact.trim(),
-        acceptedPolicyVersion: config.settings.policyVersion,
-        expectedPrice: product.price,
-      }, idempotencyKey);
+      const nextReceipt = await createOrder<OrderReceipt>(
+        {
+          locale,
+          productId: product.id,
+          currency: product.price.currency,
+          contactChannel: draft.channel,
+          contactValue: draft.contact.trim(),
+          acceptedPolicyVersion: config.settings.policyVersion,
+          expectedPrice: product.price,
+        },
+        idempotencyKey,
+      );
       setReceipt(nextReceipt);
+      rememberOrderReceipt(nextReceipt);
       setMutationState("success");
       clearOrderDraft(slug);
     } catch (error) {
@@ -210,7 +243,10 @@ export function ProductDetailView({
             getConfig(locale),
             getProduct(slug, locale, currency),
           ]);
-          const nextChannel = resolveAvailableContactChannel(nextConfig.channels, draft.channel);
+          const nextChannel = resolveAvailableContactChannel(
+            nextConfig.channels,
+            draft.channel,
+          );
           setConfig(nextConfig);
           setProduct(nextProduct);
           updateOrderDraft(slug, {
@@ -249,16 +285,19 @@ export function ProductDetailView({
   const canOrder = orderAvailability === "available";
   const shareText = product
     ? renderProductShareTemplate(
-      config?.settings.shareTemplate?.[locale] ?? DEFAULT_SHARE_TEMPLATE[locale],
-      product.name,
-      `${product.price.amount} ${product.price.currency}`,
-    )
+        config?.settings.shareTemplate?.[locale] ??
+          DEFAULT_SHARE_TEMPLATE[locale],
+        product.name,
+        `${product.price.amount} ${product.price.currency}`,
+      )
     : "";
   const shareProduct = async () => {
     if (!product) return;
     const url = cleanProductUrl(window.location.href);
     const result = await tryNativeProductShare(
-      typeof navigator.share === "function" ? navigator.share.bind(navigator) : undefined,
+      typeof navigator.share === "function"
+        ? navigator.share.bind(navigator)
+        : undefined,
       { title: product.name, text: shareText, url },
     );
     if (result === "shared" || result === "cancelled") return;
@@ -267,30 +306,52 @@ export function ProductDetailView({
 
   return (
     <main className="detail-page">
-      <div className="detail-top-sentinel" ref={topSentinelRef} aria-hidden="true" />
+      <div
+        className="detail-top-sentinel"
+        ref={topSentinelRef}
+        aria-hidden="true"
+      />
       {compactNav && (
         <nav className="detail-compact-nav is-visible">
-          <Link aria-label={t.backHome} href={backHref}><ArrowLeft aria-hidden="true" size={20} /></Link>
+          <Link aria-label={t.backHome} href={backHref}>
+            <ArrowLeft aria-hidden="true" size={20} />
+          </Link>
           <strong>{product?.name ?? t.serviceLabel}</strong>
-          <button aria-label={locale === "zh" ? "分享商品" : "Share product"} disabled={!product} onClick={() => void shareProduct()} type="button">
+          <button
+            aria-label={locale === "zh" ? "分享商品" : "Share product"}
+            disabled={!product}
+            onClick={() => void shareProduct()}
+            type="button"
+          >
             <ShareNetwork aria-hidden="true" size={20} />
           </button>
         </nav>
       )}
       {!product && viewState === "initial-loading" ? (
         <div className="detail-skeleton-wrap">
-          <Link className="detail-overlay-button is-back" href={backHref} aria-label={t.backHome}><ArrowLeft size={20} /></Link>
+          <Link
+            className="detail-overlay-button is-back"
+            href={backHref}
+            aria-label={t.backHome}
+          >
+            <ArrowLeft size={20} />
+          </Link>
           <div className="detail-skeleton" aria-label={t.loading} />
         </div>
       ) : !product ? (
         <div className="catalog-state is-error" role="alert">
-          <Link className="detail-error-back" href={backHref}><ArrowLeft size={17} /> {t.backHome}</Link>
+          <Link className="detail-error-back" href={backHref}>
+            <ArrowLeft size={17} /> {t.backHome}
+          </Link>
           <WarningCircle aria-hidden="true" />
           <h1>{viewState === "offline" ? t.offline : t.loadError}</h1>
           <button onClick={retryProduct}>{t.retry}</button>
         </div>
       ) : (
-        <div className={`detail-grid ${viewState === "refreshing" ? "is-refreshing" : ""}`} aria-busy={viewState === "refreshing"}>
+        <div
+          className={`detail-grid ${viewState === "refreshing" ? "is-refreshing" : ""}`}
+          aria-busy={viewState === "refreshing"}
+        >
           <section className="detail-visual">
             <ResilientImage
               src={product.imageUrl}
@@ -303,7 +364,11 @@ export function ProductDetailView({
               {...storefrontResponsiveImage(product.imageUrl, "product")}
             />
             <div className="detail-image-actions">
-              <Link className="detail-overlay-button" href={backHref} aria-label={t.backHome}>
+              <Link
+                className="detail-overlay-button"
+                href={backHref}
+                aria-label={t.backHome}
+              >
                 <ArrowLeft aria-hidden="true" size={20} />
               </Link>
               <button
@@ -319,7 +384,9 @@ export function ProductDetailView({
           <section className="detail-copy">
             <h1>{product.name}</h1>
             <div className="detail-pricing">
-              <strong>{product.price.amount} <span>{product.price.currency}</span></strong>
+              <strong>
+                {product.price.amount} <span>{product.price.currency}</span>
+              </strong>
               <CurrencyPicker
                 ariaLabel={t.currencyLabel}
                 currencies={config?.currencies ?? []}
@@ -330,12 +397,19 @@ export function ProductDetailView({
                 value={currency}
                 variant="compact"
               />
-              {product.referencePrice && <small>≈ {product.referencePrice.amount} {product.referencePrice.currency}</small>}
+              {product.referencePrice && (
+                <small>
+                  ≈ {product.referencePrice.amount}{" "}
+                  {product.referencePrice.currency}
+                </small>
+              )}
             </div>
             {viewState === "error" || viewState === "offline" ? (
               <div className="catalog-inline-state" role="alert">
                 <WarningCircle size={18} aria-hidden="true" />
-                <span>{viewState === "offline" ? t.offline : t.refreshFailed}</span>
+                <span>
+                  {viewState === "offline" ? t.offline : t.refreshFailed}
+                </span>
                 <button onClick={retryProduct}>{t.retry}</button>
               </div>
             ) : null}
@@ -350,24 +424,37 @@ export function ProductDetailView({
                 <h2>{t.orderSuccess}</h2>
                 <p>{t.orderSuccessBody}</p>
                 <dl>
-                  <div><dt>{t.orderNumber}</dt><dd>{receipt.orderNumber}</dd></div>
-                  <div><dt>{t.contactChannel}</dt><dd>{receipt.contactChannel}</dd></div>
+                  <div>
+                    <dt>{t.orderNumber}</dt>
+                    <dd>{receipt.orderNumber}</dd>
+                  </div>
+                  <div>
+                    <dt>{t.contactChannel}</dt>
+                    <dd>{receipt.contactChannel}</dd>
+                  </div>
                 </dl>
               </div>
             ) : (
               <form className="order-panel" onSubmit={submit} noValidate>
                 <div className="order-panel-heading">
-                  <span><Headset size={21} aria-hidden="true" /></span>
-                  <div><h2>{t.orderTitle}</h2><p>{t.orderBody}</p></div>
+                  <span>
+                    <Headset size={21} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2>{t.orderTitle}</h2>
+                    <p>{t.orderBody}</p>
+                  </div>
                 </div>
                 {orderAvailability === "paused" && (
                   <p className="orders-paused" role="status">
-                    <WarningCircle size={17} aria-hidden="true" />{t.ordersPausedBody}
+                    <WarningCircle size={17} aria-hidden="true" />
+                    {t.ordersPausedBody}
                   </p>
                 )}
                 {orderAvailability === "no-channels" && (
                   <p className="orders-paused" role="status">
-                    <WarningCircle size={17} aria-hidden="true" />{t.contactChannelsUnavailableBody}
+                    <WarningCircle size={17} aria-hidden="true" />
+                    {t.contactChannelsUnavailableBody}
                   </p>
                 )}
                 <label>
@@ -377,7 +464,9 @@ export function ProductDetailView({
                     channels={config?.channels ?? []}
                     disabled={!canOrder}
                     locale={locale}
-                    onChange={(nextChannel) => updateDraft({ channel: nextChannel })}
+                    onChange={(nextChannel) =>
+                      updateDraft({ channel: nextChannel })
+                    }
                     value={channel}
                   />
                 </label>
@@ -386,25 +475,77 @@ export function ProductDetailView({
                   <input
                     ref={contactRef}
                     value={contact}
-                    onChange={(event) => updateDraft({ contact: event.target.value })}
+                    onChange={(event) =>
+                      updateDraft({ contact: event.target.value })
+                    }
                     placeholder={t.contactPlaceholder}
                     minLength={MIN_ORDER_CONTACT_LENGTH}
                     maxLength={240}
                     aria-invalid={fieldError === "contact"}
-                    aria-describedby={fieldError === "contact" ? "contact-error" : undefined}
+                    aria-describedby={
+                      fieldError === "contact" ? "contact-error" : undefined
+                    }
                     disabled={!canOrder}
                     required
                   />
-                  {fieldError === "contact" && <small className="field-error" id="contact-error">{t.contactError}</small>}
+                  {fieldError === "contact" && (
+                    <small className="field-error" id="contact-error">
+                      {t.contactError}
+                    </small>
+                  )}
                 </label>
-                {requestError && <p className="form-error" role="alert"><WarningCircle size={16} aria-hidden="true" />{requestError}</p>}
-                {slow && <p className="slow-network" role="status">{t.slowNetwork}</p>}
+                {requestError && (
+                  <p className="form-error" role="alert">
+                    <WarningCircle size={16} aria-hidden="true" />
+                    {requestError}
+                  </p>
+                )}
+                {slow && (
+                  <p className="slow-network" role="status">
+                    {t.slowNetwork}
+                  </p>
+                )}
                 <div className="order-action-dock">
                   <span aria-hidden="true">
                     <small>{t.from}</small>
-                    <strong>{product.price.amount} {product.price.currency}</strong>
+                    <strong>
+                      {product.price.amount} {product.price.currency}
+                    </strong>
                   </span>
-                  <button className="order-submit" type="submit" disabled={!canOrder || mutationState === "submitting" || product.stockQuantity === 0}>
+                  <button
+                    aria-label={locale === "zh" ? "加入购物车" : "Add to cart"}
+                    className="order-add-cart"
+                    disabled={
+                      cartItems.some((item) => item.id === product.id) ||
+                      product.stockQuantity === 0
+                    }
+                    onClick={() => addCartItem(product)}
+                    type="button"
+                  >
+                    {cartItems.some((item) => item.id === product.id) ? (
+                      <CheckCircle size={18} aria-hidden="true" />
+                    ) : (
+                      <ShoppingCartSimple size={18} aria-hidden="true" />
+                    )}
+                    <span>
+                      {cartItems.some((item) => item.id === product.id)
+                        ? locale === "zh"
+                          ? "已加入"
+                          : "Added"
+                        : locale === "zh"
+                          ? "购物车"
+                          : "Cart"}
+                    </span>
+                  </button>
+                  <button
+                    className="order-submit"
+                    type="submit"
+                    disabled={
+                      !canOrder ||
+                      mutationState === "submitting" ||
+                      product.stockQuantity === 0
+                    }
+                  >
                     <LockKey size={18} aria-hidden="true" />
                     {orderAvailability === "paused"
                       ? t.ordersPaused
@@ -468,9 +609,11 @@ function ProductShareSheet({
         return;
       }
       if (event.key !== "Tab") return;
-      const focusable = [...(panelRef.current?.querySelectorAll<HTMLButtonElement>(
-        "button:not([disabled])",
-      ) ?? [])];
+      const focusable = [
+        ...(panelRef.current?.querySelectorAll<HTMLButtonElement>(
+          "button:not([disabled])",
+        ) ?? []),
+      ];
       const first = focusable[0];
       const last = focusable.at(-1);
       if (!first || !last) return;
@@ -498,11 +641,21 @@ function ProductShareSheet({
         text,
         url,
       );
-      setStatus(copied
-        ? (zh ? "文案与链接已复制。" : "Copy and link copied.")
-        : (zh ? "复制失败，请手动选择下方内容。" : "Copy failed. Select the content below manually."));
+      setStatus(
+        copied
+          ? zh
+            ? "文案与链接已复制。"
+            : "Copy and link copied."
+          : zh
+            ? "复制失败，请手动选择下方内容。"
+            : "Copy failed. Select the content below manually.",
+      );
     } catch {
-      setStatus(zh ? "复制失败，请手动选择下方内容。" : "Copy failed. Select the content below manually.");
+      setStatus(
+        zh
+          ? "复制失败，请手动选择下方内容。"
+          : "Copy failed. Select the content below manually.",
+      );
     }
   };
 
@@ -513,14 +666,25 @@ function ProductShareSheet({
         if (event.currentTarget === event.target) onClose();
       }}
     >
-      <section aria-labelledby={titleId} aria-modal="true" className="product-share-sheet" ref={panelRef} role="dialog">
+      <section
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className="product-share-sheet"
+        ref={panelRef}
+        role="dialog"
+      >
         <i aria-hidden="true" />
         <header>
           <div>
             <small>{zh ? "分享商品" : "Share product"}</small>
             <h2 id={titleId}>{productName}</h2>
           </div>
-          <button aria-label={zh ? "关闭分享" : "Close share"} onClick={onClose} ref={closeRef} type="button">
+          <button
+            aria-label={zh ? "关闭分享" : "Close share"}
+            onClick={onClose}
+            ref={closeRef}
+            type="button"
+          >
             <X aria-hidden="true" size={18} />
           </button>
         </header>
@@ -528,11 +692,17 @@ function ProductShareSheet({
           <p>{text}</p>
           <code>{url}</code>
         </div>
-        <button className="product-share-copy" onClick={() => void copyShare()} type="button">
+        <button
+          className="product-share-copy"
+          onClick={() => void copyShare()}
+          type="button"
+        >
           <Copy aria-hidden="true" size={18} />
           {zh ? "复制文案与链接" : "Copy text and link"}
         </button>
-        <span aria-live="polite" role="status">{status}</span>
+        <span aria-live="polite" role="status">
+          {status}
+        </span>
       </section>
     </div>
   );

@@ -1,9 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  existsSync,
-  readFileSync,
-  readdirSync,
-} from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -35,18 +31,28 @@ const listSourceFiles = (directory: string): SourceFile[] => {
   });
 };
 
-const combinedSource = (files: SourceFile[]) => files
-  .map((file) => `// ${relative(adminRoot, file.path)}\n${file.source}`)
-  .join("\n");
+const combinedSource = (files: SourceFile[]) =>
+  files
+    .map((file) => `// ${relative(adminRoot, file.path)}\n${file.source}`)
+    .join("\n");
 
 test("admin V2 preview is lazy-loaded only in development and production takes a 404 path", () => {
   const app = readFileSync(appFile, "utf8");
   const preview = combinedSource(listSourceFiles(previewRoot));
   const sessionGateIndex = app.indexOf("if (!user)");
-  const previewGateIndex = app.indexOf("if (previewV2Route.requested)", sessionGateIndex);
+  const previewGateIndex = app.indexOf(
+    "if (previewV2Route.requested)",
+    sessionGateIndex,
+  );
 
-  assert.ok(sessionGateIndex >= 0, "admin app must retain its real session gate");
-  assert.ok(previewGateIndex > sessionGateIndex, "admin preview must remain behind the real session gate");
+  assert.ok(
+    sessionGateIndex >= 0,
+    "admin app must retain its real session gate",
+  );
+  assert.ok(
+    previewGateIndex > sessionGateIndex,
+    "admin preview must remain behind the real session gate",
+  );
   assert.match(
     app,
     /const isPreviewV2Development[\s\S]*?import\.meta\.env\?\.DEV/u,
@@ -58,7 +64,7 @@ test("admin V2 preview is lazy-loaded only in development and production takes a
   assert.match(app, /matchPreviewV2Route/u);
   assert.match(
     app,
-    /if \(!canLoadPreviewV2\(isPreviewV2Development\(\), previewV2Route\) \|\| !PreviewV2App\)\s*\{\s*return <PreviewV2Unavailable/u,
+    /if \([\s\S]*?!canLoadPreviewV2\(isPreviewV2Development\(\), previewV2Route\)[\s\S]*?\|\|[\s\S]*?!PreviewV2App[\s\S]*?\)\s*\{\s*return <PreviewV2Unavailable/u,
   );
   assert.match(`${app}\n${preview}`, /\b404\b|not found|notFound/iu);
   assert.match(preview, /PREVIEW_V2_PREFIX/u);
@@ -94,55 +100,114 @@ test("admin advertising placements and setting keys use only the same three surf
   const settings = readFileSync(settingsPreviewFile, "utf8");
   const approved = ["HOME", "TRANSIT_SUBSCRIPTIONS", "AI_RECHARGE"];
   const unique = (values: string[]) => [...new Set(values)];
-  const stringValues = (source: string) => [...source.matchAll(/["'`]([A-Z_]+)["'`]/gu)]
-    .map((match) => match[1] ?? "");
+  const stringValues = (source: string) =>
+    [...source.matchAll(/["'`]([A-Z_]+)["'`]/gu)].map(
+      (match) => match[1] ?? "",
+    );
   const arrayBody = (source: string, name: string) => {
-    const body = new RegExp(`const ${name}[^=]*= \\[([\\s\\S]*?)\\n\\];`, "u")
-      .exec(source)?.[1];
+    const body = new RegExp(
+      `const ${name}[^=]*= \\[([\\s\\S]*?)\\n\\];`,
+      "u",
+    ).exec(source)?.[1];
     assert.ok(body, `missing ${name} declaration`);
     return body;
   };
 
-  const placementType = /export type ProductPlacementId\s*=([\s\S]*?);/u.exec(fixtures)?.[1];
-  const settingsKeys = /export const previewSettings[\s\S]*?advertising:\s*\{([\s\S]*?)\},\s*transitEnabled/u
-    .exec(fixtures)?.[1];
+  const placementType = /export type ProductPlacementId\s*=([\s\S]*?);/u.exec(
+    fixtures,
+  )?.[1];
+  const settingsKeys =
+    /export const previewSettings[\s\S]*?advertising:\s*\{([\s\S]*?)\},\s*transitEnabled/u.exec(
+      fixtures,
+    )?.[1];
   assert.ok(placementType, "missing ProductPlacementId declaration");
   assert.ok(settingsKeys, "missing previewSettings advertising keys");
 
   const surfaces = [
     ["placement type", unique(stringValues(placementType))],
-    ["banner fixtures", unique([...fixtures.matchAll(/\bplacement\s*:\s*["'`]([A-Z_]+)["'`]/gu)]
-      .map((match) => match[1] ?? ""))],
-    ["banner tabs", unique([...arrayBody(banners, "placements").matchAll(/\bid\s*:\s*["'`]([A-Z_]+)["'`]/gu)]
-      .map((match) => match[1] ?? ""))],
-    ["settings fixture", unique([...settingsKeys.matchAll(/\b([A-Z_]+)\s*:/gu)]
-      .map((match) => match[1] ?? ""))],
-    ["settings switches", unique([...arrayBody(settings, "advertisingSwitches").matchAll(/\bid\s*:\s*["'`]([A-Z_]+)["'`]/gu)]
-      .map((match) => match[1] ?? ""))],
+    [
+      "banner fixtures",
+      unique(
+        [...fixtures.matchAll(/\bplacement\s*:\s*["'`]([A-Z_]+)["'`]/gu)].map(
+          (match) => match[1] ?? "",
+        ),
+      ),
+    ],
+    [
+      "banner tabs",
+      unique(
+        [
+          ...arrayBody(banners, "placements").matchAll(
+            /\bid\s*:\s*["'`]([A-Z_]+)["'`]/gu,
+          ),
+        ].map((match) => match[1] ?? ""),
+      ),
+    ],
+    [
+      "settings fixture",
+      unique(
+        [...settingsKeys.matchAll(/\b([A-Z_]+)\s*:/gu)].map(
+          (match) => match[1] ?? "",
+        ),
+      ),
+    ],
+    [
+      "settings switches",
+      unique(
+        [
+          ...arrayBody(settings, "advertisingSwitches").matchAll(
+            /\bid\s*:\s*["'`]([A-Z_]+)["'`]/gu,
+          ),
+        ].map((match) => match[1] ?? ""),
+      ),
+    ],
   ] as const;
 
   for (const [label, values] of surfaces) {
-    assert.deepEqual(values, approved, `${label} must use the approved advertising surfaces`);
+    assert.deepEqual(
+      values,
+      approved,
+      `${label} must use the approved advertising surfaces`,
+    );
   }
-  assert.doesNotMatch(fixtures, /\bplacement\s*:\s*["'`](?:PRODUCT|SKILL)["'`]/u);
+  assert.doesNotMatch(
+    fixtures,
+    /\bplacement\s*:\s*["'`](?:PRODUCT|SKILL)["'`]/u,
+  );
 });
 
 test("admin preview uses DEMO fixtures and a persistent bilingual truth banner", () => {
   const files = listSourceFiles(previewRoot);
   const source = combinedSource(files);
-  const fixtureFiles = files.filter((file) => /(?:fixture|data)/iu.test(file.path));
+  const fixtureFiles = files.filter((file) =>
+    /(?:fixture|data)/iu.test(file.path),
+  );
   const fixtureSource = combinedSource(fixtureFiles);
-  const entityArrays = ["previewProducts", "previewPrimaryCategories", "previewSecondaryCategories", "previewBanners", "previewSkillCategories", "previewSkills"];
+  const entityArrays = [
+    "previewProducts",
+    "previewPrimaryCategories",
+    "previewSecondaryCategories",
+    "previewBanners",
+    "previewSkillCategories",
+    "previewSkills",
+  ];
   const ids = entityArrays.flatMap((name) => {
-    const body = new RegExp(`export const ${name}[^=]*= \\[([\\s\\S]*?)\\n\\];`, "u")
-      .exec(fixtureSource)?.[1] ?? "";
-    return [...body.matchAll(/\bid\s*:\s*["'`]([^"'`]+)["'`]/gu)]
-      .map((match) => match[1] ?? "");
+    const body =
+      new RegExp(`export const ${name}[^=]*= \\[([\\s\\S]*?)\\n\\];`, "u").exec(
+        fixtureSource,
+      )?.[1] ?? "";
+    return [...body.matchAll(/\bid\s*:\s*["'`]([^"'`]+)["'`]/gu)].map(
+      (match) => match[1] ?? "",
+    );
   });
-  const skillUrls = [...fixtureSource.matchAll(/\bsourceUrl\s*:\s*["'`]([^"'`]+)["'`]/gu)]
-    .map((match) => match[1] ?? "");
+  const skillUrls = [
+    ...fixtureSource.matchAll(/\bsourceUrl\s*:\s*["'`]([^"'`]+)["'`]/gu),
+  ].map((match) => match[1] ?? "");
 
-  assert.ok(fixtureFiles.length > 0, "admin preview must keep mock data in an explicit fixture file");
+  assert.ok(
+    fixtureFiles.length > 0,
+    "admin preview must keep mock data in an explicit fixture file",
+  );
   assert.ok(ids.length > 0, "admin preview fixtures must declare stable IDs");
   assert.equal(
     ids.every((id) => id.startsWith("DEMO-")),
@@ -152,9 +217,14 @@ test("admin preview uses DEMO fixtures and a persistent bilingual truth banner",
   assert.match(source, /preview-v2-truth-banner/u);
   assert.match(source, /界面设计预览/u);
   assert.match(source, /Interface design preview/u);
-  assert.ok(skillUrls.length > 0, "admin Skill fixtures must include a verified source URL");
+  assert.ok(
+    skillUrls.length > 0,
+    "admin Skill fixtures must include a verified source URL",
+  );
   assert.equal(
-    skillUrls.every((url) => /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+(?:\/[^\s]*)?$/u.test(url)),
+    skillUrls.every((url) =>
+      /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+(?:\/[^\s]*)?$/u.test(url),
+    ),
     true,
     `admin Skill links must be HTTPS GitHub URLs: ${skillUrls.join(", ")}`,
   );
@@ -164,7 +234,13 @@ test("admin preview covers the five approved pages plus permission and conflict 
   const source = combinedSource(listSourceFiles(previewRoot));
   const model = readFileSync(join(previewRoot, "preview-model.ts"), "utf8");
 
-  for (const pageId of ["products", "categories", "banners", "skills", "settings"]) {
+  for (const pageId of [
+    "products",
+    "categories",
+    "banners",
+    "skills",
+    "settings",
+  ]) {
     assert.match(model, new RegExp(`["']${pageId}["']`, "u"));
   }
   assert.match(source, /["']forbidden["']/u);

@@ -28,16 +28,16 @@ const worker = {
     if (request.method === "GET" && url.pathname.startsWith("/assets/")) {
       return serveStaticAsset(request, env.ASSETS);
     }
-    const isStorefrontPage = /^\/(?:zh|en)(?:\/?$|\/products\/[^/]+\/?$)/u
-      .test(url.pathname);
+    const isStorefrontPage =
+      /^\/(?:zh|en)(?:\/?$|\/(?:transit-subscriptions|ai-recharge|cart|orders\/lookup|skills(?:\/[^/]+)?|products\/[^/]+|policies\/(?:terms|privacy))\/?$)/u.test(
+        url.pathname,
+      );
     if (
-      request.method === "GET"
-      && (
-        isStorefrontPage
-        || ["/v1/storefront/config", "/v1/admin/sites-readiness"].includes(
+      request.method === "GET" &&
+      (isStorefrontPage ||
+        ["/v1/storefront/config", "/v1/admin/sites-readiness"].includes(
           url.pathname,
-        )
-      )
+        ))
     ) {
       context.waitUntil(
         ensureDailyBackup(env)
@@ -46,23 +46,45 @@ const worker = {
           })
           .then(() => processSystemAlertDeliveries(env))
           .catch((error: unknown) => {
-            console.error("[cloudbridge] System alert delivery processing failed", error);
+            console.error(
+              "[cloudbridge] System alert delivery processing failed",
+              error,
+            );
           }),
       );
-      context.waitUntil(ensureExchangeRatesFresh(env).catch((error: unknown) => {
-        console.error("[cloudbridge] Automatic exchange-rate sync failed", error);
-      }));
+      context.waitUntil(
+        ensureExchangeRatesFresh(env).catch((error: unknown) => {
+          console.error(
+            "[cloudbridge] Automatic exchange-rate sync failed",
+            error,
+          );
+        }),
+      );
     }
     if (url.pathname.startsWith("/v1/")) {
-      context.waitUntil(processTelegramDeliveries(env).catch((error: unknown) => {
-        console.error("[cloudbridge] Telegram delivery processing failed", error);
-      }));
+      context.waitUntil(
+        processTelegramDeliveries(env).catch((error: unknown) => {
+          console.error(
+            "[cloudbridge] Telegram delivery processing failed",
+            error,
+          );
+        }),
+      );
     }
-    const cloudBridgeResponse = await handleCloudBridgeRequest(request, env, context);
+    const cloudBridgeResponse = await handleCloudBridgeRequest(
+      request,
+      env,
+      context,
+    );
     if (cloudBridgeResponse) {
-      context.waitUntil(processSystemAlertDeliveries(env).catch((error: unknown) => {
-        console.error("[cloudbridge] System alert delivery processing failed", error);
-      }));
+      context.waitUntil(
+        processSystemAlertDeliveries(env).catch((error: unknown) => {
+          console.error(
+            "[cloudbridge] System alert delivery processing failed",
+            error,
+          );
+        }),
+      );
       return cloudBridgeResponse;
     }
 
@@ -80,16 +102,21 @@ const worker = {
         return env.ASSETS.fetch(new Request(sourceUrl));
       }
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
-      return handleImageOptimization(request, {
-        fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
-        transformImage: async (body, { width, format, quality }) => {
-          const result = await images
-            .input(body)
-            .transform(width > 0 ? { width } : {})
-            .output({ format, quality });
-          return result.response();
+      return handleImageOptimization(
+        request,
+        {
+          fetchAsset: (path) =>
+            env.ASSETS.fetch(new Request(new URL(path, request.url))),
+          transformImage: async (body, { width, format, quality }) => {
+            const result = await images
+              .input(body)
+              .transform(width > 0 ? { width } : {})
+              .output({ format, quality });
+            return result.response();
+          },
         },
-      }, allowedWidths);
+        allowedWidths,
+      );
     }
 
     let pageRequest = request;

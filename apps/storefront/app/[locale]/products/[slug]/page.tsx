@@ -17,9 +17,23 @@ export default async function ProductPage({
       getProduct(slug, locale, "CNY"),
       getConfig(locale),
     ]);
-    return <ProductDetailView locale={locale} slug={slug} initialProduct={initialProduct} initialConfig={initialConfig} />;
+    return (
+      <ProductDetailView
+        locale={locale}
+        slug={slug}
+        initialProduct={initialProduct}
+        initialConfig={initialConfig}
+      />
+    );
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) notFound();
-    return <ProductDetailView locale={locale} slug={slug} initialProduct={null} initialConfig={null} />;
+    return (
+      <ProductDetailView
+        locale={locale}
+        slug={slug}
+        initialProduct={null}
+        initialConfig={null}
+      />
+    );
   }
 }

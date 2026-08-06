@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { SiteShell } from "../../components/site-shell";
+import { V2LiveShell } from "../../components/v2-live/live-shell";
 import { getConfig } from "../../lib/api";
 import { isLocale } from "../../lib/copy";
 
@@ -39,5 +39,9 @@ export default async function LocaleLayout({
   } catch {
     // Keep the shell available with safe local defaults if configuration is temporarily unavailable.
   }
-  return <SiteShell locale={locale} initialConfig={config}>{children}</SiteShell>;
+  return (
+    <V2LiveShell locale={locale} initialConfig={config}>
+      {children}
+    </V2LiveShell>
+  );
 }

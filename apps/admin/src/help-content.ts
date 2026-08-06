@@ -28,6 +28,10 @@ export const adminPageHelp = {
     zh: "管理首页轮播的双语内容、图片、显示状态和顺序。图片必须来自当前允许的媒体路径。",
     en: "Manages bilingual hero content, images, visibility, and order. Images must use an approved media path.",
   },
+  skills: {
+    zh: "管理 Skill 分类、双语内容、来源级别、兼容环境和经过校验的 GitHub 链接。来源级别不是安全认证。",
+    en: "Manages Skill categories, bilingual content, source level, compatible environments, and validated GitHub links. Source level is not a security certification.",
+  },
   media: {
     zh: "管理 Sites R2 中的媒体对象及其商品、轮播引用。替换和删除前会检查引用关系并记录审计。",
     en: "Manages media objects in Sites R2 and their product or hero references. Replacement and deletion check references and write audit records.",
