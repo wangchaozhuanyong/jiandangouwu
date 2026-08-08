@@ -33,6 +33,15 @@ export function V3HomeRouteBridge({ locale }: { locale: Locale }) {
   }, [count, pathname]);
 
   useEffect(() => {
+    const previewOnlyButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".v3-final-plan-cards button"));
+    previewOnlyButtons.forEach((button) => {
+      button.disabled = true;
+      button.title = locale === "zh" ? "V3 预览中不执行真实套餐操作" : "Real plan actions are disabled in the V3 preview";
+      button.setAttribute("aria-label", button.title);
+    });
+  }, [locale, pathname]);
+
+  useEffect(() => {
     if (!isHome) return;
 
     const cards = Array.from(document.querySelectorAll<HTMLElement>(".product"));
@@ -121,6 +130,11 @@ export function V3HomeRouteBridge({ locale }: { locale: Locale }) {
       }
       .v3-final-header [data-v3-cart-count="0"]::after {
         display: none !important;
+      }
+      .v3-final-plan-cards button:disabled {
+        cursor: not-allowed !important;
+        opacity: .46;
+        transform: none !important;
       }
     `}</style>
   );
