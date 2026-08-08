@@ -23,7 +23,10 @@ export function V3HomeRouteBridge({ locale }: { locale: Locale }) {
 
   useEffect(() => {
     const homeCount = document.querySelector<HTMLElement>(".header .cart span");
-    if (homeCount) homeCount.textContent = String(count);
+    if (homeCount) {
+      homeCount.textContent = String(count);
+      homeCount.style.display = count > 0 ? "grid" : "none";
+    }
 
     const innerCart = document.querySelector<HTMLElement>(`.v3-final-header [data-v3-cart-count]`);
     if (innerCart) innerCart.dataset.v3CartCount = String(count);
@@ -115,6 +118,9 @@ export function V3HomeRouteBridge({ locale }: { locale: Locale }) {
       }
       .v3-final-header [data-v3-cart-count]::after {
         content: attr(data-v3-cart-count);
+      }
+      .v3-final-header [data-v3-cart-count="0"]::after {
+        display: none !important;
       }
     `}</style>
   );
