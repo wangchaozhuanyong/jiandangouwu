@@ -1,3 +1,5 @@
+"use client";
+
 export default function Loading() {
   return (
     <section className="v3-live-loading" aria-label="Loading live storefront data">
