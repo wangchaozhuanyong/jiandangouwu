@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
-import { V3Transit } from "../../../../../components/v3-preview/v3-pages";
+import { V3TransitFinal } from "../../../../../components/v3-preview/v3-final-pages";
 import { isLocale } from "../../../../../lib/copy";
 
 export default async function Page({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
-  return <V3Transit locale={locale} />;
+  return <V3TransitFinal locale={locale} />;
 }
