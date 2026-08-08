@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { V3ExperienceShell } from "../../../../components/v3-preview/v3-experience-shell";
 import { isLocale } from "../../../../lib/copy";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
@@ -16,5 +17,5 @@ export default async function PreviewV3LocaleLayout({ children, params }: { chil
   if (process.env.NODE_ENV !== "development") notFound();
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
-  return children;
+  return <V3ExperienceShell locale={locale}>{children}</V3ExperienceShell>;
 }
