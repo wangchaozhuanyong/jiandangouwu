@@ -101,10 +101,10 @@ function availabilityLabel(status: V3Availability, locale: Locale): string {
 
 function stockLabel(product: ProductSummary, locale: Locale): string | null {
   if (product.stockMode !== "FINITE" || product.stockQuantity == null) return null;
-  if (product.stockQuantity <= 0) return null;
+  if (product.stockQuantity <= 0 || product.stockQuantity > STOREFRONT_LOW_STOCK_MAX) return null;
   return locale === "zh"
-    ? `剩余 ${product.stockQuantity}`
-    : `${product.stockQuantity} remaining`;
+    ? `仅剩 ${product.stockQuantity}`
+    : `Only ${product.stockQuantity} left`;
 }
 
 export function toV3LiveProductCard(
