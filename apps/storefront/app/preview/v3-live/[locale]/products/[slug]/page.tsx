@@ -13,6 +13,6 @@ export default async function Page({ params }: { params: Promise<{ locale: strin
     return <V3LiveProductPilot locale={locale} product={product} />;
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) notFound();
-    return notFound();
+    throw error;
   }
 }
