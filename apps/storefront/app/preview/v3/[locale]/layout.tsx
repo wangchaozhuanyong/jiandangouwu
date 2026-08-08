@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { V3CommerceLayer } from "../../../../components/v3-preview/v3-commerce-layer";
 import { V3ExperienceShell } from "../../../../components/v3-preview/v3-experience-shell";
 import { V3HomeRouteBridge } from "../../../../components/v3-preview/v3-home-route-bridge";
 import { isLocale } from "../../../../lib/copy";
@@ -19,9 +20,11 @@ export default async function PreviewV3LocaleLayout({ children, params }: { chil
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   return (
-    <V3ExperienceShell locale={locale}>
-      <V3HomeRouteBridge locale={locale} />
-      {children}
-    </V3ExperienceShell>
+    <V3CommerceLayer locale={locale}>
+      <V3ExperienceShell locale={locale}>
+        <V3HomeRouteBridge locale={locale} />
+        {children}
+      </V3ExperienceShell>
+    </V3CommerceLayer>
   );
 }
