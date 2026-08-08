@@ -3,26 +3,62 @@
 import type { Locale } from "@cloudbridge/contracts";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { useV3Commerce } from "./v3-commerce-layer";
 
 const productRoutes: Record<string, string> = {
   "ChatGPT Plus": "chatgpt-plus-assisted",
   "Claude Pro": "claude-pro-assisted",
   "Gemini Advanced": "gemini-advanced-assisted",
   "Cursor Pro": "cursor-pro-assisted",
+  "Codex Access": "codex-access",
+  Midjourney: "midjourney-assisted",
 };
 
 export function V3HomeRouteBridge({ locale }: { locale: Locale }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { count } = useV3Commerce();
   const base = `/preview/v3/${locale}`;
   const isHome = pathname === base || pathname === `${base}/`;
 
   useEffect(() => {
+    const homeCount = document.querySelector<HTMLElement>(".header .cart span");
+    if (homeCount) homeCount.textContent = String(count);
+
+    const innerCart = document.querySelector<HTMLElement>(`.v3-final-header [data-v3-cart-count]`);
+    if (innerCart) innerCart.dataset.v3CartCount = String(count);
+  }, [count, pathname]);
+
+  useEffect(() => {
     if (!isHome) return;
+
+    const cards = Array.from(document.querySelectorAll<HTMLElement>(".product"));
+    cards.forEach((card) => {
+      const name = card.querySelector("h3")?.textContent?.trim();
+      if (!name || !productRoutes[name]) return;
+      card.tabIndex = 0;
+      card.setAttribute("role", "link");
+      card.setAttribute("aria-label", locale === "zh" ? `查看 ${name} 详情` : `View ${name} details`);
+    });
+
+    const openProductCard = (target: HTMLElement) => {
+      const card = target.closest<HTMLElement>(".product");
+      if (!card || target.closest("button")) return false;
+      const name = card.querySelector("h3")?.textContent?.trim();
+      const slug = name ? productRoutes[name] : undefined;
+      if (!slug) return false;
+      router.push(`${base}/products/${slug}`);
+      return true;
+    };
 
     const handleClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
+
+      if (openProductCard(target)) {
+        event.preventDefault();
+        return;
+      }
 
       const anchor = target.closest<HTMLAnchorElement>("a[href]");
       if (anchor) {
@@ -49,9 +85,37 @@ export function V3HomeRouteBridge({ locale }: { locale: Locale }) {
       router.push(`${base}/products/${slug}`);
     };
 
-    document.addEventListener("click", handleClick);
-    return () => document.removeEventListener("click", handleClick);
-  }, [base, isHome, router]);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const target = event.target as HTMLElement | null;
+      if (!target?.classList.contains("product")) return;
+      const name = target.querySelector("h3")?.textContent?.trim();
+      const slug = name ? productRoutes[name] : undefined;
+      if (!slug) return;
+      event.preventDefault();
+      router.push(`${base}/products/${slug}`);
+    };
 
-  return null;
+    document.addEventListener("click", handleClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("click", handleClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [base, isHome, locale, router]);
+
+  return (
+    <style jsx global>{`
+      .v3-command-fab,
+      .v3-commerce-fab { display: none !important; }
+      .v3 .product[role="link"] { cursor: pointer; }
+      .v3 .product[role="link"]:focus-visible {
+        outline: 2px solid rgba(137,119,255,.9) !important;
+        outline-offset: 4px !important;
+      }
+      .v3-final-header [data-v3-cart-count]::after {
+        content: attr(data-v3-cart-count);
+      }
+    `}</style>
+  );
 }
