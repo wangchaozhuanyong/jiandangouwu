@@ -59,6 +59,7 @@ export function V3ExperienceShell({ children, locale }: { children: React.ReactN
   const router = useRouter();
   const base = `/preview/v3/${locale}`;
   const t = copy[locale];
+  const isHome = pathname === base || pathname === `${base}/`;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -113,6 +114,7 @@ export function V3ExperienceShell({ children, locale }: { children: React.ReactN
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        if (isHome) return;
         event.preventDefault();
         setOpen((value) => !value);
         return;
@@ -138,7 +140,7 @@ export function V3ExperienceShell({ children, locale }: { children: React.ReactN
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeIndex, open, results, router]);
+  }, [activeIndex, isHome, open, results, router]);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -151,21 +153,30 @@ export function V3ExperienceShell({ children, locale }: { children: React.ReactN
   }, [pathname]);
 
   const mobileItems = routes.filter((item) => ["home", "skills", "cart"].includes(item.key));
+  const openMobileSearch = () => {
+    if (isHome) {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+      return;
+    }
+    setOpen(true);
+  };
 
   return (
     <>
       {children}
 
-      <button className="v3-command-fab" onClick={() => setOpen(true)} type="button" aria-label={t.command}>
-        <MagnifyingGlass size={16} />
-        <span>{t.search}</span>
-        <kbd><Command size={12} />K</kbd>
-      </button>
+      {!isHome && (
+        <button className="v3-command-fab" onClick={() => setOpen(true)} type="button" aria-label={t.command}>
+          <MagnifyingGlass size={16} />
+          <span>{t.search}</span>
+          <kbd><Command size={12} />K</kbd>
+        </button>
+      )}
 
       <nav className="v3-mobile-dock" aria-label={locale === "zh" ? "V3 移动端导航" : "V3 mobile navigation"}>
         {mobileItems.map((item) => {
           const href = `${base}${item.suffix}`;
-          const active = item.key === "home" ? pathname === base || pathname === `${base}/` : pathname.startsWith(href);
+          const active = item.key === "home" ? isHome : pathname.startsWith(href);
           const Icon = item.icon;
           return (
             <Link className={active ? "active" : ""} href={href} key={item.key}>
@@ -174,7 +185,7 @@ export function V3ExperienceShell({ children, locale }: { children: React.ReactN
             </Link>
           );
         })}
-        <button onClick={() => setOpen(true)} type="button">
+        <button onClick={openMobileSearch} type="button">
           <MagnifyingGlass size={20} />
           <span>{locale === "zh" ? "搜索" : "Search"}</span>
         </button>
