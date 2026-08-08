@@ -1,0 +1,48 @@
+name: V3 lockfile security refresh
+
+on:
+  push:
+    branches:
+      - design/v3-preview
+
+permissions:
+  contents: write
+
+concurrency:
+  group: v3-lockfile-security-refresh
+  cancel-in-progress: true
+
+jobs:
+  refresh-lock:
+    if: ${{ !contains(github.event.head_commit.message, '[lock-refresh]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out V3 branch
+        uses: actions/checkout@v4
+        with:
+          ref: design/v3-preview
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Refresh only the vulnerable transitive lock entry
+        run: npm install nanoid@3.3.17 --package-lock-only --ignore-scripts --no-save --no-audit --no-fund
+
+      - name: Verify secure lock version
+        run: node -e "const lock=require('./package-lock.json'); const v=lock.packages['node_modules/nanoid']?.version; if(v!=='3.3.17'){throw new Error('Expected nanoid 3.3.17, got '+v)}"
+
+      - name: Commit lockfile patch
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "Lockfile already secure; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "chore(security): refresh nanoid lock to 3.3.17 [lock-refresh]"
+          git push origin HEAD:design/v3-preview
